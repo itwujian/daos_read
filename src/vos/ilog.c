@@ -74,7 +74,7 @@ struct ilog_context {
 	/** umem offset of root pointer */
 	umem_off_t			 ic_root_off;
 	/** umem instance */
-	struct umem_instance		 ic_umm;
+	struct umem_instance		ic_umm;
 	/** ref count for iterator */
 	uint32_t			 ic_ref;
 	/** In pmdk transaction marker */
