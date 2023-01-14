@@ -1456,6 +1456,7 @@ dtx_begin(daos_handle_t coh, struct dtx_id *dti,
 			     (flags & DTX_FOR_MIGRATION) ? true : false,
 			     (flags & DTX_IGNORE_UNCOMMITTED) ? true : false,
 			     (flags & DTX_RESEND) ? true : false, false, false, dth);
+	
 	if (rc == 0 && sub_modification_cnt > 0)
 		rc = vos_dtx_attach(dth, false, false);
 

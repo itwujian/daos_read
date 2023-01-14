@@ -1451,7 +1451,8 @@ int
 vos_fetch_begin(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 		daos_key_t *dkey, unsigned int iod_nr,
 		daos_iod_t *iods, uint32_t vos_flags,
-		struct daos_recx_ep_list *shadows, daos_handle_t *ioh,
+		struct daos_recx_ep_list *shadows,  // EC使用
+		daos_handle_t *ioh,
 		struct dtx_handle *dth)
 {
 	struct vos_io_context	*ioc;
