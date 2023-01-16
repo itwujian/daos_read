@@ -2117,6 +2117,7 @@ vos_reserve_single(struct vos_io_context *ioc, uint16_t media,
 			return rc;
 		}
 	}
+	
 done:
 	bio_addr_set(&biov.bi_addr, media, off);
 	bio_iov_set_len(&biov, size);
@@ -2190,26 +2191,23 @@ akey_update_begin(struct vos_io_context *ioc)
 	}
 
 	for (i = 0; i < iod->iod_nr; i++) {
+		
 		daos_size_t size;
 		uint16_t media;
 
-		size = (iod->iod_type == DAOS_IOD_SINGLE) ? iod->iod_size :
-				iod->iod_recxs[i].rx_nr * iod->iod_size;
-
-		media = vos_policy_media_select(vos_cont2pool(ioc->ic_cont),
-					 iod->iod_type, size, VOS_IOS_GENERIC);
+		size = (iod->iod_type == DAOS_IOD_SINGLE) ? iod->iod_size : iod->iod_recxs[i].rx_nr * iod->iod_size;
+		
+		media = vos_policy_media_select(vos_cont2pool(ioc->ic_cont), iod->iod_type, size, VOS_IOS_GENERIC);
 
 		if (iod->iod_type == DAOS_IOD_SINGLE) {
 			rc = vos_reserve_single(ioc, media, size);
 		} else {
 			daos_size_t csum_len;
-
 			recx_csum = recx_csum_at(iod_csums, i, iod);
-			csum_len = recx_csum_len(&iod->iod_recxs[i], recx_csum,
-						 iod->iod_size);
-			rc = vos_reserve_recx(ioc, media, size, recx_csum,
-					      csum_len);
+			csum_len = recx_csum_len(&iod->iod_recxs[i], recx_csum, iod->iod_size);
+			rc = vos_reserve_recx(ioc, media, size, recx_csum, csum_len);
 		}
+		
 		if (rc)
 			return rc;
 	}

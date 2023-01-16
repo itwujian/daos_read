@@ -2598,8 +2598,7 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 		dss_get_module_info()->dmi_xs_id, orw->orw_epoch,
 		orw->orw_map_ver, ioc.ioc_map_ver, DP_DTI(&orw->orw_dti), ioc.ioc_layout_ver);
 
-	if (obj_rpc_is_fetch(rpc) && !(orw->orw_flags & ORF_EC_RECOV) &&
-	    (orw->orw_epoch != 0 && orw->orw_epoch != DAOS_EPOCH_MAX))
+	if (obj_rpc_is_fetch(rpc) && !(orw->orw_flags & ORF_EC_RECOV) && (orw->orw_epoch != 0 && orw->orw_epoch != DAOS_EPOCH_MAX))
 		ioc.ioc_fetch_snap = 1;
 
 	rc = process_epoch(&orw->orw_epoch, &orw->orw_epoch_first, &orw->orw_flags);
@@ -2691,10 +2690,11 @@ again1:
 
 again2:
 	if (orw->orw_iod_array.oia_oiods != NULL && split_req == NULL) {
+		
 		uint32_t start_tgt = 0;
 
-		start_tgt = obj_ec_grp_start(ioc.ioc_layout_ver, orw->orw_dkey_hash,
-					     obj_ec_tgt_nr(&ioc.ioc_oca));
+		start_tgt = obj_ec_grp_start(ioc.ioc_layout_ver, orw->orw_dkey_hash, obj_ec_tgt_nr(&ioc.ioc_oca));
+	
 		rc = obj_ec_rw_req_split(orw->orw_oid, start_tgt,
 					 &orw->orw_iod_array, orw->orw_nr, orw->orw_start_shard,
 					 orw->orw_tgt_max, PO_COMP_ID_ALL, NULL, 0, &ioc.ioc_oca,
