@@ -117,16 +117,16 @@ vos_ilog_fetch_(struct umem_instance *umm, daos_handle_t coh, uint32_t intent,
  * Check the incarnation log if an update is needed and update it.  Refreshes
  * the log into \p entries.
  *
- * \param	cont[IN]	Pointer to vos container
- * \param	ilog[IN]	The incarnation log root
- * \param	epr[IN]		Range of update
- * \param	bound[IN]	Epoch uncertainty bound
- * \param	parent[IN]	parent incarnation log info (NULL if no parent
- *				log exists).  Fetch should have already been
- *				called at same epoch or parent.
+ * \param	cont[IN]	  Pointer to vos container
+ * \param	ilog[IN]	  The incarnation log root
+ * \param	epr[IN]		  Range of update
+ * \param	bound[IN]	  Epoch uncertainty bound
+ * \param	parent[IN]	  parent incarnation log info (NULL if no parent log exists).  
+                          Fetch should have already been called at same epoch or parent.
+                        
  * \param	info[IN,OUT]	incarnation log info
- * \param	cond[IN]	Conditional flags.
- * \param	ts_set[IN]	timestamp set.
+ * \param	cond[IN]	    Conditional flags.
+ * \param	ts_set[IN]	    timestamp set.
  *
  * \return	0		Successful update
  *		other		Appropriate error code

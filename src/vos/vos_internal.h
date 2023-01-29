@@ -638,7 +638,7 @@ vos_dtx_act_reindex(struct vos_container *cont);
 
 enum vos_tree_class {
 	/** the first reserved tree class */
-	VOS_BTR_BEGIN		= DBTREE_VOS_BEGIN,
+	VOS_BTR_BEGIN		= DBTREE_VOS_BEGIN,  // = 10
 	/** distribution key tree */
 	VOS_BTR_DKEY		= (VOS_BTR_BEGIN + 0),
 	/** attribute key tree */

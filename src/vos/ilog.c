@@ -267,8 +267,7 @@ done:
 static inline bool
 ilog_empty(struct ilog_root *root)
 {
-	return !root->lr_tree.it_embedded &&
-		root->lr_tree.it_root == UMOFF_NULL;
+	return !root->lr_tree.it_embedded && root->lr_tree.it_root == UMOFF_NULL;
 }
 
 static void
@@ -873,9 +872,9 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in,
 	struct ilog_context	*lctx;
 	struct ilog_root	*root;
 	struct ilog_root	 tmp = {0};
-	int			 rc = 0;
-	int			 visibility = ILOG_UNCOMMITTED;
-	uint32_t		 version;
+	int			         rc = 0;
+	int			         visibility = ILOG_UNCOMMITTED;
+	uint32_t		     version;
 
 	lctx = ilog_hdl2lctx(loh);
 	if (lctx == NULL) {
@@ -893,8 +892,7 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in,
 		" tree_version: %d\n", opc_str[opc], lctx->ic_root_off,
 		id_in->id_epoch, version);
 
-	if (root->lr_tree.it_embedded && root->lr_id.id_epoch <= epr->epr_hi
-	    && root->lr_id.id_epoch >= epr->epr_lo) {
+	if (root->lr_tree.it_embedded && root->lr_id.id_epoch <= epr->epr_hi && root->lr_id.id_epoch >= epr->epr_lo) {
 		visibility = ilog_status_get(lctx, &root->lr_id, DAOS_INTENT_UPDATE, true);
 		if (visibility < 0 && visibility != -DER_TX_UNCERTAIN) {
 			rc = visibility;
@@ -914,12 +912,13 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in,
 		tmp.lr_magic = ilog_ver_inc(lctx);
 		tmp.lr_ts_idx = root->lr_ts_idx;
 		tmp.lr_id = *id_in;
-		D_ASSERTF(id_in->id_epoch != 0, "epoch "DF_U64" opc %d\n",
-			  id_in->id_epoch, opc);
+		D_ASSERTF(id_in->id_epoch != 0, "epoch "DF_U64" opc %d\n", id_in->id_epoch, opc);
 		rc = ilog_ptr_set(lctx, root, &tmp);
 		if (rc == 0)
 			rc = ilog_log_add(lctx, &root->lr_id);
-	} else if (root->lr_tree.it_embedded) {
+	}
+	
+	else if (root->lr_tree.it_embedded) {
 		bool	is_equal;
 
 		rc = update_inplace(lctx, &root->lr_id, id_in,
@@ -955,19 +954,19 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in,
 		 * or either entry is a punch
 		 */
 		rc = ilog_root_migrate(lctx, id_in);
-	} else {
+	} 
+
+   else {
 		/** Ok, we have a tree.  Do the operation in the tree */
 		rc = ilog_tree_modify(lctx, id_in, epr, opc);
 	}
+   
 done:
 	rc = ilog_tx_end(lctx, rc);
-	D_DEBUG(DB_TRACE, "%s in incarnation log "DF_X64
-		" status: rc=%s tree_version: %d\n",
-		opc_str[opc], id_in->id_epoch, d_errstr(rc),
-		ilog_mag2ver(lctx->ic_root->lr_magic));
+	D_DEBUG(DB_TRACE, "%s in incarnation log "DF_X64" status: rc=%s tree_version: %d\n",
+		opc_str[opc], id_in->id_epoch, d_errstr(rc), ilog_mag2ver(lctx->ic_root->lr_magic));
 
-	if (rc == 0 && version != ilog_mag2ver(lctx->ic_root->lr_magic) &&
-	    (opc == ILOG_OP_PERSIST || opc == ILOG_OP_ABORT)) {
+	if (rc == 0 && version != ilog_mag2ver(lctx->ic_root->lr_magic) && (opc == ILOG_OP_PERSIST || opc == ILOG_OP_ABORT)) {
 		/** If we persisted or aborted an entry successfully,
 		 *  invoke the callback, if applicable but without
 		 *  deregistration

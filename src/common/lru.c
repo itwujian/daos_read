@@ -196,26 +196,32 @@ daos_lru_ref_hold(struct daos_lru_cache *lcache, void *key,
 		  struct daos_llink **llink_pp)
 {
 	struct daos_llink	*llink;
-	d_list_t		*link;
-	int			 rc = 0;
+	d_list_t		    *link;
+	int			        rc = 0;
 
 	D_ASSERT(lcache != NULL && key != NULL && key_size > 0);
 	if (lcache->dlc_ops->lop_print_key)
 		lcache->dlc_ops->lop_print_key(key, key_size);
 
+    // 在daos lru cache中的哈希表中找这个key
 	link = d_hash_rec_find(&lcache->dlc_htable, key, key_size);
 	if (link != NULL) {
 		llink = link2llink(link);
 		D_ASSERT(llink->ll_evicted == 0);
 		/* remove busy item from LRU */
 		if (!d_list_empty(&llink->ll_qlink))
+			// 找到后就将他从tmp link中删除
 			d_list_del_init(&llink->ll_qlink);
+
+		// 找到后直接将结果值llink作为返回结果
 		D_GOTO(found, rc = 0);
 	}
 
+    // 没带创建参数，只是查找返回不存在
 	if (create_args == NULL)
 		D_GOTO(out, rc = -DER_NONEXIST);
 
+    // 带了创建参数，下面需要创建 
 	/* llink does not exist create one */
 	rc = lcache->dlc_ops->lop_alloc_ref(key, key_size, create_args, &llink);
 	if (rc)
@@ -227,13 +233,13 @@ daos_lru_ref_hold(struct daos_lru_cache *lcache, void *key,
 	llink->ll_ops	  = lcache->dlc_ops;
 	D_INIT_LIST_HEAD(&llink->ll_qlink);
 
-	rc = d_hash_rec_insert(&lcache->dlc_htable, key, key_size,
-			       &llink->ll_link, true);
+	rc = d_hash_rec_insert(&lcache->dlc_htable, key, key_size, &llink->ll_link, true);
 	if (rc) {
 		lcache->dlc_ops->lop_free_ref(llink);
 		return rc;
 	}
 	lcache->dlc_count++;
+	
 found:
 	*llink_pp = llink;
 out:

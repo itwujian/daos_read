@@ -786,13 +786,13 @@ vos_evt_desc_cbs_init(struct evt_desc_cbs *cbs, struct vos_pool *pool,
 		      daos_handle_t coh)
 {
 	/* NB: coh is not required for destroy */
-	cbs->dc_bio_free_cb	= evt_dop_bio_free;
+	cbs->dc_bio_free_cb	    = evt_dop_bio_free;
 	cbs->dc_bio_free_args	= (void *)pool;
 	cbs->dc_log_status_cb	= evt_dop_log_status;
 	cbs->dc_log_status_args	= (void *)(unsigned long)coh.cookie;
-	cbs->dc_log_add_cb	= evt_dop_log_add;
+	cbs->dc_log_add_cb	    = evt_dop_log_add;
 	cbs->dc_log_add_args	= NULL;
-	cbs->dc_log_del_cb	= evt_dop_log_del;
+	cbs->dc_log_del_cb	    = evt_dop_log_del;
 	cbs->dc_log_del_args	= (void *)(unsigned long)coh.cookie;
 }
 
@@ -800,7 +800,7 @@ static int
 tree_open_create(struct vos_object *obj, enum vos_tree_class tclass, int flags,
 		 struct vos_krec_df *krec, bool created, daos_handle_t *sub_toh)
 {
-	struct umem_attr        *uma = vos_obj2uma(obj);
+	struct umem_attr    *uma = vos_obj2uma(obj);
 	struct vos_pool		*pool = vos_obj2pool(obj);
 	daos_handle_t		 coh = vos_cont2hdl(obj->obj_cont);
 	struct evt_desc_cbs	 cbs;
@@ -828,16 +828,15 @@ tree_open_create(struct vos_object *obj, enum vos_tree_class tclass, int flags,
 	}
 
 	vos_evt_desc_cbs_init(&cbs, pool, coh);
+	
 	if (krec->kr_bmap & expected_flag) {
 		if (flags & SUBTR_EVT) {
 			rc = evt_open(&krec->kr_evt, uma, &cbs, sub_toh);
 		} else {
-			rc = dbtree_open_inplace_ex(&krec->kr_btr, uma, coh,
-						    pool, sub_toh);
+			rc = dbtree_open_inplace_ex(&krec->kr_btr, uma, coh, pool, sub_toh);
 		}
 		if (rc != 0)
 			D_ERROR("Failed to open tree: "DF_RC"\n", DP_RC(rc));
-
 		goto out;
 	}
 
@@ -850,21 +849,17 @@ tree_open_create(struct vos_object *obj, enum vos_tree_class tclass, int flags,
 	}
 
 	if (!created) {
-		rc = umem_tx_add_ptr(vos_obj2umm(obj), krec,
-				     sizeof(*krec));
+		rc = umem_tx_add_ptr(vos_obj2umm(obj), krec, sizeof(*krec));
 		if (rc != 0) {
-			D_ERROR("Failed to add key record to transaction,"
-				" rc = %d", rc);
+			D_ERROR("Failed to add key record to transaction, rc = %d", rc);
 			goto out;
 		}
 	}
 
 	if (flags & SUBTR_EVT) {
-		rc = evt_create(&krec->kr_evt, vos_evt_feats, VOS_EVT_ORDER,
-				uma, &cbs, sub_toh);
+		rc = evt_create(&krec->kr_evt, vos_evt_feats, VOS_EVT_ORDER, uma, &cbs, sub_toh);
 		if (rc != 0) {
-			D_ERROR("Failed to create evtree: "DF_RC"\n",
-				DP_RC(rc));
+			D_ERROR("Failed to create evtree: "DF_RC"\n", DP_RC(rc));
 			goto out;
 		}
 	} else {
@@ -885,17 +880,17 @@ tree_open_create(struct vos_object *obj, enum vos_tree_class tclass, int flags,
 
 		ta = obj_tree_find_attr(tclass);
 
-		D_DEBUG(DB_TRACE, "Create dbtree %s feats 0x"DF_X64"\n",
-			ta->ta_name, tree_feats);
+		D_DEBUG(DB_TRACE, "Create dbtree %s feats 0x"DF_X64"\n", ta->ta_name, tree_feats);
 
 		rc = dbtree_create_inplace_ex(ta->ta_class, tree_feats,
-					      ta->ta_order, uma, &krec->kr_btr,
-					      coh, pool, sub_toh);
+					                  ta->ta_order, uma, &krec->kr_btr,
+					                  coh, pool, sub_toh);
 		if (rc != 0) {
 			D_ERROR("Failed to create btree: "DF_RC"\n", DP_RC(rc));
 			goto out;
 		}
 	}
+	
 	/* NB: Only happens on create so krec will be in the transaction log
 	 * already.  Mark that tree supports the aggregation optimizations.
 	 * At akey level, this bit map is used for the optimization.  At higher
@@ -919,12 +914,12 @@ key_tree_prepare(struct vos_object *obj, daos_handle_t toh,
 		 uint32_t intent, struct vos_krec_df **krecp,
 		 daos_handle_t *sub_toh, struct vos_ts_set *ts_set)
 {
-	struct ilog_df		*ilog = NULL;
-	struct vos_krec_df	*krec = NULL;
+	struct ilog_df		    *ilog = NULL;
+	struct vos_krec_df	    *krec = NULL;
 	struct dcs_csum_info	 csum;
 	struct vos_rec_bundle	 rbund;
-	d_iov_t			 riov;
-	bool			 created = false;
+	d_iov_t		 riov;
+	bool		 created = false;
 	int			 rc;
 	int			 tmprc;
 
@@ -935,10 +930,14 @@ key_tree_prepare(struct vos_object *obj, daos_handle_t toh,
 		*krecp = NULL;
 
 	D_DEBUG(DB_TRACE, "prepare tree, flags=%x, tclass=%d\n", flags, tclass);
+
+	// dkey只能带着flag为0下发，否则报错
 	if (tclass != VOS_BTR_AKEY && (flags & SUBTR_EVT))
 		D_GOTO(out, rc = -DER_INVAL);
 
+    // 进入条件：tclass == VOS_BTR_AKEY || (flags 不是 SUBTR_EVT)
 	tree_rec_bundle2iov(&rbund, &riov);
+	// riov->iov_buf = rbund;
 	rbund.rb_off	= UMOFF_NULL;
 	rbund.rb_csum	= &csum;
 	rbund.rb_tclass	= tclass;
@@ -953,44 +952,48 @@ key_tree_prepare(struct vos_object *obj, daos_handle_t toh,
 	 *   create the root for the subtree, or just return it if it's already
 	 *   there.
 	 */
-	rc = dbtree_fetch(toh, BTR_PROBE_EQ, intent, key,
-			  NULL, &riov);
+	rc = dbtree_fetch(toh, BTR_PROBE_EQ, intent, key, NULL, &riov);
 	switch (rc) {
-	default:
-		D_ERROR("fetch failed: "DF_RC"\n", DP_RC(rc));
-		goto out;
-	case 0:
-		krec = rbund.rb_krec;
-		ilog = &krec->kr_ilog;
-		/** fall through to cache re-cache entry */
-	case -DER_NONEXIST:
-		/** Key hash may already be calculated but isn't for some key
-		 * types so pass it in here.
-		 */
-		if (ilog != NULL && (flags & SUBTR_CREATE))
-			vos_ilog_ts_ignore(vos_obj2umm(obj), &krec->kr_ilog);
-		tmprc = vos_ilog_ts_add(ts_set, ilog, key->iov_buf,
-					(int)key->iov_len);
-		if (tmprc != 0) {
-			rc = tmprc;
-			D_ASSERT(tmprc == -DER_NO_PERM);
-			D_ASSERT(tclass == VOS_BTR_AKEY);
+		default:
+			D_ERROR("fetch failed: "DF_RC"\n", DP_RC(rc));
 			goto out;
-		}
-		break;
+			
+		case 0:
+			krec = rbund.rb_krec;
+			ilog = &krec->kr_ilog;
+			/** fall through to cache re-cache entry */
+			
+		case -DER_NONEXIST:
+			/** Key hash may already be calculated but isn't for some key
+			 * types so pass it in here.
+			 */
+			if (ilog != NULL && (flags & SUBTR_CREATE))
+				vos_ilog_ts_ignore(vos_obj2umm(obj), &krec->kr_ilog);
+			
+			tmprc = vos_ilog_ts_add(ts_set, ilog, key->iov_buf, (int)key->iov_len);
+			if (tmprc != 0) {
+				rc = tmprc;
+				D_ASSERT(tmprc == -DER_NO_PERM);
+				D_ASSERT(tclass == VOS_BTR_AKEY);
+				goto out;
+			}
+			break;
 	}
 
 	if (rc == -DER_NONEXIST) {
+		
 		if (!(flags & SUBTR_CREATE))
 			goto out;
 
 		rbund.rb_iov	= key;
+		
 		/* use BTR_PROBE_BYPASS to avoid probe again */
 		rc = dbtree_upsert(toh, BTR_PROBE_BYPASS, intent, key, &riov, NULL);
 		if (rc) {
 			D_ERROR("Failed to upsert: "DF_RC"\n", DP_RC(rc));
 			goto out;
 		}
+		
 		krec = rbund.rb_krec;
 		vos_ilog_ts_ignore(vos_obj2umm(obj), &krec->kr_ilog);
 		vos_ilog_ts_mark(ts_set, &krec->kr_ilog);
@@ -999,8 +1002,7 @@ key_tree_prepare(struct vos_object *obj, daos_handle_t toh,
 
 	if (sub_toh) {
 		D_ASSERT(krec != NULL);
-		rc = tree_open_create(obj, tclass, flags, krec, created,
-				      sub_toh);
+		rc = tree_open_create(obj, tclass, flags, krec, created, sub_toh);
 	}
 
 	if (rc)
@@ -1011,8 +1013,7 @@ key_tree_prepare(struct vos_object *obj, daos_handle_t toh,
 	if (krecp != NULL)
 		*krecp = krec;
  out:
-	D_CDEBUG(rc == 0, DB_TRACE, DB_IO, "prepare tree, flags=%x, tclass=%d %d\n",
-		 flags, tclass, rc);
+	D_CDEBUG(rc == 0, DB_TRACE, DB_IO, "prepare tree, flags=%x, tclass=%d %d\n", flags, tclass, rc);
 
 	if (rc != 0 || tclass != VOS_BTR_AKEY || !(flags & SUBTR_CREATE))
 		return rc;
@@ -1148,34 +1149,35 @@ obj_tree_init(struct vos_object *obj)
 		return 0;
 
 	D_ASSERT(obj->obj_df);
+	
 	if (obj->obj_df->vo_tree.tr_class == 0) {
+		
 		uint64_t tree_feats = 0;
 		enum daos_otype_t type;
 
 		D_DEBUG(DB_DF, "Create btree for object\n");
 
 		type = daos_obj_id2type(obj->obj_df->vo_id.id_pub);
+		
 		if (daos_is_dkey_uint64_type(type))
 			tree_feats |= VOS_KEY_CMP_UINT64_SET;
 		else if (daos_is_dkey_lexical_type(type))
 			tree_feats |= VOS_KEY_CMP_LEXICAL_SET;
 
-		rc = dbtree_create_inplace_ex(ta->ta_class, tree_feats,
-					      ta->ta_order, vos_obj2uma(obj),
-					      &obj->obj_df->vo_tree,
-					      vos_cont2hdl(obj->obj_cont),
-					      vos_obj2pool(obj),
-					      &obj->obj_toh);
-	} else {
+		rc = dbtree_create_inplace_ex(ta->ta_class, tree_feats, ta->ta_order, vos_obj2uma(obj),
+					                  &obj->obj_df->vo_tree, vos_cont2hdl(obj->obj_cont),
+					                  vos_obj2pool(obj), &obj->obj_toh);
+	} 
+
+	else {
 		D_DEBUG(DB_DF, "Open btree for object\n");
-		rc = dbtree_open_inplace_ex(&obj->obj_df->vo_tree,
-					    vos_obj2uma(obj),
-					    vos_cont2hdl(obj->obj_cont),
-					    vos_obj2pool(obj), &obj->obj_toh);
+		rc = dbtree_open_inplace_ex(&obj->obj_df->vo_tree, vos_obj2uma(obj),
+					                vos_cont2hdl(obj->obj_cont), vos_obj2pool(obj), &obj->obj_toh);
 	}
 
 	if (rc)
 		D_ERROR("obj_tree_init failed, "DF_RC"\n", DP_RC(rc));
+	
 	return rc;
 }
 

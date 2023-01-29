@@ -1131,45 +1131,45 @@ obj_reply_set_status(crt_rpc_t *rpc, int status)
 	void *reply = crt_reply_get(rpc);
 
 	switch (opc_get(rpc->cr_opc)) {
-	case DAOS_OBJ_RPC_UPDATE:
-	case DAOS_OBJ_RPC_FETCH:
-	case DAOS_OBJ_RPC_TGT_UPDATE:
-		((struct obj_rw_out *)reply)->orw_ret = status;
-		break;
-	case DAOS_OBJ_DKEY_RPC_ENUMERATE:
-	case DAOS_OBJ_AKEY_RPC_ENUMERATE:
-	case DAOS_OBJ_RECX_RPC_ENUMERATE:
-	case DAOS_OBJ_RPC_ENUMERATE:
-		((struct obj_key_enum_out *)reply)->oeo_ret = status;
-		break;
-	case DAOS_OBJ_RPC_KEY2ANCHOR:
-		((struct obj_key2anchor_out *)reply)->oko_ret = status;
-		break;
-	case DAOS_OBJ_RPC_PUNCH:
-	case DAOS_OBJ_RPC_PUNCH_DKEYS:
-	case DAOS_OBJ_RPC_PUNCH_AKEYS:
-	case DAOS_OBJ_RPC_TGT_PUNCH:
-	case DAOS_OBJ_RPC_TGT_PUNCH_DKEYS:
-	case DAOS_OBJ_RPC_TGT_PUNCH_AKEYS:
-		((struct obj_punch_out *)reply)->opo_ret = status;
-		break;
-	case DAOS_OBJ_RPC_QUERY_KEY:
-		((struct obj_query_key_0_out *)reply)->okqo_ret = status;
-		break;
-	case DAOS_OBJ_RPC_SYNC:
-		((struct obj_sync_out *)reply)->oso_ret = status;
-		break;
-	case DAOS_OBJ_RPC_EC_AGGREGATE:
-		((struct obj_ec_agg_out *)reply)->ea_status = status;
-		break;
-	case DAOS_OBJ_RPC_CPD:
-		((struct obj_cpd_out *)reply)->oco_ret = status;
-		break;
-	case DAOS_OBJ_RPC_EC_REPLICATE:
-		((struct obj_ec_rep_out *)reply)->er_status = status;
-		break;
-	default:
-		D_ASSERT(0);
+		case DAOS_OBJ_RPC_UPDATE:
+		case DAOS_OBJ_RPC_FETCH:
+		case DAOS_OBJ_RPC_TGT_UPDATE:
+			((struct obj_rw_out *)reply)->orw_ret = status;
+			break;
+		case DAOS_OBJ_DKEY_RPC_ENUMERATE:
+		case DAOS_OBJ_AKEY_RPC_ENUMERATE:
+		case DAOS_OBJ_RECX_RPC_ENUMERATE:
+		case DAOS_OBJ_RPC_ENUMERATE:
+			((struct obj_key_enum_out *)reply)->oeo_ret = status;
+			break;
+		case DAOS_OBJ_RPC_KEY2ANCHOR:
+			((struct obj_key2anchor_out *)reply)->oko_ret = status;
+			break;
+		case DAOS_OBJ_RPC_PUNCH:
+		case DAOS_OBJ_RPC_PUNCH_DKEYS:
+		case DAOS_OBJ_RPC_PUNCH_AKEYS:
+		case DAOS_OBJ_RPC_TGT_PUNCH:
+		case DAOS_OBJ_RPC_TGT_PUNCH_DKEYS:
+		case DAOS_OBJ_RPC_TGT_PUNCH_AKEYS:
+			((struct obj_punch_out *)reply)->opo_ret = status;
+			break;
+		case DAOS_OBJ_RPC_QUERY_KEY:
+			((struct obj_query_key_0_out *)reply)->okqo_ret = status;
+			break;
+		case DAOS_OBJ_RPC_SYNC:
+			((struct obj_sync_out *)reply)->oso_ret = status;
+			break;
+		case DAOS_OBJ_RPC_EC_AGGREGATE:
+			((struct obj_ec_agg_out *)reply)->ea_status = status;
+			break;
+		case DAOS_OBJ_RPC_CPD:
+			((struct obj_cpd_out *)reply)->oco_ret = status;
+			break;
+		case DAOS_OBJ_RPC_EC_REPLICATE:
+			((struct obj_ec_rep_out *)reply)->er_status = status;
+			break;
+		default:
+			D_ASSERT(0);
 	}
 }
 

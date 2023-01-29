@@ -257,14 +257,14 @@ vos_ts_lookup_internal(struct vos_ts_set *ts_set, uint32_t type, uint32_t *idx,
  * \param[in]		ts_set	The timestamp set
  * \param[in,out]	idx	Address of the entry index.
  * \param[in]		reset	Remove the last entry in the set before checking
- * \param[in]		entryp	Valid only if function returns true.  Will be
- *				NULL if ts_set is NULL.
+ * \param[in]		entryp	Valid only if function returns true.  
+                    Will be NULL if ts_set is NULL.
  *
  * \return true if the timestamp set is NULL or the entry is found in cache
  */
 static inline bool
 vos_ts_lookup(struct vos_ts_set *ts_set, uint32_t *idx, bool reset,
-	      struct vos_ts_entry **entryp)
+	                struct vos_ts_entry **entryp)
 {
 	uint32_t		 type;
 
@@ -469,14 +469,17 @@ vos_ts_set_type(struct vos_ts_set *ts_set, uint32_t type)
 }
 
 static inline int
-vos_ts_set_add(struct vos_ts_set *ts_set, uint32_t *idx, const void *rec,
-	       size_t rec_size)
+vos_ts_set_add(struct vos_ts_set *ts_set, 
+                    uint32_t *idx, 
+                    const void *rec,
+	                size_t rec_size)
 {
 	struct vos_ts_set_entry	*se;
-	struct vos_ts_entry	*entry;
+	struct vos_ts_entry	    *entry;
 	uint64_t		 hash = 0;
 	uint32_t		 expected_type;
 
+    
 	if (!vos_ts_in_tx(ts_set))
 		return 0;
 
@@ -489,6 +492,11 @@ vos_ts_set_add(struct vos_ts_set *ts_set, uint32_t *idx, const void *rec,
 	if (ts_set->ts_init_count == ts_set->ts_set_size)
 		return -DER_BUSY; /** No more room in the set */
 
+    // 在vos_tls的线程变量中找到vos_ts_table表；
+    // 表中有个数组tt_type_info对应cnt、obj、dkey、akey四种类型
+    // 每个类型有1个vos_ts_info, 里面有lru_array
+    // 在lru_array中找到idx索引对应的vos_ts_entry,返回为entry
+    // 同时将找到的entry添加到vos_ts_set中的vos_ts_set_entry数组中
 	if (vos_ts_lookup(ts_set, idx, false, &entry)) {
 		vos_kh_clear();
 		expected_type = entry->te_info->ti_type;
@@ -497,6 +505,7 @@ vos_ts_set_add(struct vos_ts_set *ts_set, uint32_t *idx, const void *rec,
 	}
 
 calc_hash:
+
 	if (ts_set->ts_etype > VOS_TS_TYPE_CONT) {
 		if (ts_set->ts_etype != VOS_TS_TYPE_OBJ) {
 			hash = vos_hash_get(rec, rec_size);
@@ -525,12 +534,15 @@ calc_hash:
 
 set_params:
 	D_ASSERT(ts_set->ts_init_count >= 1);
+	
 	se = &ts_set->ts_entries[ts_set->ts_init_count - 1];
 	se->se_etype = ts_set->ts_etype;
+	
 	if (se->se_etype > ts_set->ts_max_type)
 		ts_set->ts_max_type = se->se_etype;
 	if (expected_type != VOS_TS_TYPE_AKEY)
 		ts_set->ts_etype = expected_type + 1;
+	
 	se->se_entry = entry;
 	se->se_create_idx = NULL;
 

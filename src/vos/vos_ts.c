@@ -295,6 +295,7 @@ vos_ts_set_allocate(struct vos_ts_set **ts_set, uint64_t flags,
 		uuid_copy((*ts_set)->ts_tx_id.dti_uuid, tx_id->dti_uuid);
 		(*ts_set)->ts_tx_id.dti_hlc = tx_id->dti_hlc;
 	} /* ts_in_tx is false by default */
+	
 	vos_ts_set_append_cflags(*ts_set, cflags);
 
 	return 0;

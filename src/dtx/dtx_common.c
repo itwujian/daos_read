@@ -1144,15 +1144,11 @@ dtx_leader_wait(struct dtx_leader_handle *dlh)
 
 	if (dlh->dlh_future != ABT_FUTURE_NULL) {
 		rc = ABT_future_wait(dlh->dlh_future);
-		D_ASSERTF(rc == ABT_SUCCESS,
-			  "ABT_future_wait failed %d.\n", rc);
-
+		D_ASSERTF(rc == ABT_SUCCESS, "ABT_future_wait failed %d.\n", rc);
 		ABT_future_free(&dlh->dlh_future);
 	}
 
-	D_DEBUG(DB_IO, "dth "DF_DTI" rc "DF_RC"\n",
-		DP_DTI(&dlh->dlh_handle.dth_xid), DP_RC(dlh->dlh_result));
-
+	D_DEBUG(DB_IO, "dth "DF_DTI" rc "DF_RC"\n", DP_DTI(&dlh->dlh_handle.dth_xid), DP_RC(dlh->dlh_result));
 	return dlh->dlh_result;
 };
 
@@ -1209,18 +1205,18 @@ dtx_leader_end(struct dtx_leader_handle *dlh, struct ds_cont_hdl *coh, int resul
 		D_GOTO(abort, result = result < 0 ? result : rc);
 
 	switch (status) {
-	case -1:
-	case DTX_ST_PREPARED:
-		break;
-	case DTX_ST_INITED:
-		if (dth->dth_modification_cnt == 0 || !dth->dth_active)
+		case -1:
+		case DTX_ST_PREPARED:
 			break;
-		/* Fall through */
-	case DTX_ST_ABORTED:
-		aborted = true;
-		D_GOTO(out, result = -DER_INPROGRESS);
-	default:
-		D_ASSERT(0);
+		case DTX_ST_INITED:
+			if (dth->dth_modification_cnt == 0 || !dth->dth_active)
+				break;
+			/* Fall through */
+		case DTX_ST_ABORTED:
+			aborted = true;
+			D_GOTO(out, result = -DER_INPROGRESS);
+		default:
+			D_ASSERT(0);
 	}
 
 	if ((!dth->dth_active && dth->dth_dist) || dth->dth_prepared || dtx_batched_ult_max == 0) {
@@ -1323,8 +1319,7 @@ dtx_leader_end(struct dtx_leader_handle *dlh, struct ds_cont_hdl *coh, int resul
 		flags = DCF_SHARED;
 	else
 		flags = 0;
-	rc = dtx_add_cos(cont, dte, &dth->dth_leader_oid,
-			 dth->dth_dkey_hash, dth->dth_epoch, flags);
+	rc = dtx_add_cos(cont, dte, &dth->dth_leader_oid, dth->dth_dkey_hash, dth->dth_epoch, flags);
 	dtx_entry_put(dte);
 	if (rc == 0) {
 		if (!DAOS_FAIL_CHECK(DAOS_DTX_NO_COMMITTABLE)) {
@@ -1845,34 +1840,34 @@ dtx_handle_resend(daos_handle_t coh,  struct dtx_id *dti,
 
 	rc = vos_dtx_check(coh, dti, epoch, pm_ver, NULL, NULL, false);
 	switch (rc) {
-	case DTX_ST_INITED:
-		return -DER_INPROGRESS;
-	case DTX_ST_PREPARED:
-		return 0;
-	case DTX_ST_COMMITTED:
-	case DTX_ST_COMMITTABLE:
-		return -DER_ALREADY;
-	case DTX_ST_CORRUPTED:
-		return -DER_DATA_LOSS;
-	case -DER_NONEXIST: {
-		struct dtx_stat		stat = { 0 };
+		case DTX_ST_INITED:
+			return -DER_INPROGRESS;
+		case DTX_ST_PREPARED:
+			return 0;
+		case DTX_ST_COMMITTED:
+		case DTX_ST_COMMITTABLE:
+			return -DER_ALREADY;
+		case DTX_ST_CORRUPTED:
+			return -DER_DATA_LOSS;
+		case -DER_NONEXIST: {
+			struct dtx_stat		stat = { 0 };
 
-		/* dtx_id::dti_hlc is client side time stamp. If it is older than the time
-		 * of the most new DTX entry that has been aggregated, then it may has been
-		 * removed by DTX aggregation. Under such case, return -DER_EP_OLD.
-		 */
-		vos_dtx_stat(coh, &stat, DSF_SKIP_BAD);
-		if (dti->dti_hlc <= stat.dtx_newest_aggregated ||
-		    DAOS_FAIL_CHECK(DAOS_DTX_LONG_TIME_RESEND)) {
-			D_ERROR("Not sure about whether the old RPC "
-				DF_DTI" is resent or not: %lu/%lu\n",
-				DP_DTI(dti), dti->dti_hlc, stat.dtx_newest_aggregated);
-			rc = -DER_EP_OLD;
+			/* dtx_id::dti_hlc is client side time stamp. If it is older than the time
+			 * of the most new DTX entry that has been aggregated, then it may has been
+			 * removed by DTX aggregation. Under such case, return -DER_EP_OLD.
+			 */
+			vos_dtx_stat(coh, &stat, DSF_SKIP_BAD);
+			if (dti->dti_hlc <= stat.dtx_newest_aggregated ||
+			    DAOS_FAIL_CHECK(DAOS_DTX_LONG_TIME_RESEND)) {
+				D_ERROR("Not sure about whether the old RPC "
+					DF_DTI" is resent or not: %lu/%lu\n",
+					DP_DTI(dti), dti->dti_hlc, stat.dtx_newest_aggregated);
+				rc = -DER_EP_OLD;
+			}
+			return rc;
 		}
-		return rc;
-	}
-	default:
-		return rc >= 0 ? -DER_INVAL : rc;
+		default:
+			return rc >= 0 ? -DER_INVAL : rc;
 	}
 }
 
@@ -2057,8 +2052,7 @@ again:
 	 */
 	rc = ABT_future_create(dlh->dlh_forward_cnt + 1, dtx_comp_cb, &dlh->dlh_future);
 	if (rc != ABT_SUCCESS) {
-		D_ERROR("ABT_future_create failed [%u, %u] (1): "DF_RC"\n",
-			dlh->dlh_forward_idx, dlh->dlh_forward_cnt, DP_RC(rc));
+		D_ERROR("ABT_future_create failed [%u, %u] (1): "DF_RC"\n", dlh->dlh_forward_idx, dlh->dlh_forward_cnt, DP_RC(rc));
 		D_GOTO(out, rc = dss_abterr2der(rc));
 	}
 
@@ -2066,8 +2060,7 @@ again:
 	 * NOTE: Ideally, we probably should create ULT for each shard, but for performance
 	 *	 reasons, let's only create one for all remote targets for now.
 	 */
-	rc = dss_ult_create(dtx_leader_exec_ops_ult, &ult_arg, DSS_XS_IOFW,
-			    dss_get_module_info()->dmi_tgt_id, DSS_DEEP_STACK_SZ, NULL);
+	rc = dss_ult_create(dtx_leader_exec_ops_ult, &ult_arg, DSS_XS_IOFW, dss_get_module_info()->dmi_tgt_id, DSS_DEEP_STACK_SZ, NULL);
 	if (rc != 0) {
 		D_ERROR("ult create failed [%u, %u] (2): "DF_RC"\n",
 			dlh->dlh_forward_idx, dlh->dlh_forward_cnt, DP_RC(rc));
@@ -2091,6 +2084,7 @@ exec:
 		D_GOTO(out, rc = remote_rc);
 
 	sub_cnt -= dlh->dlh_forward_cnt;
+	
 	if (sub_cnt > 0) {
 		dlh->dlh_forward_idx += dlh->dlh_forward_cnt;
 		if (sub_cnt <= DTX_EXEC_STEP_LENGTH) {
@@ -2139,7 +2133,7 @@ exec:
 	dlh->dlh_forward_cnt = dlh->dlh_normal_sub_cnt + dlh->dlh_delay_sub_cnt;
 
 	rc = dss_ult_create(dtx_leader_exec_ops_ult, &ult_arg, DSS_XS_IOFW,
-			    dss_get_module_info()->dmi_tgt_id, DSS_DEEP_STACK_SZ, NULL);
+			            dss_get_module_info()->dmi_tgt_id, DSS_DEEP_STACK_SZ, NULL);
 	if (rc != 0) {
 		D_ERROR("ult create failed (4): "DF_RC"\n", DP_RC(rc));
 		ABT_future_free(&dlh->dlh_future);

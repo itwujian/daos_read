@@ -54,7 +54,7 @@ struct vos_io_context {
 	d_list_t		 ic_blk_exts;
 	daos_size_t		 ic_space_held[DAOS_MEDIA_MAX];
 	/** number DAOS IO descriptors */
-	unsigned int		 ic_iod_nr;
+	unsigned int		 ic_iod_nr;  // 也就是akey的数量
 	/** deduplication threshold size */
 	uint32_t		 ic_dedup_th;
 	/** dedup entries to be inserted after transaction done */
@@ -675,8 +675,7 @@ vos_ioc_create(daos_handle_t coh, daos_unit_oid_t oid, bool read_only,
 		}
 	}
 
-	rc = vos_ts_set_allocate(&ioc->ic_ts_set, vos_flags, cflags, iod_nr,
-				 dth);
+	rc = vos_ts_set_allocate(&ioc->ic_ts_set, vos_flags, cflags, iod_nr, dth);
 	if (rc != 0)
 		goto error;
 
@@ -1858,21 +1857,26 @@ dkey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_key_t *dkey,
 	struct vos_object	*obj = ioc->ic_obj;
 	daos_handle_t		 ak_toh;
 	struct vos_krec_df	*krec;
-	uint32_t		 update_cond = 0;
-	bool			 subtr_created = false;
+	uint32_t		     update_cond = 0;
+	bool			     subtr_created = false;
 	int			 i, rc;
 
+    // initialize tree for an object
+    // 打开obj里面的dkey树，并且将句柄存放到obj_toh中
 	rc = obj_tree_init(obj);
 	if (rc != 0)
 		return rc;
-
-	rc = key_tree_prepare(obj, obj->obj_toh, VOS_BTR_DKEY, dkey,
-			      SUBTR_CREATE, DAOS_INTENT_UPDATE, &krec, &ak_toh,
-			      ioc->ic_ts_set);
+	
+    // 在obj上挂的dkey树上查找这个dkey, 找到里面的record(vos_krec_df), 
+    // 并且同时打开里面的akey树，返回akey句柄
+	rc = key_tree_prepare(obj, obj->obj_toh, VOS_BTR_DKEY, dkey, SUBTR_CREATE, 
+	                      DAOS_INTENT_UPDATE, &krec/*out*/, &ak_toh/*out*/, 
+	                      ioc->ic_ts_set);
 	if (rc != 0) {
 		D_ERROR("Error preparing dkey tree: rc="DF_RC"\n", DP_RC(rc));
 		goto out;
 	}
+	
 	subtr_created = true;
 
 	if (ioc->ic_ts_set) {
@@ -1882,26 +1886,32 @@ dkey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_key_t *dkey,
 			update_cond = VOS_ILOG_COND_INSERT;
 	}
 
-	rc = vos_ilog_update(ioc->ic_cont, &krec->kr_ilog, &ioc->ic_epr,
-			     ioc->ic_bound, &obj->obj_ilog_info,
-			     &ioc->ic_dkey_info, update_cond, ioc->ic_ts_set);
+    // 更新dky中记录的ilog信息后填充到ic_dkey_info中，
+	rc = vos_ilog_update(ioc->ic_cont, &krec->kr_ilog, // ilog root
+	                    &ioc->ic_epr,                  // Range of update
+			            ioc->ic_bound,                 // Epoch uncertainty bound
+			            &obj->obj_ilog_info,           // parent ilog info 
+			            &ioc->ic_dkey_info,            // OUT：ilog info
+			            update_cond, ioc->ic_ts_set);
+	
 	if (update_cond == VOS_ILOG_COND_UPDATE && rc == -DER_NONEXIST) {
 		D_DEBUG(DB_IO, "Conditional update on non-existent akey\n");
 		goto out;
 	}
+	
 	if (update_cond == VOS_ILOG_COND_INSERT && rc == -DER_EXIST) {
 		D_DEBUG(DB_IO, "Conditional insert on existent akey\n");
 		goto out;
 	}
+	
 	if (rc != 0) {
-		VOS_TX_LOG_FAIL(rc, "Failed to update dkey ilog: "DF_RC"\n",
-				DP_RC(rc));
+		VOS_TX_LOG_FAIL(rc, "Failed to update dkey ilog: "DF_RC"\n", DP_RC(rc));
 		goto out;
 	}
 
+    // 
 	for (i = 0; i < ioc->ic_iod_nr; i++) {
 		iod_set_cursor(ioc, i);
-
 		rc = akey_update(ioc, pm_ver, ak_toh, minor_epc);
 		if (rc != 0)
 			goto out;
@@ -1915,6 +1925,7 @@ out:
 		goto release;
 
 release:
+
 	key_tree_release(ak_toh, false);
 
 	if (rc == 0 && ioc->ic_agg_needed)
@@ -2304,15 +2315,17 @@ update_cancel(struct vos_io_context *ioc)
 
 int
 vos_update_end(daos_handle_t ioh, uint32_t pm_ver, daos_key_t *dkey, int err,
-	       daos_size_t *size, struct dtx_handle *dth)
+	                daos_size_t *size, struct dtx_handle *dth)
 {
 	struct vos_dtx_act_ent	**daes = NULL;
 	struct vos_dtx_cmt_ent	**dces = NULL;
-	struct vos_io_context	*ioc = vos_ioh2ioc(ioh);
-	struct umem_instance	*umem;
-	bool			 tx_started = false;
+	struct vos_io_context	 *ioc = vos_ioh2ioc(ioh);
+	struct umem_instance	 *umem;
+	bool			          tx_started = false;
 
 	D_ASSERT(ioc->ic_update);
+
+	// 释放ioc中重删压缩的相关内存
 	vos_dedup_verify_fini(ioh);
 
 	umem = vos_ioc2umm(ioc);
@@ -2323,6 +2336,8 @@ vos_update_end(daos_handle_t ioh, uint32_t pm_ver, daos_key_t *dkey, int err,
 	err = vos_ts_set_add(ioc->ic_ts_set, ioc->ic_cont->vc_ts_idx, NULL, 0);
 	D_ASSERT(err == 0);
 
+    // 修改SCM上的数据信息事务开始，将dth挂入倒vls中
+    // 主要是调用PMDK： pmemobj_tx_begin
 	err = vos_tx_begin(dth, umem);
 	if (err != 0)
 		goto abort;
@@ -2330,8 +2345,10 @@ vos_update_end(daos_handle_t ioh, uint32_t pm_ver, daos_key_t *dkey, int err,
 	tx_started = true;
 
 	/* Commit the CoS DTXs via the IO PMDK transaction. */
-	if (dtx_is_valid_handle(dth) && dth->dth_dti_cos_count > 0 &&
-	    !dth->dth_cos_done) {
+
+	// 首先提交dth中关联的事务：dth_dti_cos
+	if (dtx_is_valid_handle(dth) && dth->dth_dti_cos_count > 0 && !dth->dth_cos_done) {
+		
 		D_ALLOC_ARRAY(daes, dth->dth_dti_cos_count);
 		if (daes == NULL)
 			D_GOTO(abort, err = -DER_NOMEM);
@@ -2340,25 +2357,23 @@ vos_update_end(daos_handle_t ioh, uint32_t pm_ver, daos_key_t *dkey, int err,
 		if (dces == NULL)
 			D_GOTO(abort, err = -DER_NOMEM);
 
-		err = vos_dtx_commit_internal(ioc->ic_cont, dth->dth_dti_cos,
-					      dth->dth_dti_cos_count, 0, NULL, daes, dces);
+		err = vos_dtx_commit_internal(ioc->ic_cont, dth->dth_dti_cos, dth->dth_dti_cos_count, 0, NULL, daes, dces);
 		if (err <= 0)
 			D_FREE(daes);
 	}
 
+    // 主要是为了把vos obj带出来给ioc，同时搞了obj的iolog
 	err = vos_obj_hold(vos_obj_cache_current(), ioc->ic_cont, ioc->ic_oid,
-			   &ioc->ic_epr, ioc->ic_bound,
-			   VOS_OBJ_CREATE | VOS_OBJ_VISIBLE, DAOS_INTENT_UPDATE,
-			   &ioc->ic_obj, ioc->ic_ts_set);
+			           &ioc->ic_epr, ioc->ic_bound, VOS_OBJ_CREATE | VOS_OBJ_VISIBLE, 
+			           DAOS_INTENT_UPDATE, &ioc->ic_obj, ioc->ic_ts_set);
 	if (err != 0)
 		goto abort;
 
-	/* Update tree index */
-	err = dkey_update(ioc, pm_ver, dkey, dtx_is_valid_handle(dth) ?
-			  dth->dth_op_seq : VOS_SUB_OP_MAX);
+	// Update tree index
+	// 
+	err = dkey_update(ioc, pm_ver, dkey, dtx_is_valid_handle(dth) ? dth->dth_op_seq : VOS_SUB_OP_MAX);
 	if (err) {
-		VOS_TX_LOG_FAIL(err, "Failed to update tree index: "DF_RC"\n",
-				DP_RC(err));
+		VOS_TX_LOG_FAIL(err, "Failed to update tree index: "DF_RC"\n", DP_RC(err));
 		goto abort;
 	}
 
@@ -2371,10 +2386,8 @@ vos_update_end(daos_handle_t ioh, uint32_t pm_ver, daos_key_t *dkey, int err,
 	}
 
 abort:
-	if (err == -DER_NONEXIST || err == -DER_EXIST ||
-	    err == -DER_INPROGRESS) {
-		if (vos_ts_wcheck(ioc->ic_ts_set, ioc->ic_epr.epr_hi,
-				  ioc->ic_bound)) {
+	if (err == -DER_NONEXIST || err == -DER_EXIST || err == -DER_INPROGRESS) {
+		if (vos_ts_wcheck(ioc->ic_ts_set, ioc->ic_epr.epr_hi, ioc->ic_bound)) {
 			err = -DER_TX_RESTART;
 		}
 	}
@@ -2382,8 +2395,8 @@ abort:
 	if (err == 0 && ioc->ic_epr.epr_hi > ioc->ic_obj->obj_df->vo_max_write) {
 		if (DAOS_ON_VALGRIND)
 			err = umem_tx_xadd_ptr(umem, &ioc->ic_obj->obj_df->vo_max_write,
-					       sizeof(ioc->ic_obj->obj_df->vo_max_write),
-					       POBJ_XADD_NO_SNAPSHOT);
+					               sizeof(ioc->ic_obj->obj_df->vo_max_write),
+					               POBJ_XADD_NO_SNAPSHOT);
 		if (err == 0)
 			ioc->ic_obj->obj_df->vo_max_write = ioc->ic_epr.epr_hi;
 	}
@@ -2391,21 +2404,17 @@ abort:
 	if (err == 0)
 		err = vos_ioc_mark_agg(ioc);
 
-	err = vos_tx_end(ioc->ic_cont, dth, &ioc->ic_rsrvd_scm,
-			 &ioc->ic_blk_exts, tx_started, err);
+	err = vos_tx_end(ioc->ic_cont, dth, &ioc->ic_rsrvd_scm, &ioc->ic_blk_exts, tx_started, err);
+	
 	if (err == 0) {
 		vos_ts_set_upgrade(ioc->ic_ts_set);
 		if (daes != NULL) {
-			vos_dtx_post_handle(ioc->ic_cont, daes, dces,
-					    dth->dth_dti_cos_count,
-					    false, false);
+			vos_dtx_post_handle(ioc->ic_cont, daes, dces, dth->dth_dti_cos_count, false, false);
 			dth->dth_cos_done = 1;
 		}
-		vos_dedup_process(vos_cont2pool(ioc->ic_cont),
-				  &ioc->ic_dedup_entries, false);
+		vos_dedup_process(vos_cont2pool(ioc->ic_cont), &ioc->ic_dedup_entries, false);
 	} else if (daes != NULL) {
-		vos_dtx_post_handle(ioc->ic_cont, daes, dces,
-				    dth->dth_dti_cos_count, false, true);
+		vos_dtx_post_handle(ioc->ic_cont, daes, dces, dth->dth_dti_cos_count, false, true);
 		dth->dth_cos_done = 0;
 	}
 

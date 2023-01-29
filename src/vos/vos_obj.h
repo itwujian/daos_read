@@ -34,7 +34,7 @@ struct vos_object {
 	/** llink for daos lru cache */
 	struct daos_llink		obj_llink;
 	/** Cache of incarnation log */
-	struct vos_ilog_info		obj_ilog_info;
+	struct vos_ilog_info	obj_ilog_info;
 	/** Key for searching, object ID within a container */
 	daos_unit_oid_t			obj_id;
 	/** dkey tree open handle of the object */
@@ -46,11 +46,11 @@ struct vos_object {
 	/** Persistent memory address of the object */
 	struct vos_obj_df		*obj_df;
 	/** backref to container */
-	struct vos_container		*obj_cont;
+	struct vos_container	*obj_cont;
 	/** nobody should access this object */
-	bool				obj_zombie;
+	bool				     obj_zombie;
 	/** Object is in discard */
-	bool				obj_discard;
+	bool				     obj_discard;
 };
 
 enum {

@@ -197,8 +197,7 @@ vos_oi_find(struct vos_container *cont, daos_unit_oid_t oid,
 	d_iov_set(&key_iov, &oid, sizeof(oid));
 	d_iov_set(&val_iov, NULL, 0);
 
-	rc = dbtree_fetch(cont->vc_btr_hdl, BTR_PROBE_EQ,
-			  DAOS_INTENT_DEFAULT, &key_iov, NULL, &val_iov);
+	rc = dbtree_fetch(cont->vc_btr_hdl, BTR_PROBE_EQ, DAOS_INTENT_DEFAULT, &key_iov, NULL, &val_iov);
 	if (rc == 0) {
 		struct vos_obj_df *obj = val_iov.iov_buf;
 
@@ -230,8 +229,7 @@ vos_oi_find_alloc(struct vos_container *cont, daos_unit_oid_t oid,
 	struct ilog_desc_cbs	 cbs;
 	int			 rc;
 
-	D_DEBUG(DB_TRACE, "Lookup obj "DF_UOID" in the OI table.\n",
-		DP_UOID(oid));
+	D_DEBUG(DB_TRACE, "Lookup obj "DF_UOID" in the OI table.\n", DP_UOID(oid));
 
 	rc = vos_oi_find(cont, oid, &obj, ts_set);
 	if (rc == 0)
@@ -240,14 +238,12 @@ vos_oi_find_alloc(struct vos_container *cont, daos_unit_oid_t oid,
 		return rc;
 
 	/* Object ID not found insert it to the OI tree */
-	D_DEBUG(DB_TRACE, "Object "DF_UOID" not found adding it..\n",
-		DP_UOID(oid));
+	D_DEBUG(DB_TRACE, "Object "DF_UOID" not found adding it..\n", DP_UOID(oid));
 
 	d_iov_set(&val_iov, NULL, 0);
 	d_iov_set(&key_iov, &oid, sizeof(oid));
 
-	rc = dbtree_upsert(cont->vc_btr_hdl, BTR_PROBE_EQ, DAOS_INTENT_DEFAULT,
-			   &key_iov, &val_iov, NULL);
+	rc = dbtree_upsert(cont->vc_btr_hdl, BTR_PROBE_EQ, DAOS_INTENT_DEFAULT, &key_iov, &val_iov, NULL);
 	if (rc) {
 		D_ERROR("Failed to update Key for Object index\n");
 		return rc;
@@ -258,6 +254,7 @@ vos_oi_find_alloc(struct vos_container *cont, daos_unit_oid_t oid,
 
 	vos_ilog_ts_ignore(vos_cont2umm(cont), &obj->vo_ilog);
 	vos_ilog_ts_mark(ts_set, &obj->vo_ilog);
+	
 do_log:
 	if (!log)
 		goto skip_log;
@@ -266,10 +263,10 @@ do_log:
 	if (rc != 0)
 		return rc;
 
-	rc = ilog_update(loh, NULL, epoch,
-			 dtx_is_valid_handle(dth) ? dth->dth_op_seq : 1, false);
+	rc = ilog_update(loh, NULL, epoch, dtx_is_valid_handle(dth) ? dth->dth_op_seq : 1, false);
 
 	ilog_close(loh);
+	
 skip_log:
 	if (rc == 0)
 		*obj_p = obj;

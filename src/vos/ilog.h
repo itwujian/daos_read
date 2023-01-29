@@ -285,6 +285,7 @@ ilog_cache_entry(const struct ilog_entries *entries, struct ilog_entry *entry, i
 	for ((entry)->ie_idx = (ents)->ie_num_entries - 1; (entry)->ie_idx >= 0 &&	\
 	     ilog_cache_entry(ents, entry, (entry)->ie_idx); (entry)->ie_idx--)
 
+
 /** Fetch the address of the timestamp index from the ilog
  *
  * \param	entries[in]	The incarnation log
@@ -293,6 +294,7 @@ ilog_cache_entry(const struct ilog_entries *entries, struct ilog_entry *entry, i
  */
 uint32_t *
 ilog_ts_idx_get(struct ilog_df *ilog_df);
+
 
 /** Retrieve the current version of the incarnation log
  *

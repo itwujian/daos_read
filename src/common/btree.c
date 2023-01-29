@@ -1803,18 +1803,15 @@ btr_probe_prev(struct btr_context *tcx)
  * \a val_out is/are NULL, then addresses of key or/and value of the current
  * record will be returned.
  *
- * \param toh	[IN]		Tree open handle.
- * \param opc	[IN]		Probe opcode, see dbtree_probe_opc_t for the
- *				details.
- * \param intent [IN]		The operation intent.
- * \param key	[IN]		Key to search
- * \param key_out [OUT]		Return the actual matched key if \a opc is
- *				not BTR_PROBE_EQ.
- * \param val_out [OUT]		Returned value address, or sink buffer to
- *				store returned value.
+ * \param toh	  [IN]		Tree open handle.
+ * \param opc	  [IN]		Probe opcode, see dbtree_probe_opc_t for the details.
+ * \param intent  [IN]		The operation intent.
+ * \param key	  [IN]		Key to search
+ * \param key_out [OUT]		Return the actual matched key if \a opc is not BTR_PROBE_EQ.
+ * \param val_out [OUT]		Returned value address, or sink buffer to store returned value.
  *
  * \return		0	found
- *			-ve	error code
+ *			   -ve	error code
  */
 int
 dbtree_fetch(daos_handle_t toh, dbtree_probe_opc_t opc, uint32_t intent,
@@ -3335,21 +3332,16 @@ dbtree_create_inplace_ex(unsigned int tree_class, uint64_t tree_feats,
 	int		    rc;
 
 	if (tree_order < BTR_ORDER_MIN || tree_order > BTR_ORDER_MAX) {
-		D_DEBUG(DB_TRACE, "Order (%d) should be between %d and %d\n",
-			tree_order, BTR_ORDER_MIN, BTR_ORDER_MAX);
+		D_DEBUG(DB_TRACE, "Order (%d) should be between %d and %d\n", tree_order, BTR_ORDER_MIN, BTR_ORDER_MAX);
 		return -DER_INVAL;
 	}
 
 	if (root->tr_class != 0) {
-		D_DEBUG(DB_TRACE,
-			"Tree existed, c=%d, o=%d, d=%d, f="DF_U64"\n",
-			root->tr_class, root->tr_order, root->tr_depth,
-			root->tr_feats);
+		D_DEBUG(DB_TRACE, "Tree existed, c=%d, o=%d, d=%d, f="DF_U64"\n", root->tr_class, root->tr_order, root->tr_depth, root->tr_feats);
 		return -DER_NO_PERM;
 	}
 
-	rc = btr_context_create(BTR_ROOT_NULL, root, tree_class, tree_feats,
-				tree_order, uma, coh, priv, &tcx);
+	rc = btr_context_create(BTR_ROOT_NULL, root, tree_class, tree_feats, tree_order, uma, coh, priv, &tcx);
 	if (rc != 0)
 		return rc;
 

@@ -119,17 +119,18 @@ obj_ec_rw_req_split(daos_unit_oid_t oid, uint32_t start_tgt,
 		    struct daos_shard_tgt *tgts, struct obj_ec_split_req **split_req,
 		    struct obj_pool_metrics *opm)
 {
-	daos_iod_t		*iod;
-	daos_iod_t		*iods = iod_array->oia_iods;
-	struct obj_io_desc	*oiods = iod_array->oia_oiods;
+	daos_iod_t		        *iod;
+	daos_iod_t		        *iods = iod_array->oia_iods;
+	struct obj_io_desc	    *oiods = iod_array->oia_oiods;
 	struct obj_ec_split_req	*req;
-	daos_iod_t		*split_iod, *split_iods;
+	daos_iod_t		        *split_iod, *split_iods;
 	struct obj_shard_iod	*siod;
-	struct obj_tgt_oiod	*tgt_oiod, *tgt_oiods = NULL;
+	struct obj_tgt_oiod	    *tgt_oiod, *tgt_oiods = NULL;
 	struct dcs_iod_csums	*iod_csum = NULL;
 	struct dcs_iod_csums	*iod_csums = iod_array->oia_iod_csums;
 	struct dcs_iod_csums	*split_iod_csum = NULL;
 	struct dcs_iod_csums	*split_iod_csums;
+	
 	uint32_t		 i, tgt_max_idx;
 	daos_size_t		 req_size, iods_size;
 	daos_size_t		 csums_size = 0, singv_ci_size = 0;
@@ -138,15 +139,14 @@ obj_ec_rw_req_split(daos_unit_oid_t oid, uint32_t start_tgt,
 	void			*buf = NULL;
 	uint32_t		 tgt_idx;
 	uint32_t		 leader;
-	int			 count = 0;
-	int			 rc = 0;
+	int			     count = 0;
+	int			     rc = 0;
 
 	D_ASSERT(oiods != NULL);
 	/* as we select the last parity node as leader, and for any update
 	 * there must be a siod (the last siod) for leader except for singv.
 	 */
-	D_ASSERT((oiods[0].oiod_flags & OBJ_SIOD_SINGV) ||
-		 oiods[0].oiod_nr >= 2);
+	D_ASSERT((oiods[0].oiod_flags & OBJ_SIOD_SINGV) || oiods[0].oiod_nr >= 2);
 
 	if (oca == NULL)
 		oca = daos_oclass_attr_find(oid.id_pub, NULL);
@@ -159,11 +159,12 @@ obj_ec_rw_req_split(daos_unit_oid_t oid, uint32_t start_tgt,
 
 	req_size = roundup(sizeof(struct obj_ec_split_req), 8);
 	iods_size = roundup(sizeof(daos_iod_t) * iod_nr, 8);
+	
 	if (with_csums) {
 		csums_size = roundup(sizeof(struct dcs_iod_csums) * iod_nr, 8);
-		singv_ci_size = roundup(sizeof(struct dcs_csum_info) * iod_nr,
-					8);
+		singv_ci_size = roundup(sizeof(struct dcs_csum_info) * iod_nr, 8);
 	}
+	
 	D_ALLOC(buf, req_size + iods_size + csums_size + singv_ci_size);
 	if (buf == NULL)
 		return -DER_NOMEM;
@@ -174,29 +175,27 @@ obj_ec_rw_req_split(daos_unit_oid_t oid, uint32_t start_tgt,
 		req->osr_iod_csums = buf + req_size + iods_size;
 		req->osr_singv_cis = buf + req_size + iods_size + csums_size;
 	}
+	
 	req->osr_start_shard = start_shard;
 
 	for (i = 0; i < tgt_nr; i++) {
+		
 		if (tgt_map != NULL) {
-			if (!obj_ec_is_valid_tgt(tgt_map, map_size,
-						 tgts[i].st_tgt_id, &tgt_idx))
+			if (!obj_ec_is_valid_tgt(tgt_map, map_size, tgts[i].st_tgt_id, &tgt_idx))
 				continue;
 
-			D_ASSERTF(tgt_idx >= start_shard, "i %d, tgt_idx %d, start_shard %d\n",
-				  i, tgt_idx, start_shard);
+			D_ASSERTF(tgt_idx >= start_shard, "i %d, tgt_idx %d, start_shard %d\n", i, tgt_idx, start_shard);
 
 			tgt_idx -= start_shard;
 			if (tgt_max_idx < tgt_idx)
 				tgt_max_idx = tgt_idx;
+			
 		} else {
 			if (tgts[i].st_rank == DAOS_TGT_IGNORE)
 				continue;
-			D_ASSERTF(tgts[i].st_shard_id >= start_shard,
-				  "i %d, st_shard_id %d, start_shard %d\n", i,
-				  tgts[i].st_shard_id, start_shard);
+			D_ASSERTF(tgts[i].st_shard_id >= start_shard,"i %d, st_shard_id %d, start_shard %d\n", i, tgts[i].st_shard_id, start_shard);
 			tgt_idx = tgts[i].st_shard_id - start_shard;
-			D_ASSERTF(tgt_idx <= tgt_max_idx, "tgt_idx %u tgt_max_idx %u\n",
-				  tgt_idx, tgt_max_idx);
+			D_ASSERTF(tgt_idx <= tgt_max_idx, "tgt_idx %u tgt_max_idx %u\n", tgt_idx, tgt_max_idx);
 		}
 
 		if (isclr(tgt_bit_map, tgt_idx)) {
@@ -229,8 +228,8 @@ obj_ec_rw_req_split(daos_unit_oid_t oid, uint32_t start_tgt,
 		}
 	}
 
-	tgt_oiods = obj_ec_tgt_oiod_init(oiods, iod_nr, tgt_bit_map,
-					 tgt_max_idx, count, start_tgt, oca);
+	tgt_oiods = obj_ec_tgt_oiod_init(oiods, iod_nr, tgt_bit_map, tgt_max_idx, count, start_tgt, oca);
+	
 	if (tgt_oiods == NULL)
 		D_GOTO(out, rc = -DER_NOMEM);
 

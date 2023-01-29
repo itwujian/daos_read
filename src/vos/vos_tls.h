@@ -107,14 +107,11 @@ vos_ts_table_set(struct vos_ts_table *ts_table)
 static inline void
 vos_dth_set(struct dtx_handle *dth)
 {
-	struct vos_tls		*tls = vos_tls_get();
+	struct vos_tls		    *tls = vos_tls_get();
 	struct dtx_share_peer	*dsp;
 
-	if (dth != NULL && dth != tls->vtl_dth &&
-	    dth->dth_share_tbd_count != 0) {
-		while ((dsp = d_list_pop_entry(&dth->dth_share_tbd_list,
-					       struct dtx_share_peer,
-					       dsp_link)) != NULL)
+	if (dth != NULL && dth != tls->vtl_dth && dth->dth_share_tbd_count != 0) {
+		while ((dsp = d_list_pop_entry(&dth->dth_share_tbd_list, struct dtx_share_peer, dsp_link)) != NULL)
 			dtx_dsp_free(dsp);
 		dth->dth_share_tbd_count = 0;
 	}

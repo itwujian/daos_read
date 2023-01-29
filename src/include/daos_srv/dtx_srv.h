@@ -134,7 +134,7 @@ struct dtx_handle {
 	d_list_t			 dth_share_act_list;
 	/* DTX list to be checked */
 	d_list_t			 dth_share_tbd_list;
-	int				 dth_share_tbd_count;
+	int				     dth_share_tbd_count;
 };
 
 /* Each sub transaction handle to manage each sub thandle */
@@ -269,11 +269,11 @@ int dtx_refresh(struct dtx_handle *dth, struct ds_cont_child *cont);
  * \param coh		[IN]	Container open handle.
  * \param xid		[IN]	Pointer to the DTX identifier.
  * \param epoch		[IN,OUT] Pointer to current epoch, if it is zero and
- *				 if the DTX exists, then the DTX's epoch will
+ *				             if the DTX exists, then the DTX's epoch will
  *				 be saved in it.
  * \param mp_ver	[OUT]	Hold the DTX pool map version.
  *
- * \return		0		means that the DTX has been 'prepared',
+ * \return		0	means that the DTX has been 'prepared',
  *					so the local modification has been done
  *					on related replica(s).
  *			-DER_ALREADY	means the DTX has been committed or is

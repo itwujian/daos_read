@@ -408,6 +408,8 @@ ds_obj_cpd_get_tgt_cnt(crt_rpc_t *rpc, int dtx_idx)
 static inline bool
 obj_dtx_need_refresh(struct dtx_handle *dth, int rc)
 {
+    // DER_INPROGRESS： Operation now in progress
+    // dtx_refresh与dtx_refresh会修改dth_share_tbd_count的值
 	return rc == -DER_INPROGRESS && dth->dth_share_tbd_count > 0;
 }
 

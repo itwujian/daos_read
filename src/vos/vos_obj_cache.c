@@ -300,8 +300,9 @@ vos_obj_hold(struct daos_lru_cache *occ, struct vos_container *cont,
 	struct vos_object	*obj;
 	struct daos_llink	*lret;
 	struct obj_lru_key	 lkey;
-	int			 rc = 0;
-	int			 tmprc;
+	int			         rc = 0;
+	
+	int			     tmprc;
 	uint32_t		 cond_mask = 0;
 	bool			 create;
 	void			*create_flag = NULL;
@@ -315,8 +316,9 @@ vos_obj_hold(struct daos_lru_cache *occ, struct vos_container *cont,
 	if (cont->vc_pool->vp_dying)
 		return -DER_SHUTDOWN;
 
-	create = flags & VOS_OBJ_CREATE;
+	create       = flags & VOS_OBJ_CREATE;
 	visible_only = flags & VOS_OBJ_VISIBLE;
+	
 	/** Pass NULL as the create_args if we are not creating the object so we avoid
 	 *  evicting an entry until we need to
 	 */
@@ -332,6 +334,11 @@ vos_obj_hold(struct daos_lru_cache *occ, struct vos_container *cont,
 	lkey.olk_cont = cont;
 	lkey.olk_oid = oid;
 
+
+    // 0. 在vos tls的线程变量的daos lru cache中查找以(cont,oid)为key的lret(daos_llink),
+    //    此值可以进一步转换为vos object
+    
+	// 1. update流程带了创建参数，因此如果查找不到，直接将此key插入到dao lru cache中;
 	rc = daos_lru_ref_hold(occ, &lkey, sizeof(lkey), create_flag, &lret);
 	if (rc == -DER_NONEXIST) {
 		D_ASSERT(obj_local.obj_cont == NULL);
@@ -341,66 +348,76 @@ vos_obj_hold(struct daos_lru_cache *occ, struct vos_container *cont,
 		D_GOTO(failed_2, rc);
 	} else {
 		/** Object is in cache */
+	    // 找到了在cache中缓存的obj
 		obj = container_of(lret, struct vos_object, obj_llink);
 	}
 
+    // 该obj已经处于删除状态或者key处于删除状态，反重试
 	if (obj->obj_zombie)
 		D_GOTO(failed, rc = -DER_AGAIN);
 
+    // 删除流程进来的删除
 	if (intent == DAOS_INTENT_KILL && !(flags & VOS_OBJ_KILL_DKEY)) {
+		
 		if (obj != &obj_local) {
 			if (vos_obj_refcount(obj) > 2)
 				D_GOTO(failed, rc = -DER_BUSY);
 
 			vos_obj_evict(occ, obj);
 		}
+		
 		/* no one else can hold it */
 		obj->obj_zombie = true;
 		if (obj->obj_df)
 			goto out; /* Ok to delete */
 	}
 
+    // obj_df已经挂进去了
 	if (obj->obj_df) {
+		
 		D_DEBUG(DB_TRACE, "looking up object ilog");
+		
 		if (create || intent == DAOS_INTENT_PUNCH)
-			vos_ilog_ts_ignore(vos_obj2umm(obj),
-					   &obj->obj_df->vo_ilog);
-		tmprc = vos_ilog_ts_add(ts_set, &obj->obj_df->vo_ilog,
-					&oid, sizeof(oid));
+			vos_ilog_ts_ignore(vos_obj2umm(obj), &obj->obj_df->vo_ilog);
+		
+		// ilog里面也存了idx, 查找后插入到time stamp中
+		tmprc = vos_ilog_ts_add(ts_set, &obj->obj_df->vo_ilog, &oid, sizeof(oid));
 		D_ASSERT(tmprc == 0); /* Non-zero only valid for akey */
 		goto check_object;
 	}
 
+
+    // obj_df还没有挂进去，在这里挂进去
 	 /* newly cached object */
 	D_DEBUG(DB_TRACE, "%s Got empty obj "DF_UOID" epr="DF_X64"-"DF_X64"\n",
-		create ? "find/create" : "find", DP_UOID(oid), epr->epr_lo,
-		epr->epr_hi);
+		    create ? "find/create" : "find", DP_UOID(oid), epr->epr_lo, epr->epr_hi);
 
 	obj->obj_sync_epoch = 0;
+	
 	if (!create) {
+		// 非创建只是查找，在container的object index btree里面找
 		rc = vos_oi_find(cont, oid, &obj->obj_df, ts_set);
 		if (rc == -DER_NONEXIST) {
-			D_DEBUG(DB_TRACE, "non exist oid "DF_UOID"\n",
-				DP_UOID(oid));
+			D_DEBUG(DB_TRACE, "non exist oid "DF_UOID"\n", DP_UOID(oid));
 			goto failed;
 		}
 	} else {
-
-		rc = vos_oi_find_alloc(cont, oid, epr->epr_hi, false,
-				       &obj->obj_df, ts_set);
+	    // 创建需要，找不到就插进去1个
+		rc = vos_oi_find_alloc(cont, oid, epr->epr_hi, false, &obj->obj_df, ts_set);
 		D_ASSERT(rc || obj->obj_df);
 	}
 
 	if (rc != 0)
 		goto failed;
 
+    // 由于查找流程没有带回查找失败的错误码，这里用来校验找到的是否为NULL
 	if (!obj->obj_df) {
-		D_DEBUG(DB_TRACE, "nonexistent obj "DF_UOID"\n",
-			DP_UOID(oid));
+		D_DEBUG(DB_TRACE, "nonexistent obj "DF_UOID"\n", DP_UOID(oid));
 		D_GOTO(failed, rc = -DER_NONEXIST);
 	}
 
 check_object:
+
 	if (obj->obj_discard && (create || (flags & VOS_OBJ_DISCARD) != 0)) {
 		/** Cleanup before assert so unit test that triggers doesn't corrupt the state */
 		vos_obj_release(occ, obj, false);
@@ -414,25 +431,19 @@ check_object:
 
 	if (!create) {
 		rc = vos_ilog_fetch(vos_cont2umm(cont), vos_cont2hdl(cont),
-				    intent, &obj->obj_df->vo_ilog, epr->epr_hi,
-				    bound, NULL, NULL, &obj->obj_ilog_info);
+				            intent, &obj->obj_df->vo_ilog, epr->epr_hi,
+				            bound, NULL, NULL, &obj->obj_ilog_info);
 		if (rc != 0) {
-			if (vos_has_uncertainty(ts_set, &obj->obj_ilog_info,
-						epr->epr_hi, bound))
+			if (vos_has_uncertainty(ts_set, &obj->obj_ilog_info, epr->epr_hi, bound))
 				rc = -DER_TX_RESTART;
-			D_DEBUG(DB_TRACE, "Object "DF_UOID" not found at "
-				DF_U64"\n", DP_UOID(oid), epr->epr_hi);
+			D_DEBUG(DB_TRACE, "Object "DF_UOID" not found at "DF_U64"\n", DP_UOID(oid), epr->epr_hi);
 			goto failed;
 		}
 
-		rc = vos_ilog_check(&obj->obj_ilog_info, epr, epr,
-				    visible_only);
+		rc = vos_ilog_check(&obj->obj_ilog_info, epr, epr, visible_only);
 		if (rc != 0) {
-			D_DEBUG(DB_TRACE, "Object "DF_UOID" not visible at "
-				DF_U64"-"DF_U64"\n", DP_UOID(oid), epr->epr_lo,
-				epr->epr_hi);
-			if (!vos_has_uncertainty(ts_set, &obj->obj_ilog_info,
-						 epr->epr_hi, bound))
+			D_DEBUG(DB_TRACE, "Object "DF_UOID" not visible at "DF_U64"-"DF_U64"\n", DP_UOID(oid), epr->epr_lo, epr->epr_hi);
+			if (!vos_has_uncertainty(ts_set, &obj->obj_ilog_info, epr->epr_hi, bound))
 				goto failed;
 
 			/** If the creation is uncertain, go ahead and fall
@@ -448,16 +459,14 @@ check_object:
 	 */
 	if (ts_set && ts_set->ts_flags & VOS_COND_UPDATE_OP_MASK)
 		cond_mask = VOS_ILOG_COND_UPDATE;
-	rc = vos_ilog_update(cont, &obj->obj_df->vo_ilog, epr, bound, NULL,
-			     &obj->obj_ilog_info, cond_mask, ts_set);
+	
+	rc = vos_ilog_update(cont, &obj->obj_df->vo_ilog, epr, bound, NULL, &obj->obj_ilog_info, cond_mask, ts_set);
 	if (rc == -DER_TX_RESTART)
 		goto failed;
 	if (rc == -DER_NONEXIST && cond_mask)
 		goto out;
 	if (rc != 0) {
-		VOS_TX_LOG_FAIL(rc, "Could not update object "DF_UOID" at "
-				DF_U64 ": "DF_RC"\n", DP_UOID(oid), epr->epr_hi,
-				DP_RC(rc));
+		VOS_TX_LOG_FAIL(rc, "Could not update object "DF_UOID" at "DF_U64 ": "DF_RC"\n", DP_UOID(oid), epr->epr_hi, DP_RC(rc));
 		goto failed;
 	}
 
@@ -465,9 +474,7 @@ out:
 	if (obj->obj_df != NULL)
 		obj->obj_sync_epoch = obj->obj_df->vo_sync;
 
-	if (obj->obj_df != NULL && epr->epr_hi <= obj->obj_sync_epoch &&
-	    vos_dth_get() != NULL &&
-	    (intent == DAOS_INTENT_PUNCH || intent == DAOS_INTENT_UPDATE)) {
+	if (obj->obj_df != NULL && epr->epr_hi <= obj->obj_sync_epoch && vos_dth_get() != NULL && (intent == DAOS_INTENT_PUNCH || intent == DAOS_INTENT_UPDATE)) {
 		/* If someone has synced the object against the
 		 * obj->obj_sync_epoch, then we do not allow to modify the
 		 * object with old epoch. Let's ask the caller to retry with
@@ -477,10 +484,9 @@ out:
 		 */
 		D_ASSERT(obj->obj_sync_epoch > 0);
 
-		D_INFO("Refuse %s obj "DF_UOID" because of the epoch "DF_U64
-		       " is not newer than the sync epoch "DF_U64"\n",
-		       intent == DAOS_INTENT_PUNCH ? "punch" : "update",
-		       DP_UOID(oid), epr->epr_hi, obj->obj_sync_epoch);
+		D_INFO("Refuse %s obj "DF_UOID" because of the epoch "DF_U64" is not newer than the sync epoch "DF_U64"\n",
+		       intent == DAOS_INTENT_PUNCH ? "punch" : "update", DP_UOID(oid), epr->epr_hi, obj->obj_sync_epoch);
+	
 		D_GOTO(failed, rc = -DER_TX_RESTART);
 	}
 
@@ -494,8 +500,10 @@ out:
 	*obj_p = obj;
 
 	return 0;
+	
 failed:
 	vos_obj_release(occ, obj, true);
+	
 failed_2:
 	VOS_TX_LOG_FAIL(rc, "failed to hold object, rc="DF_RC"\n", DP_RC(rc));
 
