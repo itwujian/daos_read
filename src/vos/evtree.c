@@ -2154,15 +2154,14 @@ evt_insert(daos_handle_t toh, const struct evt_entry_in *entry,
 		return -DER_NO_HDL;
 
 	if (tcx->tc_inob && entry->ei_inob && tcx->tc_inob != entry->ei_inob) {
-		D_ERROR("Variable record size not supported in evtree:"
-			" %d != %d\n", entry->ei_inob, tcx->tc_inob);
+		D_ERROR("Variable record size not supported in evtree: %d != %d\n", entry->ei_inob, tcx->tc_inob);
 		return -DER_INVAL;
 	}
 
 	D_ASSERT(evt_rect_width(&entry->ei_rect) != 0);
 	D_ASSERT(entry->ei_inob != 0 || bio_addr_is_hole(&entry->ei_addr));
-	D_ASSERT(bio_addr_is_hole(&entry->ei_addr) ||
-		 entry->ei_addr.ba_off != 0);
+	D_ASSERT(bio_addr_is_hole(&entry->ei_addr) || entry->ei_addr.ba_off != 0);
+	
 	if (evt_rect_width(&entry->ei_rect) > MAX_RECT_WIDTH) {
 		if (bio_addr_is_hole(&entry->ei_addr)) {
 			/** csum_bufp is specific to aggregation case and we
@@ -2184,9 +2183,10 @@ evt_insert(daos_handle_t toh, const struct evt_entry_in *entry,
 	filter.fr_epoch = entry->ei_rect.rc_epc;
 	filter.fr_punch_epc = 0;
 	filter.fr_punch_minor_epc = 0;
+	
 	/* Phase-1: Check for overwrite and uncertainty */
-	rc = evt_ent_array_fill(tcx, EVT_FIND_OVERWRITE, DAOS_INTENT_UPDATE,
-				&filter, &entry->ei_rect, ent_array);
+	rc = evt_ent_array_fill(tcx, EVT_FIND_OVERWRITE, DAOS_INTENT_UPDATE, &filter, &entry->ei_rect, ent_array);
+	
 	alt_rc = rc;
 	if (rc < 0)
 		return rc;

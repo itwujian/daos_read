@@ -267,9 +267,9 @@ vos_ts_set_allocate(struct vos_ts_set **ts_set, uint64_t flags,
 	const struct dtx_id	*tx_id = NULL;
 	uint32_t		 size;
 	uint64_t		 array_size;
-	uint64_t		 cond_mask = VOS_COND_FETCH_MASK |
-					     VOS_COND_UPDATE_MASK |
-					     VOS_OF_COND_PER_AKEY;
+	uint64_t		 cond_mask = VOS_COND_FETCH_MASK  |
+					             VOS_COND_UPDATE_MASK |
+					             VOS_OF_COND_PER_AKEY;
 
 	vos_kh_clear();
 
@@ -290,6 +290,7 @@ vos_ts_set_allocate(struct vos_ts_set **ts_set, uint64_t flags,
 
 	(*ts_set)->ts_flags = flags;
 	(*ts_set)->ts_set_size = size;
+	
 	if (tx_id != NULL) {
 		(*ts_set)->ts_in_tx = true;
 		uuid_copy((*ts_set)->ts_tx_id.dti_uuid, tx_id->dti_uuid);

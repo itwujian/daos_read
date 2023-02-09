@@ -132,187 +132,180 @@ static void
 dtx_handler(crt_rpc_t *rpc)
 {
 	struct dtx_pool_metrics	*dpm = NULL;
-	struct dtx_in		*din = crt_req_get(rpc);
-	struct dtx_out		*dout = crt_reply_get(rpc);
+	struct dtx_in		    *din = crt_req_get(rpc);
+	struct dtx_out		    *dout = crt_reply_get(rpc);
 	struct ds_cont_child	*cont = NULL;
-	struct dtx_id		*dtis;
+	struct dtx_id		    *dtis;
 	struct dtx_memberships	*mbs[DTX_REFRESH_MAX] = { 0 };
-	struct dtx_cos_key	 dcks[DTX_REFRESH_MAX] = { 0 };
+	struct dtx_cos_key	    dcks[DTX_REFRESH_MAX] = { 0 };
 	uint32_t		 vers[DTX_REFRESH_MAX] = { 0 };
 	uint32_t		 opc = opc_get(rpc->cr_opc);
 	uint32_t		 committed = 0;
 	uint32_t		*flags;
-	int			*ptr;
-	int			 count = DTX_YIELD_CYCLE;
-	int			 i = 0;
-	int			 rc1 = 0;
-	int			 rc;
+	int			    *ptr;
+	int			     count = DTX_YIELD_CYCLE;
+	int			     i = 0;
+	int			     rc1 = 0;
+	int			     rc;
 
 	rc = ds_cont_child_lookup(din->di_po_uuid, din->di_co_uuid, &cont);
 	if (rc != 0) {
-		D_ERROR("Failed to locate pool="DF_UUID" cont="DF_UUID
-			" for DTX rpc %u: rc = "DF_RC"\n",
-			DP_UUID(din->di_po_uuid), DP_UUID(din->di_co_uuid),
-			opc, DP_RC(rc));
+		D_ERROR("Failed to locate pool="DF_UUID" cont="DF_UUID" for DTX rpc %u: rc = "DF_RC"\n",
+			DP_UUID(din->di_po_uuid), DP_UUID(din->di_co_uuid), opc, DP_RC(rc));
 		goto out;
 	}
 
 	dpm = cont->sc_pool->spc_metrics[DAOS_DTX_MODULE];
 
 	switch (opc) {
-	case DTX_COMMIT: {
-		uint64_t	opc_cnt = 0;
-		uint64_t	ent_cnt = 0;
+		
+		case DTX_COMMIT: {
+			uint64_t	opc_cnt = 0;
+			uint64_t	ent_cnt = 0;
 
-		if (DAOS_FAIL_CHECK(DAOS_DTX_MISS_COMMIT))
+			if (DAOS_FAIL_CHECK(DAOS_DTX_MISS_COMMIT))
+				break;
+
+			if (unlikely(din->di_epoch == 1))
+				D_GOTO(out, rc = -DER_IO);
+
+			while (i < din->di_dtx_array.ca_count) {
+				if (i + count > din->di_dtx_array.ca_count)
+					count = din->di_dtx_array.ca_count - i;
+
+				dtis = (struct dtx_id *)din->di_dtx_array.ca_arrays + i;
+				rc1 = vos_dtx_commit(cont->sc_hdl, dtis, count, NULL);
+				if (rc1 > 0)
+					committed += rc1;
+				else if (rc == 0 && rc1 < 0)
+					rc = rc1;
+
+				i += count;
+			}
+
+			d_tm_inc_counter(dpm->dpm_batched_total, din->di_dtx_array.ca_count);
+			
+			rc1 = d_tm_get_counter(NULL, &ent_cnt, dpm->dpm_batched_total);
+			D_ASSERT(rc1 == DER_SUCCESS);
+
+			rc1 = d_tm_get_counter(NULL, &opc_cnt, dpm->dpm_total[opc]);
+			D_ASSERT(rc1 == DER_SUCCESS);
+
+			d_tm_set_gauge(dpm->dpm_batched_degree, ent_cnt / (opc_cnt + 1));
+
 			break;
-
-		if (unlikely(din->di_epoch == 1))
-			D_GOTO(out, rc = -DER_IO);
-
-		while (i < din->di_dtx_array.ca_count) {
-			if (i + count > din->di_dtx_array.ca_count)
-				count = din->di_dtx_array.ca_count - i;
-
-			dtis = (struct dtx_id *)din->di_dtx_array.ca_arrays + i;
-			rc1 = vos_dtx_commit(cont->sc_hdl, dtis, count, NULL);
-			if (rc1 > 0)
-				committed += rc1;
-			else if (rc == 0 && rc1 < 0)
-				rc = rc1;
-
-			i += count;
 		}
+		
+		case DTX_ABORT:
+			if (DAOS_FAIL_CHECK(DAOS_DTX_MISS_ABORT))
+				break;
 
-		d_tm_inc_counter(dpm->dpm_batched_total,
-				 din->di_dtx_array.ca_count);
-		rc1 = d_tm_get_counter(NULL, &ent_cnt, dpm->dpm_batched_total);
-		D_ASSERT(rc1 == DER_SUCCESS);
+			if (din->di_epoch != 0) {
+				/* Currently, only support to abort single DTX. */
+				if (din->di_dtx_array.ca_count != 1)
+					D_GOTO(out, rc = -DER_PROTO);
 
-		rc1 = d_tm_get_counter(NULL, &opc_cnt, dpm->dpm_total[opc]);
-		D_ASSERT(rc1 == DER_SUCCESS);
-
-		d_tm_set_gauge(dpm->dpm_batched_degree, ent_cnt / (opc_cnt + 1));
-
-		break;
-	}
-	case DTX_ABORT:
-		if (DAOS_FAIL_CHECK(DAOS_DTX_MISS_ABORT))
+				rc = vos_dtx_abort(cont->sc_hdl, (struct dtx_id *)din->di_dtx_array.ca_arrays, din->di_epoch);
+			} else {
+				rc = vos_dtx_set_flags(cont->sc_hdl, (struct dtx_id *)din->di_dtx_array.ca_arrays, din->di_dtx_array.ca_count, DTE_CORRUPTED);
+			}
 			break;
-
-		if (din->di_epoch != 0) {
-			/* Currently, only support to abort single DTX. */
+			
+		case DTX_CHECK:
+			/* Currently, only support to check single DTX state. */
 			if (din->di_dtx_array.ca_count != 1)
 				D_GOTO(out, rc = -DER_PROTO);
 
-			rc = vos_dtx_abort(cont->sc_hdl,
-					   (struct dtx_id *)din->di_dtx_array.ca_arrays,
-					   din->di_epoch);
-		} else {
-			rc = vos_dtx_set_flags(cont->sc_hdl,
-					       (struct dtx_id *)din->di_dtx_array.ca_arrays,
-					       din->di_dtx_array.ca_count, DTE_CORRUPTED);
-		}
-		break;
-	case DTX_CHECK:
-		/* Currently, only support to check single DTX state. */
-		if (din->di_dtx_array.ca_count != 1)
-			D_GOTO(out, rc = -DER_PROTO);
-
-		rc = vos_dtx_check(cont->sc_hdl, din->di_dtx_array.ca_arrays,
-				   NULL, NULL, NULL, NULL, false);
-		if (rc == DTX_ST_INITED) {
-			/* For DTX_CHECK, non-ready one is equal to non-exist. Do not directly
-			 * return 'DTX_ST_INITED' to avoid interoperability trouble if related
-			 * request is from old server.
-			 */
-			rc = -DER_NONEXIST;
-		} else if (rc == -DER_INPROGRESS && !dtx_cont_opened(cont)) {
-			/* Trigger DTX re-index for subsequent (retry) DTX_CHECK. */
-			rc1 = start_dtx_reindex_ult(cont);
-			if (rc1 != 0)
-				D_ERROR(DF_UUID": Failed to trigger DTX reindex: "DF_RC"\n",
-					DP_UUID(cont->sc_uuid), DP_RC(rc));
-		}
-
-		break;
-	case DTX_REFRESH:
-		count = din->di_dtx_array.ca_count;
-		if (count == 0)
-			D_GOTO(out, rc = 0);
-
-		if (count > DTX_REFRESH_MAX)
-			D_GOTO(out, rc = -DER_PROTO);
-
-		D_ALLOC(dout->do_sub_rets.ca_arrays, sizeof(int32_t) * count);
-		if (dout->do_sub_rets.ca_arrays == NULL)
-			D_GOTO(out, rc = -DER_NOMEM);
-
-		dout->do_sub_rets.ca_count = count;
-
-		if (DAOS_FAIL_CHECK(DAOS_DTX_UNCERTAIN)) {
-			for (i = 0; i < count; i++) {
-				ptr = (int *)dout->do_sub_rets.ca_arrays + i;
-				*ptr = -DER_TX_UNCERTAIN;
+			rc = vos_dtx_check(cont->sc_hdl, din->di_dtx_array.ca_arrays, NULL, NULL, NULL, NULL, false);
+			
+			if (rc == DTX_ST_INITED) {
+				/* For DTX_CHECK, non-ready one is equal to non-exist. Do not directly
+				 * return 'DTX_ST_INITED' to avoid interoperability trouble if related
+				 * request is from old server.
+				 */
+				rc = -DER_NONEXIST;
+			} else if (rc == -DER_INPROGRESS && !dtx_cont_opened(cont)) {
+				/* Trigger DTX re-index for subsequent (retry) DTX_CHECK. */
+				rc1 = start_dtx_reindex_ult(cont);
+				if (rc1 != 0)
+					D_ERROR(DF_UUID": Failed to trigger DTX reindex: "DF_RC"\n", DP_UUID(cont->sc_uuid), DP_RC(rc));
 			}
 
-			D_GOTO(out, rc = 0);
-		}
+			break;
+			
+		case DTX_REFRESH:
+			count = din->di_dtx_array.ca_count;
+			if (count == 0)
+				D_GOTO(out, rc = 0);
 
-		flags = din->di_flags.ca_arrays;
+			if (count > DTX_REFRESH_MAX)
+				D_GOTO(out, rc = -DER_PROTO);
 
-		for (i = 0, rc1 = 0; i < count; i++) {
-			ptr = (int *)dout->do_sub_rets.ca_arrays + i;
-			dtis = (struct dtx_id *)din->di_dtx_array.ca_arrays + i;
-			*ptr = vos_dtx_check(cont->sc_hdl, dtis, NULL, &vers[i], &mbs[i], &dcks[i],
-					     true);
-			if (*ptr == -DER_NONEXIST && !(flags[i] & DRF_INITIAL_LEADER)) {
-				struct dtx_stat		stat = { 0 };
+			D_ALLOC(dout->do_sub_rets.ca_arrays, sizeof(int32_t) * count);
+			if (dout->do_sub_rets.ca_arrays == NULL)
+				D_GOTO(out, rc = -DER_NOMEM);
 
-				/* dtx_id::dti_hlc is client side time stamp. If it is
-				 * older than the time of the most new DTX entry that
-				 * has been aggregated, then it may has been removed by
-				 * DTX aggregation. Under such case, return -DER_TX_UNCERTAIN.
-				 */
-				vos_dtx_stat(cont->sc_hdl, &stat, DSF_SKIP_BAD);
-				if (dtis->dti_hlc <= stat.dtx_newest_aggregated) {
-					D_WARN("Not sure about whether the old DTX "
-					       DF_DTI" is committed or not: %lu/%lu\n",
-					       DP_DTI(dtis), dtis->dti_hlc,
-					       stat.dtx_newest_aggregated);
+			dout->do_sub_rets.ca_count = count;
+
+			if (DAOS_FAIL_CHECK(DAOS_DTX_UNCERTAIN)) {
+				for (i = 0; i < count; i++) {
+					ptr = (int *)dout->do_sub_rets.ca_arrays + i;
 					*ptr = -DER_TX_UNCERTAIN;
 				}
-			} else if (*ptr == DTX_ST_INITED) {
-				/* Leader is in progress, it is not important whether ready or not.
-				 * Return DTX_ST_PREPARED to the remote non-leader to handle it as
-				 * non-committable case. If we directly return DTX_ST_INITED, then
-				 * it will cause interoperability trouble if remote server is old.
-				 */
-				*ptr = DTX_ST_PREPARED;
+
+				D_GOTO(out, rc = 0);
 			}
 
-			if (mbs[i] != NULL)
-				rc1++;
-		}
-		break;
-	default:
-		rc = -DER_INVAL;
-		break;
+			flags = din->di_flags.ca_arrays;
+
+			for (i = 0, rc1 = 0; i < count; i++) {
+				ptr = (int *)dout->do_sub_rets.ca_arrays + i;
+				dtis = (struct dtx_id *)din->di_dtx_array.ca_arrays + i;
+			
+				*ptr = vos_dtx_check(cont->sc_hdl, dtis, NULL, &vers[i], &mbs[i], &dcks[i], true);
+				if (*ptr == -DER_NONEXIST && !(flags[i] & DRF_INITIAL_LEADER)) {
+					struct dtx_stat		stat = { 0 };
+
+					/* dtx_id::dti_hlc is client side time stamp. If it is
+					 * older than the time of the most new DTX entry that
+					 * has been aggregated, then it may has been removed by
+					 * DTX aggregation. Under such case, return -DER_TX_UNCERTAIN.
+					 */
+					vos_dtx_stat(cont->sc_hdl, &stat, DSF_SKIP_BAD);
+					if (dtis->dti_hlc <= stat.dtx_newest_aggregated) {
+						D_WARN("Not sure about whether the old DTX "DF_DTI" is committed or not: %lu/%lu\n",
+						       DP_DTI(dtis), dtis->dti_hlc, stat.dtx_newest_aggregated);
+						*ptr = -DER_TX_UNCERTAIN;
+					}
+				} else if (*ptr == DTX_ST_INITED) {
+					/* Leader is in progress, it is not important whether ready or not.
+					 * Return DTX_ST_PREPARED to the remote non-leader to handle it as
+					 * non-committable case. If we directly return DTX_ST_INITED, then
+					 * it will cause interoperability trouble if remote server is old.
+					 */
+					*ptr = DTX_ST_PREPARED;
+				}
+
+				if (mbs[i] != NULL)
+					rc1++;
+			}
+			break;
+		default:
+			rc = -DER_INVAL;
+			break;
 	}
 
 out:
-	D_DEBUG(DB_TRACE, "Handle DTX ("DF_DTI") rpc %u, count %d, epoch "
-		DF_X64" : rc = "DF_RC"\n",
-		DP_DTI(din->di_dtx_array.ca_arrays), opc,
-		(int)din->di_dtx_array.ca_count, din->di_epoch, DP_RC(rc));
+	D_DEBUG(DB_TRACE, "Handle DTX ("DF_DTI") rpc %u, count %d, epoch "DF_X64" : rc = "DF_RC"\n",
+		DP_DTI(din->di_dtx_array.ca_arrays), opc, (int)din->di_dtx_array.ca_count, din->di_epoch, DP_RC(rc));
 
 	dout->do_status = rc;
+	
 	/* For DTX_COMMIT, it is the count of real committed DTX entries. */
 	dout->do_misc = committed;
 	rc = crt_reply_send(rpc);
 	if (rc != 0)
-		D_ERROR("send reply failed for DTX rpc %u: rc = "DF_RC"\n", opc,
-			DP_RC(rc));
+		D_ERROR("send reply failed for DTX rpc %u: rc = "DF_RC"\n", opc, DP_RC(rc));
 
 	if (likely(dpm != NULL))
 		d_tm_inc_counter(dpm->dpm_total[opc], 1);
@@ -323,12 +316,12 @@ out:
 		int			 j;
 
 		for (i = 0, j = 0; i < count; i++) {
+			
 			if (mbs[i] == NULL)
 				continue;
 
-			daos_dti_copy(&dtes[j].dte_xid,
-				      (struct dtx_id *)
-				      din->di_dtx_array.ca_arrays + i);
+			daos_dti_copy(&dtes[j].dte_xid, (struct dtx_id *)din->di_dtx_array.ca_arrays + i);
+			
 			dtes[j].dte_ver = vers[i];
 			dtes[j].dte_refs = 1;
 			dtes[j].dte_mbs = mbs[i];
@@ -345,9 +338,7 @@ out:
 		 */
 		rc = dtx_commit(cont, pdte, dcks, j);
 		if (rc < 0)
-			D_WARN("Failed to commit DTX "DF_DTI", count %d: "
-			       DF_RC"\n", DP_DTI(&dtes[0].dte_xid), j,
-			       DP_RC(rc));
+			D_WARN("Failed to commit DTX "DF_DTI", count %d: "DF_RC"\n", DP_DTI(&dtes[0].dte_xid), j, DP_RC(rc));
 
 		for (i = 0; i < j; i++)
 			D_FREE(pdte[i]->dte_mbs);

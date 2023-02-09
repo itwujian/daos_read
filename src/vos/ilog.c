@@ -943,8 +943,7 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in,
 		}
 
 		if (id_in->id_punch_minor_eph == 0 &&
-		    root->lr_id.id_punch_minor_eph <
-		    root->lr_id.id_update_minor_eph &&
+		    root->lr_id.id_punch_minor_eph < root->lr_id.id_update_minor_eph &&
 		    id_in->id_epoch > root->lr_id.id_epoch &&
 		    visibility == ILOG_COMMITTED) {
 			D_DEBUG(DB_TRACE, "No update needed\n");
@@ -1034,13 +1033,13 @@ struct ilog_priv {
 	/** Embedded context for current log root */
 	struct ilog_context	 ip_lctx;
 	/** Version of log from prior fetch */
-	int32_t			 ip_log_version;
+	int32_t			     ip_log_version;
 	/** Intent for prior fetch */
-	uint32_t		 ip_intent;
+	uint32_t		     ip_intent;
 	/** Number of status entries allocated */
-	uint32_t		 ip_alloc_size;
+	uint32_t		     ip_alloc_size;
 	/** Cached return code for fetch operation */
-	int			 ip_rc;
+	int			         ip_rc;
 	/** Embedded status entries */
 	struct ilog_info	 ip_embedded[NUM_EMBEDDED];
 };
@@ -1090,13 +1089,9 @@ ilog_status_refresh(struct ilog_context *lctx, uint32_t intent,
 	priv->ip_intent = intent;
 	priv->ip_rc = 0;
 	ilog_foreach_entry(entries, &entry) {
-		if (same_intent &&
-		    (entry.ie_status == ILOG_COMMITTED ||
-		     entry.ie_status == ILOG_REMOVED))
+		if (same_intent && (entry.ie_status == ILOG_COMMITTED || entry.ie_status == ILOG_REMOVED))
 			continue;
-		status = ilog_status_get(lctx, &entry.ie_id, intent,
-					 (intent == DAOS_INTENT_UPDATE ||
-					  intent == DAOS_INTENT_PUNCH) ? false : true);
+		status = ilog_status_get(lctx, &entry.ie_id, intent, (intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH) ? false : true);
 		if (status < 0 && status != -DER_INPROGRESS) {
 			priv->ip_rc = status;
 			return;
@@ -1115,11 +1110,9 @@ ilog_fetch_cached(struct umem_instance *umm, struct ilog_root *root,
 	struct ilog_context	*lctx = &priv->ip_lctx;
 
 	D_ASSERT(entries->ie_info != NULL);
-	D_ASSERT(priv->ip_alloc_size != 0 ||
-		 entries->ie_info == &priv->ip_embedded[0]);
+	D_ASSERT(priv->ip_alloc_size != 0 || entries->ie_info == &priv->ip_embedded[0]);
 
-	if (priv->ip_lctx.ic_root != root ||
-	    priv->ip_log_version != ilog_mag2ver(root->lr_magic)) {
+	if (priv->ip_lctx.ic_root != root || priv->ip_log_version != ilog_mag2ver(root->lr_magic)) {
 		goto reset;
 	}
 
@@ -1219,9 +1212,7 @@ ilog_fetch(struct umem_instance *umm, struct ilog_df *root_df,
 
 	for (i = 0; i < cache.ac_nr; i++) {
 		id = &cache.ac_entries[i];
-		status = ilog_status_get(lctx, id, intent,
-					 (intent == DAOS_INTENT_UPDATE ||
-					  intent == DAOS_INTENT_PUNCH) ? false : true);
+		status = ilog_status_get(lctx, id, intent, (intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH) ? false : true);
 		if (status < 0 && status != -DER_INPROGRESS)
 			D_GOTO(fail, rc = status);
 		entries->ie_info[entries->ie_num_entries].ii_removed = 0;
@@ -1358,8 +1349,7 @@ check_agg_entry(const struct ilog_entries *entries, const struct ilog_entry *ent
 	/* With purge set, there should not be uncommitted entries */
 	D_ASSERT(entry->ie_status != ILOG_UNCOMMITTED);
 
-	if (agg_arg->aa_discard || entry->ie_status == ILOG_REMOVED ||
-	    parent_punched) {
+	if (agg_arg->aa_discard || entry->ie_status == ILOG_REMOVED || parent_punched) {
 		/* Remove stale entry or punched entry */
 		D_GOTO(done, rc = AGG_RC_REMOVE);
 	}

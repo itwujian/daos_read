@@ -253,6 +253,8 @@ dtx_req_send(struct dtx_req_rec *drr, daos_epoch_t epoch)
 	tgt_ep.ep_grp = NULL;
 	tgt_ep.ep_rank = drr->drr_rank;
 	tgt_ep.ep_tag = daos_rpc_tag(DAOS_REQ_TGT, drr->drr_tag);
+
+	// check abort committed
 	opc = DAOS_RPC_OPCODE(dra->dra_opc, DAOS_DTX_MODULE, DAOS_DTX_VERSION);
 
 	rc = crt_req_create(dss_get_module_info()->dmi_ctx, &tgt_ep, opc, &req);
@@ -279,10 +281,8 @@ dtx_req_send(struct dtx_req_rec *drr, daos_epoch_t epoch)
 		rc = crt_req_send(req, dtx_req_cb, drr);
 	}
 
-	D_DEBUG(DB_TRACE, "DTX req for opc %x to %d/%d (req %p future %p) sent "
-		"epoch "DF_X64" : rc %d.\n", dra->dra_opc, drr->drr_rank,
-		drr->drr_tag, req, dra->dra_future,
-		din != NULL ? din->di_epoch : 0, rc);
+	D_DEBUG(DB_TRACE, "DTX req for opc %x to %d/%d (req %p future %p) sent epoch "DF_X64" : rc %d.\n", dra->dra_opc, drr->drr_rank,
+		drr->drr_tag, req, dra->dra_future, din != NULL ? din->di_epoch : 0, rc);
 
 	if (rc != 0 && drr->drr_comp == 0) {
 		drr->drr_comp = 1;
@@ -406,9 +406,10 @@ dtx_req_list_send(struct dtx_req_args *dra, crt_opcode_t opc, int *committed, d_
 		return dss_abterr2der(rc);
 	}
 
-	D_DEBUG(DB_TRACE, "DTX req for opc %x, future %p start.\n",
-		opc, future);
+	D_DEBUG(DB_TRACE, "DTX req for opc %x, future %p start.\n", opc, future);
+	
 	dra->dra_future = future;
+	
 	d_list_for_each_entry(drr, head, drr_link) {
 		drr->drr_parent = dra;
 		drr->drr_result = 0;
@@ -417,6 +418,7 @@ dtx_req_list_send(struct dtx_req_args *dra, crt_opcode_t opc, int *committed, d_
 			rc = dtx_req_send(drr, 1);
 		else
 			rc = dtx_req_send(drr, epoch);
+		
 		if (rc != 0) {
 			/* If the first sub-RPC failed, then break, otherwise
 			 * other remote replicas may have already received the
@@ -622,18 +624,15 @@ dtx_rpc_internal(struct ds_cont_child *cont, d_list_t *head, struct btr_root *tr
 
 	if (count > 1) {
 		struct umem_attr	uma = { 0 };
-
 		uma.uma_id = UMEM_CLASS_VMEM;
-		rc = dbtree_create_inplace(DBTREE_CLASS_DTX_CF, 0, DTX_CF_BTREE_ORDER,
-					   &uma, tree_root, tree_hdl);
+		rc = dbtree_create_inplace(DBTREE_CLASS_DTX_CF, 0, DTX_CF_BTREE_ORDER, &uma, tree_root, tree_hdl);
 		if (rc != 0)
 			return rc;
 	}
 
 	ABT_rwlock_rdlock(pool->sp_lock);
 	for (i = 0; i < count; i++) {
-		rc = dtx_classify_one(pool, *tree_hdl, head, &length, dtes[i], count,
-				      my_rank, my_tgtid);
+		rc = dtx_classify_one(pool, *tree_hdl, head, &length, dtes[i], count, my_rank, my_tgtid);
 		if (rc < 0) {
 			ABT_rwlock_unlock(pool->sp_lock);
 			return rc;
@@ -652,8 +651,7 @@ dtx_rpc_internal(struct ds_cont_child *cont, d_list_t *head, struct btr_root *tr
 
 	D_ASSERT(length > 0);
 
-	return dtx_req_list_send(dra, opc, committed, head, length, pool->sp_uuid,
-				 cont->sc_uuid, epoch, NULL, NULL, NULL, NULL);
+	return dtx_req_list_send(dra, opc, committed, head, length, pool->sp_uuid, cont->sc_uuid, epoch, NULL, NULL, NULL, NULL);
 }
 
 struct dtx_helper_args {
@@ -685,6 +683,9 @@ dtx_rpc_helper(void *arg)
 	D_FREE(dha);
 }
 
+// opc进来就三种情况：check(dtx_cleanup、dtx_resync、dtx_refresh) commit(dtx_commit) abort(dtx_abort)
+// check操作进来的count是1，一次只搞1个
+
 static int
 dtx_rpc_prep(struct ds_cont_child *cont, d_list_t *head, struct btr_root *tree_root,
 	     daos_handle_t *tree_hdl, struct dtx_req_args *dra, ABT_thread *helper,
@@ -701,8 +702,10 @@ dtx_rpc_prep(struct ds_cont_child *cont, d_list_t *head, struct btr_root *tree_r
 	my_tgtid = dss_get_module_info()->dmi_tgt_id;
 
 	/* Use helper ULT to handle DTX RPC if there are enough helper XS. */
-	if (dss_has_enough_helper() &&
-	    (dtes[0]->dte_mbs->dm_tgt_cnt - 1) * count >= dtx_rpc_helper_thd) {
+
+    // 如果线程数量足够并且处理的dtx数量较多，可以创建个ULT搞， 不够就直接搞：check不会进来
+    // 核心调用函数 dtx_rpc_internal
+	if (dss_has_enough_helper() && (dtes[0]->dte_mbs->dm_tgt_cnt - 1) * count >= dtx_rpc_helper_thd) {
 		struct dtx_helper_args	*dha = NULL;
 
 		D_ALLOC_PTR(dha);
@@ -722,8 +725,7 @@ dtx_rpc_prep(struct ds_cont_child *cont, d_list_t *head, struct btr_root *tree_r
 		dha->dha_rank = my_rank;
 		dha->dha_tgtid = my_tgtid;
 
-		rc = dss_ult_create(dtx_rpc_helper, dha, DSS_XS_IOFW,
-				    my_tgtid, DSS_DEEP_STACK_SZ, helper);
+		rc = dss_ult_create(dtx_rpc_helper, dha, DSS_XS_IOFW, my_tgtid, DSS_DEEP_STACK_SZ, helper);
 		if (rc != 0) {
 			D_FREE(dha);
 		} else if (dtis != NULL) {
@@ -733,8 +735,7 @@ dtx_rpc_prep(struct ds_cont_child *cont, d_list_t *head, struct btr_root *tree_r
 				dtis[i] = dtes[i]->dte_xid;
 		}
 	} else {
-		rc = dtx_rpc_internal(cont, head, tree_root, tree_hdl, dra, dtis, dtes, epoch,
-				      count, opc, committed, my_rank, my_tgtid);
+		rc = dtx_rpc_internal(cont, head, tree_root, tree_hdl, dra, dtis, dtes, epoch, count, opc, committed, my_rank, my_tgtid);
 	}
 
 	return rc;
@@ -835,6 +836,7 @@ dtx_commit(struct ds_cont_child *cont, struct dtx_entry **dtes,
 		 * It is harmless to re-commit the DTX that has ever been committed.
 		 */
 		if (committed > 0)
+			// 有部分事务提交成功
 			rc1 = vos_dtx_set_flags(cont->sc_hdl, dtis, count, DTE_PARTIAL_COMMITTED);
 	} else {
 		if (dcks != NULL) {
@@ -930,13 +932,13 @@ dtx_abort(struct ds_cont_child *cont, struct dtx_entry *dte, daos_epoch_t epoch)
 int
 dtx_check(struct ds_cont_child *cont, struct dtx_entry *dte, daos_epoch_t epoch)
 {
-	d_list_t		head;
+	d_list_t		    head;
 	struct btr_root		tree_root = { 0 };
 	daos_handle_t		tree_hdl = DAOS_HDL_INVAL;
 	struct dtx_req_args	dra;
-	ABT_thread		helper = ABT_THREAD_NULL;
-	int			rc;
-	int			rc1;
+	ABT_thread		    helper = ABT_THREAD_NULL;
+	int			        rc;
+	int			        rc1;
 
 	/* If no other target, then current target is the unique
 	 * one and 'prepared', then related DTX can be committed.
@@ -944,13 +946,11 @@ dtx_check(struct ds_cont_child *cont, struct dtx_entry *dte, daos_epoch_t epoch)
 	if (dte->dte_mbs->dm_tgt_cnt == 1)
 		return DTX_ST_PREPARED;
 
-	rc = dtx_rpc_prep(cont, &head, &tree_root, &tree_hdl, &dra, &helper, NULL,
-			  &dte, epoch, 1, DTX_CHECK, NULL);
+	rc = dtx_rpc_prep(cont, &head, &tree_root, &tree_hdl, &dra, &helper, NULL, &dte, epoch, 1, DTX_CHECK, NULL);
 
 	rc1 = dtx_rpc_post(&head, &tree_hdl, &dra, &helper, rc);
 
-	D_CDEBUG(rc1 < 0, DLOG_ERR, DB_IO, "Check DTX "DF_DTI": rc %d %d\n",
-		 DP_DTI(&dte->dte_xid), rc, rc1);
+	D_CDEBUG(rc1 < 0, DLOG_ERR, DB_IO, "Check DTX "DF_DTI": rc %d %d\n", DP_DTI(&dte->dte_xid), rc, rc1);
 
 	return rc1;
 }

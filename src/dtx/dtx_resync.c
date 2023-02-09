@@ -19,11 +19,11 @@
 #include "dtx_internal.h"
 
 struct dtx_resync_entry {
-	d_list_t		dre_link;
-	daos_epoch_t		dre_epoch;
-	daos_unit_oid_t		dre_oid;
-	uint32_t		dre_inline_mbs:1;
-	uint64_t		dre_dkey_hash;
+	d_list_t		    dre_link;  // 挂到dtx_resync_args->tables的链表节点
+	daos_epoch_t		dre_epoch; // / 迭代找到的entry里面的epoch
+	daos_unit_oid_t		dre_oid;   // 迭代找到的entry里面的objId
+	uint32_t		    dre_inline_mbs:1; // 表示是否有dtx_memberships(The DAOS targets participating in the DTX)
+	uint64_t		    dre_dkey_hash;
 	struct dtx_entry	dre_dte;
 };
 
@@ -31,15 +31,17 @@ struct dtx_resync_entry {
 
 struct dtx_resync_head {
 	d_list_t		drh_list;
-	int			drh_count;
+	int			    drh_count;
 };
 
+// 总的处理结构
 struct dtx_resync_args {
 	struct ds_cont_child	*cont;
-	struct dtx_resync_head	 tables;
-	daos_epoch_t		 epoch;
-	uint32_t		 resync_version;
-	uint32_t		 discard_version;
+	struct dtx_resync_head	 tables;  // 待处理的dtx事务，在dtx_iter_cb和dtx_status_handle中处理
+	daos_epoch_t		     epoch;   // d_hlc_get();  触发dtx_resync的当前epoch
+	uint32_t		 resync_version;  // 应该就是map version
+	uint32_t		 discard_version; // 如果这个target是刚UP的，还没有重构，
+	                                  // 用target->ta_comp.co_in_ver， 否则为0
 };
 
 static inline void
@@ -146,10 +148,10 @@ dtx_leader_get(struct ds_pool *pool, struct dtx_memberships *mbs, struct pool_ta
 	int	rc = 0;
 
 	D_ASSERT(mbs != NULL);
+	
 	/* The first UPIN target is the leader of the DTX */
 	for (i = 0; i < mbs->dm_tgt_cnt; i++) {
-		rc = ds_pool_target_status_check(pool, mbs->dm_tgts[i].ddt_id,
-						 (uint8_t)PO_COMP_ST_UPIN, p_tgt);
+		rc = ds_pool_target_status_check(pool, mbs->dm_tgts[i].ddt_id, (uint8_t)PO_COMP_ST_UPIN, p_tgt);
 		if (rc < 0)
 			D_GOTO(out, rc);
 
@@ -166,8 +168,7 @@ out:
 }
 
 static int
-dtx_is_leader(struct ds_pool *pool, struct dtx_resync_args *dra,
-	      struct dtx_resync_entry *dre)
+dtx_is_leader(struct ds_pool *pool, struct dtx_resync_args *dra, struct dtx_resync_entry *dre)
 {
 	struct dtx_memberships	*mbs = dre->dre_dte.dte_mbs;
 	struct pool_target	*target = NULL;
@@ -177,6 +178,8 @@ dtx_is_leader(struct ds_pool *pool, struct dtx_resync_args *dra,
 	if (mbs == NULL)
 		return 1;
 
+    // 查找dtx_memberships里面的dtx leader
+    // The first UPIN target is the leader of the DTX
 	rc = dtx_leader_get(pool, mbs, &target);
 	if (rc < 0)
 		D_GOTO(out, rc);
@@ -186,8 +189,8 @@ dtx_is_leader(struct ds_pool *pool, struct dtx_resync_args *dra,
 	if (rc < 0)
 		D_GOTO(out, rc);
 
-	if (myrank != target->ta_comp.co_rank ||
-	    dss_get_module_info()->dmi_tgt_id != target->ta_comp.co_index)
+    // 主target的rank和当前rank一致，并且主target id和当前target id一致 为dtx leader
+	if (myrank != target->ta_comp.co_rank || dss_get_module_info()->dmi_tgt_id != target->ta_comp.co_index)
 		return 0;
 
 	return 1;
@@ -268,103 +271,101 @@ dtx_status_handle_one(struct ds_cont_child *cont, struct dtx_entry *dte,
 
 	rc = dtx_check(cont, dte, epoch);
 	switch (rc) {
-	case DTX_ST_COMMITTED:
-	case DTX_ST_COMMITTABLE:
-		/* The DTX has been committed on some remote replica(s),
-		 * let's commit the DTX globally.
-		 */
-		return DSHR_NEED_COMMIT;
-	case -DER_INPROGRESS:
-	case -DER_TIMEDOUT:
-		D_WARN("Other participants not sure about whether the "
-		       "DTX "DF_DTI" is committed or not, need retry.\n",
-		       DP_DTI(&dte->dte_xid));
-		return DSHR_NEED_RETRY;
-	case DTX_ST_PREPARED: {
-		struct dtx_memberships	*mbs = dte->dte_mbs;
-
-		/* If the transaction across multiple redundancy groups,
-		 * need to check whether there are enough alive targets.
-		 */
-		if (mbs->dm_grp_cnt > 1) {
-			rc = dtx_verify_groups(cont->sc_pool->spc_pool, mbs,
-					       &dte->dte_xid, tgt_array);
-			if (rc < 0)
-				goto out;
-
-			if (rc > 0)
-				return DSHR_NEED_COMMIT;
-
-			/* XXX: For the distributed transaction that lose too
-			 *	many particiants (the whole redundancy group),
-			 *	it's difficult to make decision whether commit
-			 *	or abort the DTX. we need more human knowledge
-			 *	to manually recover related things.
-			 *
-			 *	Then we mark the TX as corrupted via special
-			 *	dtx_abort() with 0 @epoch.
+		case DTX_ST_COMMITTED:
+		case DTX_ST_COMMITTABLE:
+			/* The DTX has been committed on some remote replica(s),
+			 * let's commit the DTX globally.
 			 */
-			rc = dtx_abort(cont, dte, 0);
-			if (rc < 0 && err != NULL)
-				*err = rc;
+			return DSHR_NEED_COMMIT;
+		case -DER_INPROGRESS:
+		case -DER_TIMEDOUT:
+			D_WARN("Other participants not sure about whether the "
+			       "DTX "DF_DTI" is committed or not, need retry.\n",
+			       DP_DTI(&dte->dte_xid));
+			return DSHR_NEED_RETRY;
+		case DTX_ST_PREPARED: {
+			struct dtx_memberships	*mbs = dte->dte_mbs;
 
-			return DSHR_CORRUPT;
+			/* If the transaction across multiple redundancy groups,
+			 * need to check whether there are enough alive targets.
+			 */
+			if (mbs->dm_grp_cnt > 1) {
+				rc = dtx_verify_groups(cont->sc_pool->spc_pool, mbs, &dte->dte_xid, tgt_array);
+				if (rc < 0)
+					goto out;
+
+				if (rc > 0)
+					return DSHR_NEED_COMMIT;
+
+				/* XXX: For the distributed transaction that lose too
+				 *	many particiants (the whole redundancy group),
+				 *	it's difficult to make decision whether commit
+				 *	or abort the DTX. we need more human knowledge
+				 *	to manually recover related things.
+				 *
+				 *	Then we mark the TX as corrupted via special
+				 *	dtx_abort() with 0 @epoch.
+				 */
+				rc = dtx_abort(cont, dte, 0);
+				if (rc < 0 && err != NULL)
+					*err = rc;
+
+				return DSHR_CORRUPT;
+			}
+
+			return DSHR_NEED_COMMIT;
 		}
+		case -DER_NONEXIST:
+			/* Someone (the DTX owner or batched commit ULT) may have
+			 * committed or aborted the DTX during we handling other
+			 * DTXs. So double check the status before next action.
+			 */
+			rc = vos_dtx_check(cont->sc_hdl, &dte->dte_xid, NULL, NULL, NULL, NULL, false);
 
-		return DSHR_NEED_COMMIT;
-	}
-	case -DER_NONEXIST:
-		/* Someone (the DTX owner or batched commit ULT) may have
-		 * committed or aborted the DTX during we handling other
-		 * DTXs. So double check the status before next action.
-		 */
-		rc = vos_dtx_check(cont->sc_hdl, &dte->dte_xid, NULL, NULL, NULL, NULL, false);
+			/* Skip the DTX that may has been committed or aborted. */
+			if (rc == DTX_ST_COMMITTED || rc == DTX_ST_COMMITTABLE || rc == -DER_NONEXIST)
+				D_GOTO(out, rc = DSHR_IGNORE);
 
-		/* Skip the DTX that may has been committed or aborted. */
-		if (rc == DTX_ST_COMMITTED || rc == DTX_ST_COMMITTABLE || rc == -DER_NONEXIST)
-			D_GOTO(out, rc = DSHR_IGNORE);
+			/* Skip this DTX if failed to get the status. */
+			if (rc != DTX_ST_PREPARED && rc != DTX_ST_INITED) {
+				D_WARN("Not sure about whether the DTX "DF_DTI
+				       " can be abort or not: %d, skip it.\n",
+				       DP_DTI(&dte->dte_xid), rc);
+				D_GOTO(out, rc = (rc > 0 ? -DER_IO : rc));
+			}
 
-		/* Skip this DTX if failed to get the status. */
-		if (rc != DTX_ST_PREPARED && rc != DTX_ST_INITED) {
+			/* To be aborted. It is possible that the client has resent
+			 * related RPC to the new leader, but such DTX is still not
+			 * committable yet. Here, the resync logic will abort it by
+			 * race during the new leader waiting for other replica(s).
+			 * The dtx_abort() logic will abort the local DTX firstly.
+			 * When the leader get replies from other replicas, it will
+			 * check whether local DTX is still valid or not.
+			 *
+			 * If we abort multiple non-ready DTXs together, then there
+			 * is race that one DTX may become committable when we abort
+			 * some other DTX(s). To avoid complex rollback logic, let's
+			 * abort the DTXs one by one, not batched.
+			 */
+			rc = dtx_abort(cont, dte, epoch);
+
+			D_DEBUG(DB_TRACE, "As new leader for DTX "DF_DTI", abort it (2): "DF_RC"\n", DP_DTI(&dte->dte_xid), DP_RC(rc));
+
+			if (rc < 0) {
+				if (err != NULL)
+					*err = rc;
+
+				return DSHR_ABORT_FAILED;
+			}
+
+			return DSHR_IGNORE;
+		default:
 			D_WARN("Not sure about whether the DTX "DF_DTI
-			       " can be abort or not: %d, skip it.\n",
+			       " can be committed or not: %d, skip it.\n",
 			       DP_DTI(&dte->dte_xid), rc);
-			D_GOTO(out, rc = (rc > 0 ? -DER_IO : rc));
-		}
-
-		/* To be aborted. It is possible that the client has resent
-		 * related RPC to the new leader, but such DTX is still not
-		 * committable yet. Here, the resync logic will abort it by
-		 * race during the new leader waiting for other replica(s).
-		 * The dtx_abort() logic will abort the local DTX firstly.
-		 * When the leader get replies from other replicas, it will
-		 * check whether local DTX is still valid or not.
-		 *
-		 * If we abort multiple non-ready DTXs together, then there
-		 * is race that one DTX may become committable when we abort
-		 * some other DTX(s). To avoid complex rollback logic, let's
-		 * abort the DTXs one by one, not batched.
-		 */
-		rc = dtx_abort(cont, dte, epoch);
-
-		D_DEBUG(DB_TRACE, "As new leader for DTX "DF_DTI", abort it (2): "DF_RC"\n",
-			DP_DTI(&dte->dte_xid), DP_RC(rc));
-
-		if (rc < 0) {
-			if (err != NULL)
-				*err = rc;
-
-			return DSHR_ABORT_FAILED;
-		}
-
-		return DSHR_IGNORE;
-	default:
-		D_WARN("Not sure about whether the DTX "DF_DTI
-		       " can be committed or not: %d, skip it.\n",
-		       DP_DTI(&dte->dte_xid), rc);
-		if (rc > 0)
-			rc = -DER_IO;
-		break;
+			if (rc > 0)
+				rc = -DER_IO;
+			break;
 	}
 
 out:
@@ -398,8 +399,12 @@ dtx_status_handle(struct dtx_resync_args *dra)
 	if (tgt_array == NULL)
 		D_GOTO(out, err = -DER_NOMEM);
 
+    // 遍历链表处理链表中的每一个dtx_entry
 	d_list_for_each_entry_safe(dre, next, &drh->drh_list, dre_link) {
+	
+	    // 取出树上的(dae)->dae_base.dae_ver, 如果当前这个tgt是UP的会获取tgt上的mapversion
 		if (dre->dre_dte.dte_ver < dra->discard_version) {
+			// 说明当前这个事务需要abort
 			err = vos_dtx_abort(cont->sc_hdl, &dre->dre_xid, dre->dre_epoch);
 			dtx_dre_release(drh, dre);
 			if (err == -DER_NONEXIST)
@@ -409,6 +414,7 @@ dtx_status_handle(struct dtx_resync_args *dra)
 			continue;
 		}
 
+        // 再次在active dtx tree上查找dtx_memberships(The DAOS targets participating in the DTX)
 		if (dre->dre_dte.dte_mbs == NULL) {
 			rc = vos_dtx_load_mbs(cont->sc_hdl, &dre->dre_xid, &dre->dre_dte.dte_mbs);
 			if (rc != 0) {
@@ -425,10 +431,12 @@ dtx_status_handle(struct dtx_resync_args *dra)
 		mbs = dre->dre_dte.dte_mbs;
 		D_ASSERT(mbs->dm_tgt_cnt > 0);
 
+        // 关联的部分提交，需要在提交
 		if (mbs->dm_dte_flags & DTE_PARTIAL_COMMITTED)
 			goto commit;
 
 		rc = dtx_is_leader(pool, dra, dre);
+		// 非dtx主不处理
 		if (rc <= 0) {
 			if (rc < 0)
 				D_WARN("Not sure about the leader for the DTX "
@@ -444,26 +452,25 @@ dtx_status_handle(struct dtx_resync_args *dra)
 			continue;
 		}
 
-		rc = dtx_status_handle_one(cont, &dre->dre_dte, dre->dre_epoch,
-					   tgt_array, &err);
+        // dtx主处理
+		rc = dtx_status_handle_one(cont, &dre->dre_dte, dre->dre_epoch, tgt_array, &err);
 		switch (rc) {
-		case DSHR_NEED_COMMIT:
-			goto commit;
-		case DSHR_NEED_RETRY:
-			d_list_del(&dre->dre_link);
-			d_list_add_tail(&dre->dre_link, &drh->drh_list);
-			continue;
-		case DSHR_IGNORE:
-		case DSHR_ABORT_FAILED:
-		case DSHR_CORRUPT:
-		default:
-			dtx_dre_release(drh, dre);
-			continue;
+			case DSHR_NEED_COMMIT:
+				goto commit;
+			case DSHR_NEED_RETRY:
+				d_list_del(&dre->dre_link);
+				d_list_add_tail(&dre->dre_link, &drh->drh_list);
+				continue;
+			case DSHR_IGNORE:
+			case DSHR_ABORT_FAILED:
+			case DSHR_CORRUPT:
+			default:
+				dtx_dre_release(drh, dre);
+				continue;
 		}
 
 commit:
-		D_DEBUG(DB_TRACE, "As the new leader for TX "
-			DF_DTI", try to commit it.\n", DP_DTI(&dre->dre_xid));
+		D_DEBUG(DB_TRACE, "As the new leader for TX "DF_DTI", try to commit it.\n", DP_DTI(&dre->dre_xid));
 
 		if (++count >= DTX_THRESHOLD_COUNT) {
 			rc = dtx_resync_commit(cont, drh, count);
@@ -482,8 +489,7 @@ commit:
 out:
 	D_FREE(tgt_array);
 
-	while ((dre = d_list_pop_entry(&drh->drh_list, struct dtx_resync_entry,
-				       dre_link)) != NULL)
+	while ((dre = d_list_pop_entry(&drh->drh_list, struct dtx_resync_entry, dre_link)) != NULL)
 		dtx_dre_release(drh, dre);
 
 	if (err >= 0 && dra->resync_version != dra->discard_version)
@@ -501,7 +507,7 @@ dtx_iter_cb(uuid_t co_uuid, vos_iter_entry_t *ent, void *args)
 {
 	struct dtx_resync_args		*dra = args;
 	struct dtx_resync_entry		*dre;
-	struct dtx_entry		*dte;
+	struct dtx_entry		    *dte;
 	struct dtx_memberships		*mbs;
 
 	/* We commit the DTXs periodically, there will be not too many DTXs
@@ -521,6 +527,7 @@ dtx_iter_cb(uuid_t co_uuid, vos_iter_entry_t *ent, void *args)
 	if (ent->ie_dtx_flags & DTE_ORPHAN)
 		return 0;
 
+    // ie_dtx_ver：The pool map version when handling DTX on server
 	if (ent->ie_dtx_ver < dra->discard_version) {
 		D_ALLOC_PTR(dre);
 		if (dre == NULL)
@@ -593,49 +600,51 @@ int
 dtx_resync(daos_handle_t po_hdl, uuid_t po_uuid, uuid_t co_uuid, uint32_t ver, bool block)
 {
 	struct ds_cont_child		*cont = NULL;
-	struct ds_pool			*pool;
-	struct pool_target		*target;
+	struct ds_pool			    *pool;
+	struct pool_target		    *target;
 	struct dtx_resync_args		 dra = { 0 };
-	d_rank_t			 myrank;
+	d_rank_t			         myrank;
 	int				 rc = 0;
 	int				 rc1 = 0;
 
 	rc = ds_cont_child_lookup(po_uuid, co_uuid, &cont);
 	if (rc != 0) {
-		D_ERROR("Failed to open container for resync DTX "
-			DF_UUID"/"DF_UUID": rc = %d\n",
-			DP_UUID(po_uuid), DP_UUID(co_uuid), rc);
+		D_ERROR("Failed to open container for resync DTX "DF_UUID"/"DF_UUID": rc = %d\n", DP_UUID(po_uuid), DP_UUID(co_uuid), rc);
 		return rc;
 	}
 
 	crt_group_rank(NULL, &myrank);
 
 	pool = cont->sc_pool->spc_pool;
-	ABT_rwlock_rdlock(pool->sp_lock);
-	rc = pool_map_find_target_by_rank_idx(pool->sp_map, myrank,
-					      dss_get_module_info()->dmi_tgt_id, &target);
-	D_ASSERT(rc == 1);
 
+	// 取出target中的co_in_ver并更新dtx_resync_args中的discard_version
+	ABT_rwlock_rdlock(pool->sp_lock);
+	rc = pool_map_find_target_by_rank_idx(pool->sp_map, myrank, dss_get_module_info()->dmi_tgt_id, &target);
+	D_ASSERT(rc == 1);
 	if (target->ta_comp.co_status == PO_COMP_ST_UP)
 		dra.discard_version = target->ta_comp.co_in_ver;
 	ABT_rwlock_unlock(pool->sp_lock);
 
-	D_INFO("DTX resync for "DF_UUID"/"DF_UUID" with discard version: %u\n",
-	       DP_UUID(po_uuid), DP_UUID(co_uuid), dra.discard_version);
+	D_INFO("DTX resync for "DF_UUID"/"DF_UUID" with discard version: %u\n", DP_UUID(po_uuid), DP_UUID(co_uuid), dra.discard_version);
 
+// 加锁改cont
 	ABT_mutex_lock(cont->sc_mutex);
 
+    // dtx_resync已经在运行了
 	while (cont->sc_dtx_resyncing) {
-		if (!block) {
+		if (!block) { // ds_cont_local_open要求独占运行，
 			ABT_mutex_unlock(cont->sc_mutex);
 			goto out;
 		}
-		D_DEBUG(DB_TRACE, "Waiting for resync of "DF_UUID"\n",
-			DP_UUID(co_uuid));
+
+		// container_scan_cb会等待执行完
+		D_DEBUG(DB_TRACE, "Waiting for resync of "DF_UUID"\n", DP_UUID(co_uuid));
 		ABT_cond_wait(cont->sc_dtx_resync_cond, cont->sc_mutex);
 	}
 
+    // 打点验证，无逻辑代码
 	if (myrank == daos_fail_value_get() && DAOS_FAIL_CHECK(DAOS_DTX_SRV_RESTART)) {
+		
 		uint64_t	hint = 0;
 
 		dss_set_start_epoch();
@@ -652,38 +661,44 @@ dtx_resync(daos_handle_t po_hdl, uuid_t po_uuid, uuid_t co_uuid, uint32_t ver, b
 			ABT_thread_yield();
 		}
 	}
+    // 打点验证，无逻辑代码
 
 	cont->sc_dtx_resyncing = 1;
 	cont->sc_dtx_resync_ver = ver;
 	ABT_mutex_unlock(cont->sc_mutex);
+// 加锁改cont
 
 	dra.cont = cont;
 	dra.resync_version = ver;
-	dra.epoch = d_hlc_get();
-	D_INIT_LIST_HEAD(&dra.tables.drh_list);
+	dra.epoch = d_hlc_get();  //当前epoch
+
+	(&dra.tables.drh_list);
 	dra.tables.drh_count = 0;
 
 	/*
 	 * Trigger DTX reindex. That will avoid DTX_CHECK from others being blocked.
 	 * It is harmless even if (committed) DTX entries have already been re-indexed.
 	 */
-	if (!dtx_cont_opened(cont)) {
+
+	// 如果没有ds_cont_local_open，触发一把dtx_reindex, 目的是什么??
+	if (!dtx_cont_opened(cont)) { 
 		rc = start_dtx_reindex_ult(cont);
 		if (rc != 0) {
-			D_ERROR(DF_UUID": Failed to trigger DTX reindex, ver %u/%u: "DF_RC"\n",
-				DP_UUID(cont->sc_uuid), dra.discard_version, ver, DP_RC(rc));
+			D_ERROR(DF_UUID": Failed to trigger DTX reindex, ver %u/%u: "DF_RC"\n", DP_UUID(cont->sc_uuid), dra.discard_version, ver, DP_RC(rc));
 			goto fail;
 		}
 	}
 
-	D_INFO("Start DTX resync scan for "DF_UUID"/"DF_UUID" with version %u\n",
-	       DP_UUID(po_uuid), DP_UUID(co_uuid), ver);
+	D_INFO("Start DTX resync scan for "DF_UUID"/"DF_UUID" with version %u\n", DP_UUID(po_uuid), DP_UUID(co_uuid), ver);
 
+    // vos_dtx_iter_ops：依次迭代处理cont中的dtx
+    // 处理函数：dtx_iter_cb
+    // prepare -> probe -> fetch ->dtx_iter_cb ->dtx_iter_next
 	rc = ds_cont_iter(po_hdl, co_uuid, dtx_iter_cb, &dra, VOS_ITER_DTX, 0);
 
-	/* Handle the DTXs that have been scanned even if some failure happened
-	 * in above ds_cont_iter() step.
-	 */
+    // 函数调用完成后会在dtx_resync_args->tables的里边里面挂链了一个个待处理的dtx(dtx_resync_entry)
+   
+	// Handle the DTXs that have been scanned even if some failure happened in above ds_cont_iter() step.
 	rc1 = dtx_status_handle(&dra);
 
 	D_ASSERT(d_list_empty(&dra.tables.drh_list));

@@ -296,10 +296,9 @@ dtx_cleanup(void *arg)
 	struct ds_cont_child		*cont = dbca->dbca_cont;
 	struct dtx_share_peer		*dsp;
 	struct dtx_partial_cmt_item	*dpci;
-	struct dtx_entry		*dte;
+	struct dtx_entry		    *dte;
 	struct dtx_cleanup_cb_args	 dcca;
-	int				 count;
-	int				 rc;
+	int				         count,rc;
 
 	if (dbca->dbca_cleanup_req == NULL)
 		goto out;
@@ -308,21 +307,18 @@ dtx_cleanup(void *arg)
 	D_INIT_LIST_HEAD(&dcca.dcca_pc_list);
 	dcca.dcca_st_count = 0;
 	dcca.dcca_pc_count = 0;
-	rc = ds_cont_iter(cont->sc_pool->spc_hdl, cont->sc_uuid,
-			  dtx_cleanup_iter_cb, &dcca, VOS_ITER_DTX, 0);
+	rc = ds_cont_iter(cont->sc_pool->spc_hdl, cont->sc_uuid, dtx_cleanup_iter_cb, &dcca, VOS_ITER_DTX, 0);
 	if (rc < 0)
-		D_WARN("Failed to scan DTX entry for cleanup "
-		       DF_UUID": "DF_RC"\n", DP_UUID(cont->sc_uuid), DP_RC(rc));
+		D_WARN("Failed to scan DTX entry for cleanup "DF_UUID": "DF_RC"\n", DP_UUID(cont->sc_uuid), DP_RC(rc));
 
 	/* dbca->dbca_reg_gen != cont->sc_dtx_batched_gen means someone reopen the container. */
-	while (!dss_ult_exiting(dbca->dbca_cleanup_req) && !d_list_empty(&dcca.dcca_st_list) &&
-	       dbca->dbca_reg_gen == cont->sc_dtx_batched_gen) {
+	while (!dss_ult_exiting(dbca->dbca_cleanup_req) && !d_list_empty(&dcca.dcca_st_list) && dbca->dbca_reg_gen == cont->sc_dtx_batched_gen) {
+		
 		if (dcca.dcca_st_count > DTX_REFRESH_MAX) {
 			count = DTX_REFRESH_MAX;
 			dcca.dcca_st_count -= DTX_REFRESH_MAX;
 		} else {
 			D_ASSERT(dcca.dcca_st_count > 0);
-
 			count = dcca.dcca_st_count;
 			dcca.dcca_st_count = 0;
 		}
@@ -331,15 +327,13 @@ dtx_cleanup(void *arg)
 		 * that all the DTX entries in the check list will be handled
 		 * even if some former ones hit failure.
 		 */
-		rc = dtx_refresh_internal(cont, &count, &dcca.dcca_st_list,
-					  NULL, NULL, NULL, false);
-		D_ASSERTF(count == 0, "%d entries are not handled: "DF_RC"\n",
-			  count, DP_RC(rc));
+		rc = dtx_refresh_internal(cont, &count, &dcca.dcca_st_list, NULL, NULL, NULL, false);
+		D_ASSERTF(count == 0, "%d entries are not handled: "DF_RC"\n", count, DP_RC(rc));
 	}
 
 	/* dbca->dbca_reg_gen != cont->sc_dtx_batched_gen means someone reopen the container. */
-	while (!dss_ult_exiting(dbca->dbca_cleanup_req) && !d_list_empty(&dcca.dcca_pc_list) &&
-	       dbca->dbca_reg_gen == cont->sc_dtx_batched_gen) {
+	while (!dss_ult_exiting(dbca->dbca_cleanup_req) && !d_list_empty(&dcca.dcca_pc_list) && dbca->dbca_reg_gen == cont->sc_dtx_batched_gen) {
+		
 		dpci = d_list_pop_entry(&dcca.dcca_pc_list, struct dtx_partial_cmt_item, dpci_link);
 		dcca.dcca_pc_count--;
 
@@ -349,17 +343,14 @@ dtx_cleanup(void *arg)
 		if (dte->dte_mbs != NULL)
 			rc = dtx_commit(cont, &dte, NULL, 1);
 
-		D_DEBUG(DB_IO, "Cleanup partial committed DTX "DF_DTI", left %d: %d\n",
-			DP_DTI(&dte->dte_xid), dcca.dcca_pc_count, rc);
+		D_DEBUG(DB_IO, "Cleanup partial committed DTX "DF_DTI", left %d: %d\n",P_DTI(&dte->dte_xid), dcca.dcca_pc_count, rc);
 		dtx_dpci_free(dpci);
 	}
 
-	while ((dsp = d_list_pop_entry(&dcca.dcca_st_list, struct dtx_share_peer,
-				       dsp_link)) != NULL)
+	while ((dsp = d_list_pop_entry(&dcca.dcca_st_list, struct dtx_share_peer,dsp_link)) != NULL)
 		dtx_dsp_free(dsp);
 
-	while ((dpci = d_list_pop_entry(&dcca.dcca_pc_list, struct dtx_partial_cmt_item,
-					dpci_link)) != NULL)
+	while ((dpci = d_list_pop_entry(&dcca.dcca_pc_list, struct dtx_partial_cmt_item, dpci_link)) != NULL)
 		dtx_dpci_free(dpci);
 
 	dbca->dbca_cleanup_done = 1;

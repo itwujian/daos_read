@@ -460,7 +460,9 @@ check_object:
 	if (ts_set && ts_set->ts_flags & VOS_COND_UPDATE_OP_MASK)
 		cond_mask = VOS_ILOG_COND_UPDATE;
 	
-	rc = vos_ilog_update(cont, &obj->obj_df->vo_ilog, epr, bound, NULL, &obj->obj_ilog_info, cond_mask, ts_set);
+	rc = vos_ilog_update(cont, &obj->obj_df->vo_ilog, epr, bound, NULL, 
+	                     &obj->obj_ilog_info, cond_mask, ts_set);
+	
 	if (rc == -DER_TX_RESTART)
 		goto failed;
 	if (rc == -DER_NONEXIST && cond_mask)

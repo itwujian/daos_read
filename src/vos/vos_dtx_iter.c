@@ -215,7 +215,7 @@ static int
 dtx_iter_fetch(struct vos_iterator *iter, vos_iter_entry_t *it_entry,
 	       daos_anchor_t *anchor)
 {
-	struct vos_dtx_iter	*oiter = iter2oiter(iter);
+	struct vos_dtx_iter	    *oiter = iter2oiter(iter);
 	struct vos_dtx_act_ent	*dae;
 	d_iov_t			 rec_iov;
 	int			 rc;
@@ -225,14 +225,12 @@ dtx_iter_fetch(struct vos_iterator *iter, vos_iter_entry_t *it_entry,
 	if (oiter->oit_linear) {
 		if (oiter->oit_cur == NULL)
 			return -DER_NONEXIST;
-
 		dae = oiter->oit_cur;
 	} else {
 		d_iov_set(&rec_iov, NULL, 0);
 		rc = dbtree_iter_fetch(oiter->oit_hdl, NULL, &rec_iov, anchor);
 		if (rc != 0) {
-			D_ERROR("Error while fetching DTX info: rc = "DF_RC"\n",
-				DP_RC(rc));
+			D_ERROR("Error while fetching DTX info: rc = "DF_RC"\n", DP_RC(rc));
 			return rc;
 		}
 
@@ -282,8 +280,7 @@ dtx_iter_fetch(struct vos_iterator *iter, vos_iter_entry_t *it_entry,
 							    DAE_MBS_OFF(dae));
 	}
 
-	D_DEBUG(DB_IO, "DTX iterator fetch the one "DF_DTI"\n",
-		DP_DTI(&DAE_XID(dae)));
+	D_DEBUG(DB_IO, "DTX iterator fetch the one "DF_DTI"\n", DP_DTI(&DAE_XID(dae)));
 
 	return 0;
 }

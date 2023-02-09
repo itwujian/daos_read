@@ -238,12 +238,12 @@ ilog_fetch_move(struct ilog_entries *dest, struct ilog_entries *src);
  * the underlying log or the intent has changed.  If the struct is shared
  * between multiple ULT's fetch should be done after every yield.
  *
- *  \param	umm[in]		The umem instance
- *  \param	root[in]	Pointer to log root
- *  \param	cbs[in]		Incarnation log transaction log callbacks
- *  \param	intent[in]	The intent of the operation
- *  \param	entries[in,out]	Allocated structure passed in will be filled
- *				with incarnation log entries in the range.
+ *  \param	umm[in]		     The umem instance
+ *  \param	root[in]	     Pointer to log root
+ *  \param	cbs[in]		     Incarnation log transaction log callbacks
+ *  \param	intent[in]	     The intent of the operation
+ *  \param	entries[in,out]	 Allocated structure passed in will be filled
+ *				             with incarnation log entries in the range.
  *
  *  \return 0 on success, error code on failure
  */
@@ -316,7 +316,7 @@ static inline bool
 ilog_is_punch(const struct ilog_entry *entry)
 {
 	return entry->ie_id.id_punch_minor_eph >
-		entry->ie_id.id_update_minor_eph;
+		   entry->ie_id.id_update_minor_eph;
 }
 
 #endif /* __ILOG_H__ */

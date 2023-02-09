@@ -49,7 +49,7 @@ struct vos_ilog_info {
 	daos_epoch_t		 ii_uncommitted;
 	/** If non-zero, earliest creation timestamp in current incarnation. */
 	daos_epoch_t		 ii_create;
-	/** If non-zero, prior committed punch */
+	/** If non-zero, prior(之前的) committed punch */
 	struct vos_punch_record	 ii_prior_punch;
 	/** If non-zero, prior committed or uncommitted punch */
 	struct vos_punch_record	 ii_prior_any_punch;
@@ -63,9 +63,9 @@ struct vos_ilog_info {
 	 */
 	daos_epoch_t		 ii_uncertain_create;
 	/** The entity has no valid log entries */
-	bool			 ii_empty;
+	bool			     ii_empty;
 	/** All data is contained within specified epoch range */
-	bool			 ii_full_scan;
+	bool			     ii_full_scan;
 };
 
 /** Initialize the incarnation log globals */
@@ -89,22 +89,21 @@ vos_ilog_fetch_finish(struct vos_ilog_info *info);
  * this will be a noop if the arguments are the same and nothing has
  * changed since the last invocation.
  *
- * \param	umm[IN]		umem instance
- * \param	coh[IN]		container open handle
- * \param	intent[IN]	Intent of the operation
- * \param	ilog[IN]	The incarnation log root
- * \param	epoch[IN]	Epoch to fetch
- * \param	bound[IN]	Epoch uncertainty bound
- * \param	punched[IN]	Punched epoch.  Ignored if parent is passed.
- * \param	parent[IN]	parent incarnation log info (NULL if no parent
- *				log exists).  Fetch should have already been
- *				called at same epoch or parent.
+ * \param	umm[IN]		    umem instance
+ * \param	coh[IN]		    container open handle
+ * \param	intent[IN]	    Intent of the operation
+ * \param	ilog[IN]	    The incarnation log root
+ * \param	epoch[IN]	    Epoch to fetch
+ * \param	bound[IN]	    Epoch uncertainty bound
+ * \param	punched[IN]	    Punched epoch.  Ignored if parent is passed.
+ * \param	parent[IN]	    parent incarnation log info (NULL if no parent log exists).  
+                            Fetch should have already been called at same epoch or parent.
  * \param	info[IN,OUT]	incarnation log info
  *
- * \return	-DER_NONEXIST	Nothing in the log
- *		-DER_INPROGRESS	Local target doesn't know latest state
- *		0		Successful fetch
- *		other		Appropriate error code
+ * \return	-DER_NONEXIST	 Nothing in the log
+ *		    -DER_INPROGRESS	 Local target doesn't know latest state
+ *		    0		         Successful fetch
+ *		    other		     Appropriate error code
  */
 #define vos_ilog_fetch vos_ilog_fetch_
 int
@@ -229,6 +228,7 @@ vos_ilog_is_punched(daos_handle_t coh, struct ilog_df *ilog, const daos_epoch_ra
 #undef vos_ilog_update
 #undef vos_ilog_punch
 #undef vos_ilog_check
+
 /* Useful for debugging the incarnation log but too much information for
  * normal debugging.
  */

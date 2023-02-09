@@ -575,10 +575,10 @@ vos_dtx_ent_state(uint32_t entry)
  *
  * \param umm		[IN]	Instance of an unified memory class.
  * \param record	[IN]	Address (offset) of the record (in SCM)
- *				to associate with the transaction.
+ *				            to associate with the transaction.
  * \param type		[IN]	The record type, see vos_dtx_record_types.
  * \param dtx		[OUT]	tx_id is returned.  Caller is responsible
- *				to save it in the record.
+ *				            to save it in the record.
  *
  * \return		0 on success and negative on failure.
  */
@@ -1331,8 +1331,7 @@ void
 vos_space_unhold(struct vos_pool *pool, daos_size_t *space_hld);
 
 static inline bool
-vos_epc_punched(daos_epoch_t epc, uint16_t minor_epc,
-		const struct vos_punch_record *punch)
+vos_epc_punched(daos_epoch_t epc, uint16_t minor_epc, const struct vos_punch_record *punch)
 {
 	if (punch->pr_epc < epc)
 		return false;

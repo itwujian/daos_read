@@ -161,7 +161,8 @@ obj_rw_complete(crt_rpc_t *rpc, struct obj_io_context *ioc,
 				status = dtx_sub_init(dth, &orwi->orw_oid, orwi->orw_dkey_hash);
 			
 			time = daos_get_ntime();
-			
+
+			// 更新元数据信息
 			rc = vos_update_end(ioh, ioc->ioc_map_ver, &orwi->orw_dkey, status, &ioc->ioc_io_size, dth);
 			if (rc == 0)
 				obj_update_vos_latency(ioc->ioc_opc, time, ioc->ioc_io_size);

@@ -741,28 +741,21 @@ ds_cont_child_cache_destroy(struct daos_lru_cache *cache)
  * -DER_NONEXIST is returned if the ds_cont_child object does not exist.
  */
 static int
-cont_child_lookup(struct daos_lru_cache *cache, const uuid_t co_uuid,
-		  const uuid_t po_uuid, bool create,
-		  struct ds_cont_child **cont)
+cont_child_lookup(struct daos_lru_cache *cache, const uuid_t co_uuid, const uuid_t po_uuid, bool create, struct ds_cont_child **cont)
 {
 	struct daos_llink      *llink;
-	uuid_t			key[2];	/* HT key is cuuid+puuid */
-	int			rc;
+	uuid_t			        key[2];	/* HT key is cuuid+puuid */
+	int		 	            rc;
 
 	uuid_copy(key[0], co_uuid);
 	uuid_copy(key[1], po_uuid);
-	rc = daos_lru_ref_hold(cache, (void *)key, sizeof(key),
-			       create ? (void *)po_uuid : NULL, &llink);
+	
+	rc = daos_lru_ref_hold(cache, (void *)key, sizeof(key), create ? (void *)po_uuid : NULL, &llink);
 	if (rc != 0) {
 		if (rc == -DER_NONEXIST)
-			D_DEBUG(DB_MD, DF_CONT": failed to lookup%s "
-				"container: "DF_RC"\n",
-				DP_CONT(po_uuid, co_uuid),
-				po_uuid == NULL ? "" : "/create", DP_RC(rc));
+			D_DEBUG(DB_MD, DF_CONT": failed to lookup%s ""container: "DF_RC"\n", DP_CONT(po_uuid, co_uuid), po_uuid == NULL ? "" : "/create", DP_RC(rc));
 		else
-			D_ERROR(DF_CONT": failed to lookup%s container: "
-				""DF_RC"\n", DP_CONT(po_uuid, co_uuid),
-				po_uuid == NULL ? "" : "/create", DP_RC(rc));
+			D_ERROR(DF_CONT": failed to lookup%s container: """DF_RC"\n", DP_CONT(po_uuid, co_uuid), po_uuid == NULL ? "" : "/create", DP_RC(rc));
 		return rc;
 	}
 
@@ -1271,8 +1264,7 @@ ds_cont_child_lookup(uuid_t pool_uuid, uuid_t cont_uuid,
 {
 	struct dsm_tls		*tls = dsm_tls_get();
 
-	return cont_child_lookup(tls->dt_cont_cache, cont_uuid, pool_uuid,
-				 true /* create */, ds_cont);
+	return cont_child_lookup(tls->dt_cont_cache, cont_uuid, pool_uuid, true /* create */, ds_cont);
 }
 
 /**
@@ -2066,6 +2058,8 @@ ds_cont_tgt_epoch_aggregate_aggregator(crt_rpc_t *source, crt_rpc_t *result,
 }
 
 /* iterate all of objects or uncommitted DTXs of the container. */
+
+// 当前调用的只有VOS_ITER_DTX					   
 int
 ds_cont_iter(daos_handle_t ph, uuid_t co_uuid, cont_iter_cb_t callback,
 	     void *arg, uint32_t type, uint32_t flags)
@@ -2077,8 +2071,7 @@ ds_cont_iter(daos_handle_t ph, uuid_t co_uuid, cont_iter_cb_t callback,
 
 	rc = vos_cont_open(ph, co_uuid, &coh);
 	if (rc != 0) {
-		D_ERROR("Open container "DF_UUID" failed: rc = "DF_RC"\n",
-			DP_UUID(co_uuid), DP_RC(rc));
+		D_ERROR("Open container "DF_UUID" failed: rc = "DF_RC"\n", DP_UUID(co_uuid), DP_RC(rc));
 		return rc;
 	}
 
@@ -2088,56 +2081,58 @@ ds_cont_iter(daos_handle_t ph, uuid_t co_uuid, cont_iter_cb_t callback,
 	param.ip_epr.epr_hi = DAOS_EPOCH_MAX;
 	param.ip_flags = flags;
 
+    // dtx: dbtree_iter_prepare, 同时带出来vos_iterator(iter_h)
 	rc = vos_iter_prepare(type, &param, &iter_h, NULL);
 	if (rc != 0) {
 		D_ERROR("prepare obj iterator failed "DF_RC"\n", DP_RC(rc));
 		D_GOTO(close, rc);
 	}
 
+    // dtx: dtx_iter_probe
 	rc = vos_iter_probe(iter_h, NULL);
 	if (rc != 0) {
 		if (rc == -DER_NONEXIST)
 			rc = 0;
 		else
-			D_ERROR("set iterator cursor failed: "DF_RC"\n",
-				DP_RC(rc));
+			D_ERROR("set iterator cursor failed: "DF_RC"\n", DP_RC(rc));
 		D_GOTO(iter_fini, rc);
 	}
 
 	while (1) {
+		
 		vos_iter_entry_t ent;
 
+        // dtx: dtx_iter_fetch, ent为找到的每个dtx事务
 		rc = vos_iter_fetch(iter_h, &ent, NULL);
 		if (rc != 0) {
 			/* reach to the end of the container */
 			if (rc == -DER_NONEXIST)
 				rc = 0;
 			else
-				D_ERROR("Fetch obj failed: "DF_RC"\n",
-					DP_RC(rc));
+				D_ERROR("Fetch obj failed: "DF_RC"\n", DP_RC(rc));
 			break;
 		}
 
-		D_DEBUG(DB_ANY, "iter "DF_UOID"/"DF_UUID"\n",
-			DP_UOID(ent.ie_oid), DP_UUID(co_uuid));
+		D_DEBUG(DB_ANY, "iter "DF_UOID"/"DF_UUID"\n", DP_UOID(ent.ie_oid), DP_UUID(co_uuid));
 
+        // dtx: dtx_iter_cb
 		rc = callback(co_uuid, &ent, arg);
+		
 		if (rc) {
-			D_DEBUG(DB_ANY, "iter "DF_UOID" rc "DF_RC"\n",
-				DP_UOID(ent.ie_oid), DP_RC(rc));
+			D_DEBUG(DB_ANY, "iter "DF_UOID" rc "DF_RC"\n", DP_UOID(ent.ie_oid), DP_RC(rc));
 			if (rc > 0)
 				rc = 0;
 			break;
 		}
 
+        //  dtx: dtx_iter_next
 		rc = vos_iter_next(iter_h, NULL);
 		if (rc != 0) {
 			/* reach to the end of the container */
 			if (rc == -DER_NONEXIST)
 				rc = 0;
 			else
-				D_ERROR("Fetch obj failed: "DF_RC"\n",
-					DP_RC(rc));
+				D_ERROR("Fetch obj failed: "DF_RC"\n", DP_RC(rc));
 			break;
 		}
 	}

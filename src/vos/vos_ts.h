@@ -423,8 +423,7 @@ vos_ts_wcheck(struct vos_ts_set *ts_set, daos_epoch_t epoch,
 	daos_epoch_t		 high;
 	daos_epoch_t		 second;
 
-	if (!vos_ts_in_tx(ts_set) || ts_set->ts_init_count == 0 ||
-	    bound <= epoch)
+	if (!vos_ts_in_tx(ts_set) || ts_set->ts_init_count == 0 || bound <= epoch)
 		return false;
 
 	se = &ts_set->ts_entries[ts_set->ts_init_count - 1];
@@ -727,9 +726,7 @@ vos_ts_set_check_conflict(struct vos_ts_set *ts_set, daos_epoch_t write_time)
 		return false;
 
 	for (i = 0; i < ts_set->ts_init_count; i++) {
-		/** Will check the appropriate read timestamp based on the type
-		 *  of the entry at index i.
-		 */
+		/** Will check the appropriate read timestamp based on the type of the entry at index i. */
 		if (vos_ts_check_read_conflict(ts_set, i, write_time))
 			return true;
 	}

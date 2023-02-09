@@ -246,13 +246,21 @@ ktr_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	struct vos_krec_df	*krec;
 	int			 rc = 0;
 
+    // 取出value值，并转换成vos_rec_bundle类型
 	rbund = iov2rec_bundle(val_iov);
 
+    // 为record具体内容分配地址空间，
+    // 大小为：sizeof(struct vos_krec_df) + vos_size_round(rbund->rb_csum->cs_len)
+    //         + key->iov_len
 	rec->rec_off = umem_zalloc(&tins->ti_umm, vos_krec_size(rbund));
+	
 	if (UMOFF_IS_NULL(rec->rec_off))
 		return -DER_NOSPACE;
 
+    // 在pool内偏移上找到krecord的地址rec->rec_off
 	krec = vos_rec2krec(tins, rec);
+
+	// 创建并初始化krec里面的ilog根节点
 	rc = ilog_create(&tins->ti_umm, &krec->kr_ilog);
 	if (rc != 0) {
 		D_ERROR("Failure to create incarnation log\n");
@@ -338,6 +346,7 @@ ktr_node_alloc(struct btr_instance *tins, int size)
 	return umem_zalloc(&tins->ti_umm, size);
 }
 
+// dkey、akey的树操作
 static btr_ops_t key_btr_ops = {
 	.to_rec_msize		= ktr_rec_msize,
 	.to_hkey_size		= ktr_hkey_size,
@@ -518,8 +527,7 @@ svt_rec_alloc_common(struct btr_instance *tins, struct btr_record *rec,
 	rbund->rb_off = UMOFF_NULL; /* taken over by btree */
 
 	irec	= vos_rec2irec(tins, rec);
-	rc = vos_dtx_register_record(&tins->ti_umm, rec->rec_off,
-				     DTX_RT_SVT, &irec->ir_dtx);
+	rc = vos_dtx_register_record(&tins->ti_umm, rec->rec_off, DTX_RT_SVT, &irec->ir_dtx);
 	if (rc != 0)
 		/* It is unnecessary to free the PMEM that will be dropped
 		 * automatically when the PMDK transaction is aborted.
@@ -698,6 +706,7 @@ svt_node_alloc(struct btr_instance *tins, int size)
 	return umem_zalloc(&tins->ti_umm, size);
 }
 
+// single value和epoch树
 static btr_ops_t singv_btr_ops = {
 	.to_rec_msize		= svt_rec_msize,
 	.to_hkey_size		= svt_hkey_size,
@@ -776,8 +785,7 @@ evt_dop_log_del(struct umem_instance *umm, daos_epoch_t epoch,
 	daos_handle_t	coh;
 
 	coh.cookie = (unsigned long)args;
-	vos_dtx_deregister_record(umm, coh, desc->dc_dtx, epoch,
-				  umem_ptr2off(umm, desc));
+	vos_dtx_deregister_record(umm, coh, desc->dc_dtx, epoch, umem_ptr2off(umm, desc));
 	return 0;
 }
 
@@ -816,6 +824,7 @@ tree_open_create(struct vos_object *obj, enum vos_tree_class tclass, int flags,
 		unexpected_flag = KREC_BF_EVT;
 	}
 
+    // krecord里面记录的类型和上层要处理的类型不一致，报错
 	if (krec->kr_bmap & unexpected_flag) {
 		if (flags & SUBTR_CREATE) {
 			D_ERROR("Mixing single value and array not allowed\n");
@@ -828,18 +837,20 @@ tree_open_create(struct vos_object *obj, enum vos_tree_class tclass, int flags,
 	}
 
 	vos_evt_desc_cbs_init(&cbs, pool, coh);
-	
+
+	// record里面记录的树的类型时evtree或btree
 	if (krec->kr_bmap & expected_flag) {
 		if (flags & SUBTR_EVT) {
-			rc = evt_open(&krec->kr_evt, uma, &cbs, sub_toh);
+			rc = evt_open(&krec->kr_evt, uma, &cbs, sub_toh);  // evtree的open
 		} else {
-			rc = dbtree_open_inplace_ex(&krec->kr_btr, uma, coh, pool, sub_toh);
+			rc = dbtree_open_inplace_ex(&krec->kr_btr, uma, coh, pool, sub_toh); // svtree的open
 		}
 		if (rc != 0)
 			D_ERROR("Failed to open tree: "DF_RC"\n", DP_RC(rc));
 		goto out;
 	}
 
+    // krec->kr_bmap = KREC_BF_DKEY
 	if ((flags & SUBTR_CREATE) == 0) {
 		/** This can happen if application does a punch first before any
 		 *  updates.   Simply return -DER_NONEXIST in such case.
@@ -909,10 +920,16 @@ out:
  *		  load both btree and evtree root.
  */
 int
-key_tree_prepare(struct vos_object *obj, daos_handle_t toh,
-		 enum vos_tree_class tclass, daos_key_t *key, int flags,
-		 uint32_t intent, struct vos_krec_df **krecp,
-		 daos_handle_t *sub_toh, struct vos_ts_set *ts_set)
+key_tree_prepare(struct vos_object *obj, 
+                 daos_handle_t toh,  // 需要搜索树的句柄，dkey:obj->obj_toh, 
+                                     // akey: dkey-tree在prepare时打开子树akey的句柄
+		         enum vos_tree_class tclass, // 树的类型：VOS_BTR_DKEY、VOS_BTR_AKEY
+		         daos_key_t *key,    // 搜索的关键字，dkey或者iod->iod_name(akey for this iod)
+		         int flags,          // 仅针对akey使用，用来明确akey下面的树的evtree还是svtree
+		         uint32_t intent, 
+		         struct vos_krec_df **krecp,  // 找的这个key的record
+		         daos_handle_t *sub_toh,      // 打开的子树的句柄，dkey的prepare返回的是akey，akey返回的是svtree、evtree
+		         struct vos_ts_set *ts_set)
 {
 	struct ilog_df		    *ilog = NULL;
 	struct vos_krec_df	    *krec = NULL;
@@ -952,6 +969,8 @@ key_tree_prepare(struct vos_object *obj, daos_handle_t toh,
 	 *   create the root for the subtree, or just return it if it's already
 	 *   there.
 	 */
+
+	// 在树上查找
 	rc = dbtree_fetch(toh, BTR_PROBE_EQ, intent, key, NULL, &riov);
 	switch (rc) {
 		default:
@@ -964,6 +983,7 @@ key_tree_prepare(struct vos_object *obj, daos_handle_t toh,
 			/** fall through to cache re-cache entry */
 			
 		case -DER_NONEXIST:
+			
 			/** Key hash may already be calculated but isn't for some key
 			 * types so pass it in here.
 			 */
@@ -981,10 +1001,13 @@ key_tree_prepare(struct vos_object *obj, daos_handle_t toh,
 	}
 
 	if (rc == -DER_NONEXIST) {
-		
+
+	    // 在akey上查找evtree时没有找到，直接报不存在
+	    // 在dkey上查找没有找到，上报失败
 		if (!(flags & SUBTR_CREATE))
 			goto out;
 
+        // 只有1种情况在不存在的情况下会插入：akey上查找svtree
 		rbund.rb_iov	= key;
 		
 		/* use BTR_PROBE_BYPASS to avoid probe again */

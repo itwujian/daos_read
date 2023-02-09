@@ -28,26 +28,26 @@ struct vos_io_context {
 	daos_epoch_range_t	 ic_epr;
 	daos_unit_oid_t		 ic_oid;
 	struct vos_container	*ic_cont;
-	daos_iod_t		*ic_iods;
+	daos_iod_t		        *ic_iods;
 	struct dcs_iod_csums	*ic_iod_csums;
 	/** reference on the object */
-	struct vos_object	*ic_obj;
+	struct vos_object	    *ic_obj;
 	/** BIO descriptor, has ic_iod_nr SGLs */
-	struct bio_desc		*ic_biod;
-	struct vos_ts_set	*ic_ts_set;
+	struct bio_desc		    *ic_biod;
+	struct vos_ts_set	    *ic_ts_set;
 	/** Checksums for bio_iovs in \ic_biod */
-	struct dcs_ci_list	 ic_csum_list;
+	struct dcs_ci_list	     ic_csum_list;
 	/** current dkey info */
 	struct vos_ilog_info	 ic_dkey_info;
 	/** current akey info */
 	struct vos_ilog_info	 ic_akey_info;
 	/** cursor of SGL & IOV in BIO descriptor */
-	unsigned int		 ic_sgl_at;
-	unsigned int		 ic_iov_at;
+	unsigned int		     ic_sgl_at;
+	unsigned int		     ic_iov_at;
 	/** reserved SCM extents */
 	struct vos_rsrvd_scm	*ic_rsrvd_scm;
 	/** reserved offsets for SCM update */
-	umem_off_t		*ic_umoffs;
+	umem_off_t		     *ic_umoffs;
 	unsigned int		 ic_umoffs_cnt;
 	unsigned int		 ic_umoffs_at;
 	/** reserved NVMe extents */
@@ -56,9 +56,9 @@ struct vos_io_context {
 	/** number DAOS IO descriptors */
 	unsigned int		 ic_iod_nr;  // 也就是akey的数量
 	/** deduplication threshold size */
-	uint32_t		 ic_dedup_th;
+	uint32_t		     ic_dedup_th;
 	/** dedup entries to be inserted after transaction done */
-	d_list_t		 ic_dedup_entries;
+	d_list_t		     ic_dedup_entries;
 	/** duped SG lists for dedup verify */
 	struct bio_sglist	*ic_dedup_bsgls;
 	/** bulk data buffers for dedup verify */
@@ -607,9 +607,7 @@ vos_ioc_create(daos_handle_t coh, daos_unit_oid_t oid, bool read_only,
 	uint64_t		 cflags = 0;
 	int			 i, rc;
 
-	if (iod_nr == 0 &&
-	    !(vos_flags &
-	      (VOS_OF_FETCH_SET_TS_ONLY | VOS_OF_FETCH_CHECK_EXISTENCE))) {
+	if (iod_nr == 0 && !(vos_flags & (VOS_OF_FETCH_SET_TS_ONLY | VOS_OF_FETCH_CHECK_EXISTENCE))) {
 		D_ERROR("Invalid iod_nr (0).\n");
 		rc = -DER_IO_INVAL;
 		goto error;
@@ -1558,15 +1556,15 @@ akey_update_single(daos_handle_t toh, uint32_t pm_ver, daos_size_t rsize,
 		   daos_size_t gsize, struct vos_io_context *ioc,
 		   uint16_t minor_epc)
 {
-	struct vos_svt_key	 key;
+	struct vos_svt_key	     key;
 	struct vos_rec_bundle	 rbund;
 	struct dcs_csum_info	 csum;
-	d_iov_t			 kiov, riov;
-	struct bio_iov		*biov;
+	d_iov_t			         kiov, riov;
+	struct bio_iov		    *biov;
 	struct dcs_csum_info	*value_csum;
-	umem_off_t		 umoff;
-	daos_epoch_t		 epoch = ioc->ic_epr.epr_hi;
-	int			 rc;
+	umem_off_t		         umoff;
+	daos_epoch_t		     epoch = ioc->ic_epr.epr_hi;
+	int	rc;
 
 	ci_set_null(&csum);
 	d_iov_set(&kiov, &key, sizeof(key));
@@ -1629,12 +1627,15 @@ akey_update_recx(daos_handle_t toh, uint32_t pm_ver, daos_recx_t *recx,
 
 	if (csum != NULL)
 		ent.ei_csum = *csum;
+	
 	ioc->ic_io_size += recx->rx_nr * rsize;
 	biov = iod_update_biov(ioc);
 	ent.ei_addr = biov->bi_addr;
+	
 	/* Don't make this flag persistent */
 	BIO_ADDR_CLEAR_DEDUP(&ent.ei_addr);
 
+    // vos_obj_array_remove函数回置为true
 	if (ioc->ic_remove)
 		return evt_remove_all(toh, &ent.ei_rect.rc_ex, &ioc->ic_epr);
 
@@ -1642,10 +1643,9 @@ akey_update_recx(daos_handle_t toh, uint32_t pm_ver, daos_recx_t *recx,
 
 	if (ioc->ic_dedup && !rc && (rsize * recx->rx_nr) >= ioc->ic_dedup_th) {
 		daos_size_t csum_len = recx_csum_len(recx, csum, rsize);
-
-		vos_dedup_update(vos_cont2pool(ioc->ic_cont), csum, csum_len,
-				 biov, &ioc->ic_dedup_entries);
+		vos_dedup_update(vos_cont2pool(ioc->ic_cont), csum, csum_len, biov, &ioc->ic_dedup_entries);
 	}
+	
 	return rc;
 }
 
@@ -1682,10 +1682,11 @@ vos_key_mark_agg(struct vos_container *cont, struct vos_krec_df *krec, daos_epoc
 		return 0;
 
 	umm = vos_cont2umm(cont);
+	
 	if (krec->kr_bmap & KREC_BF_BTR)
-		return vos_btr_mark_agg(umm, &krec->kr_btr, epoch);
+		return vos_btr_mark_agg(umm, &krec->kr_btr, epoch);  // Single Value or Key (btree) 的聚合
 
-	return vos_evt_mark_agg(umm, &krec->kr_evt, epoch);
+	return vos_evt_mark_agg(umm, &krec->kr_evt, epoch);      // Array value (evtree) 的聚合
 }
 
 int
@@ -1720,47 +1721,49 @@ static int
 akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh,
 	    uint16_t minor_epc)
 {
-	struct vos_object	*obj = ioc->ic_obj;
-	struct vos_krec_df	*krec = NULL;
-	daos_iod_t		*iod = &ioc->ic_iods[ioc->ic_sgl_at];
+	struct vos_object	    *obj = ioc->ic_obj;
+	struct vos_krec_df	    *krec = NULL;
+	daos_iod_t		        *iod = &ioc->ic_iods[ioc->ic_sgl_at];
 	struct dcs_csum_info	*iod_csums = vos_csum_at(ioc->ic_iod_csums, ioc->ic_sgl_at);
 	struct dcs_csum_info	*recx_csum;
-	uint32_t		 update_cond = 0;
-	bool			 is_array = (iod->iod_type == DAOS_IOD_ARRAY);
-	int			 flags = SUBTR_CREATE;
-	daos_handle_t		 toh = DAOS_HDL_INVAL;
-	int			 i;
-	int			 rc = 0;
+	uint32_t		        update_cond = 0;
+	bool			        is_array = (iod->iod_type == DAOS_IOD_ARRAY);
+	int			            flags = SUBTR_CREATE;
+	daos_handle_t		    toh = DAOS_HDL_INVAL;
+	int	i;
+	int	rc = 0;
 
-	D_DEBUG(DB_TRACE, "akey "DF_KEY" update %s value eph "DF_X64"\n",
-		DP_KEY(&iod->iod_name), is_array ? "array" : "single",
-		ioc->ic_epr.epr_hi);
+	D_DEBUG(DB_TRACE, "akey "DF_KEY" update %s value eph "DF_X64"\n", DP_KEY(&iod->iod_name), is_array ? "array" : "single", ioc->ic_epr.epr_hi);
 
 	if (is_array) {
 		if (iod->iod_nr == 0 || iod->iod_recxs == NULL) {
 			D_ASSERT(iod->iod_nr == 0 && iod->iod_recxs == NULL);
-			D_DEBUG(DB_TRACE, "akey "DF_KEY" update array bypassed - NULL iod_recxs.\n",
-				DP_KEY(&iod->iod_name));
+			D_DEBUG(DB_TRACE, "akey "DF_KEY" update array bypassed - NULL iod_recxs.\n", DP_KEY(&iod->iod_name));
 			return rc;
 		}
+		// 数组的话，flag置evt标记
 		flags |= SUBTR_EVT;
 	}
 
 	rc = key_tree_prepare(obj, ak_toh, VOS_BTR_AKEY,
-			      &iod->iod_name, flags, DAOS_INTENT_UPDATE,
-			      &krec, &toh, ioc->ic_ts_set);
+			              &iod->iod_name, // akey for this iod
+			              flags, DAOS_INTENT_UPDATE,
+			              &krec, // 返回的 akey的record
+			              &toh,  // 打开的具体子树的句柄，evtree or svtree
+			              ioc->ic_ts_set);
 	if (rc < 0) {
-		D_ERROR("akey "DF_KEY" update, key_tree_prepare failed, "DF_RC"\n",
-			DP_KEY(&iod->iod_name), DP_RC(rc));
+		D_ERROR("akey "DF_KEY" update, key_tree_prepare failed, "DF_RC"\n", DP_KEY(&iod->iod_name), DP_RC(rc));
 		return rc;
 	}
 
+    // 在树上没有找到，新创建插入的
 	if (rc == 1) {
 		rc = 0;
-		ioc->ic_agg_needed = 1;
+		ioc->ic_agg_needed = 1; // 标记需要聚合
 	}
 
 	if (ioc->ic_ts_set) {
+		
 		uint64_t akey_flags;
 
 		if (ioc->ic_ts_set->ts_flags & VOS_OF_COND_PER_AKEY)
@@ -1769,20 +1772,23 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh,
 			akey_flags = ioc->ic_ts_set->ts_flags;
 
 		switch (akey_flags) {
-		case VOS_OF_COND_AKEY_UPDATE:
-			update_cond = VOS_ILOG_COND_UPDATE;
-			break;
-		case VOS_OF_COND_AKEY_INSERT:
-			update_cond = VOS_ILOG_COND_INSERT;
-			break;
-		default:
-			break;
+			case VOS_OF_COND_AKEY_UPDATE:
+				update_cond = VOS_ILOG_COND_UPDATE;
+				break;
+			case VOS_OF_COND_AKEY_INSERT:
+				update_cond = VOS_ILOG_COND_INSERT;
+				break;
+			default:
+				break;
 		}
 	}
 
+    // 更新akey中的ilog信息，并且带回ioc->ic_akey_info
 	rc = vos_ilog_update(ioc->ic_cont, &krec->kr_ilog, &ioc->ic_epr,
-			     ioc->ic_bound, &ioc->ic_dkey_info,
-			     &ioc->ic_akey_info, update_cond, ioc->ic_ts_set);
+			             ioc->ic_bound, &ioc->ic_dkey_info,
+			             &ioc->ic_akey_info, 
+			             update_cond, ioc->ic_ts_set);
+	
 	if (update_cond == VOS_ILOG_COND_UPDATE && rc == -DER_NONEXIST) {
 		D_DEBUG(DB_IO, "Conditional update on non-existent akey\n");
 		goto out;
@@ -1793,49 +1799,48 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh,
 	}
 
 	if (rc != 0) {
-		VOS_TX_LOG_FAIL(rc, "Failed to update akey ilog: "DF_RC"\n",
-				DP_RC(rc));
+		VOS_TX_LOG_FAIL(rc, "Failed to update akey ilog: "DF_RC"\n", DP_RC(rc));
 		goto out;
 	}
 
 	if (iod->iod_type == DAOS_IOD_SINGLE) {
+		
 		uint64_t	gsize = iod->iod_size;
 
 		/* See obj_singv_ec_rw_filter. */
 		if (ioc->ic_ec && iod->iod_recxs != NULL)
 			gsize = (uintptr_t)iod->iod_recxs;
 
-		rc = akey_update_single(toh, pm_ver, iod->iod_size, gsize, ioc,
-					minor_epc);
+        // value是sigle的更新 --     svtree
+		rc = akey_update_single(toh, pm_ver, iod->iod_size, gsize, ioc, minor_epc);
 		if (rc)
-			D_ERROR("akey "DF_KEY" update, akey_update_single failed, "DF_RC"\n",
-				DP_KEY(&iod->iod_name), DP_RC(rc));
+			D_ERROR("akey "DF_KEY" update, akey_update_single failed, "DF_RC"\n", DP_KEY(&iod->iod_name), DP_RC(rc));
 		goto out;
-	} /* else: array */
+	} 
 
+	/* else: array */
+	// DAOS_IOD_ARRAY
 	for (i = 0; i < iod->iod_nr; i++) {
+		
 		umem_off_t	umoff = iod_update_umoff(ioc);
 
 		if (iod->iod_recxs[i].rx_nr == 0) {
 			D_ASSERT(UMOFF_IS_NULL(umoff));
-			D_DEBUG(DB_IO,
-				"Skip empty write IOD at %d: idx %lu, nr %lu\n",
-				i, (unsigned long)iod->iod_recxs[i].rx_idx,
-				(unsigned long)iod->iod_recxs[i].rx_nr);
+			D_DEBUG(DB_IO, "Skip empty write IOD at %d: idx %lu, nr %lu\n", i, (unsigned long)iod->iod_recxs[i].rx_idx, (unsigned long)iod->iod_recxs[i].rx_nr);
 			continue;
 		}
 
 		recx_csum = recx_csum_at(iod_csums, i, iod);
-		rc = akey_update_recx(toh, pm_ver, &iod->iod_recxs[i],
-				      recx_csum, iod->iod_size, ioc,
-				      minor_epc);
-		if (rc == 1) {
+
+		// 处理record数组中的1条数据  -- evtree
+		rc = akey_update_recx(toh, pm_ver, &iod->iod_recxs[i], recx_csum, iod->iod_size, ioc, minor_epc);
+		if (rc == 1) {  // 有新插入，需要聚合
 			ioc->ic_agg_needed = 1;
 			rc = 0;
 		}
+		
 		if (rc != 0) {
-			VOS_TX_LOG_FAIL(rc, "akey "DF_KEY" update, akey_update_recx failed, "
-					DF_RC"\n", DP_KEY(&iod->iod_name), DP_RC(rc));
+			VOS_TX_LOG_FAIL(rc, "akey "DF_KEY" update, akey_update_recx failed, "DF_RC"\n", DP_KEY(&iod->iod_name), DP_RC(rc));
 			goto out;
 		}
 	}
@@ -1909,7 +1914,8 @@ dkey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_key_t *dkey,
 		goto out;
 	}
 
-    // 
+    // 循环处理每个akey, 更新akey里面的ilog信息
+    // 以及更新akey里面记录的single value(sv-tree)或者是array value(ev-tree)
 	for (i = 0; i < ioc->ic_iod_nr; i++) {
 		iod_set_cursor(ioc, i);
 		rc = akey_update(ioc, pm_ver, ak_toh, minor_epc);
@@ -2370,16 +2376,15 @@ vos_update_end(daos_handle_t ioh, uint32_t pm_ver, daos_key_t *dkey, int err,
 		goto abort;
 
 	// Update tree index
-	// 
+	// 更新dkey、akey对应的ilog信息，以及akey中的value(single value -> svtree, array value -> evtree)
 	err = dkey_update(ioc, pm_ver, dkey, dtx_is_valid_handle(dth) ? dth->dth_op_seq : VOS_SUB_OP_MAX);
 	if (err) {
 		VOS_TX_LOG_FAIL(err, "Failed to update tree index: "DF_RC"\n", DP_RC(err));
 		goto abort;
 	}
 
-	/** Now that we are past the existence checks, ensure there isn't a
-	 * read conflict
-	 */
+	/** Now that we are past the existence checks, ensure there isn't a read conflict */
+	// 进行读写冲突检查
 	if (vos_ts_set_check_conflict(ioc->ic_ts_set, ioc->ic_epr.epr_hi)) {
 		err = -DER_TX_RESTART;
 		goto abort;
@@ -2401,9 +2406,11 @@ abort:
 			ioc->ic_obj->obj_df->vo_max_write = ioc->ic_epr.epr_hi;
 	}
 
+    // 如果标记了需要聚合，走聚合流程
 	if (err == 0)
 		err = vos_ioc_mark_agg(ioc);
 
+    // 修改SCM上的数据信息事务结束
 	err = vos_tx_end(ioc->ic_cont, dth, &ioc->ic_rsrvd_scm, &ioc->ic_blk_exts, tx_started, err);
 	
 	if (err == 0) {
@@ -2431,6 +2438,7 @@ abort:
 
 	if (size != NULL && err == 0)
 		*size = ioc->ic_io_size;
+	
 	D_FREE(daes);
 	D_FREE(dces);
 	vos_ioc_destroy(ioc, err != 0);

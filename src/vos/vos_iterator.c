@@ -163,8 +163,7 @@ vos_iter_prepare(vos_iter_type_t type, vos_iter_param_t *param,
 
 	*ih = DAOS_HDL_INVAL;
 
-	if (daos_handle_is_inval(param->ip_hdl) &&
-	    daos_handle_is_inval(param->ip_ih)) {
+	if (daos_handle_is_inval(param->ip_hdl) && daos_handle_is_inval(param->ip_ih)) {
 		D_ERROR("No valid handle specified in vos_iter_param\n");
 		return -DER_INVAL;
 	}
@@ -180,54 +179,50 @@ vos_iter_prepare(vos_iter_type_t type, vos_iter_param_t *param,
 	}
 
 	if (daos_handle_is_valid(param->ip_ih)) {
-		D_DEBUG(DB_TRACE, "Preparing nested iterator of type %s\n",
-			dict->id_name);
+		D_DEBUG(DB_TRACE, "Preparing nested iterator of type %s\n", dict->id_name);
 		/** Nested operations are only used internally so there
 		 * shouldn't be any active transaction involved.  However,
 		 * the upper layer is still passing in a valid handle in
 		 * some cases.
 		 */
 		rc = nested_prepare(type, dict, param, ih);
-
 		goto out;
 	}
 
 	switch (type) {
-	case VOS_ITER_OBJ:
-		rlevel = VOS_TS_READ_CONT;
-		break;
-	case VOS_ITER_DKEY:
-		rlevel = VOS_TS_READ_OBJ;
-		break;
-	case VOS_ITER_AKEY:
-		rlevel = VOS_TS_READ_DKEY;
-		break;
-	case VOS_ITER_RECX:
-		rlevel = VOS_TS_READ_AKEY;
-		break;
-	default:
-		rlevel = 0;
-		/** There should not be any cases where a DTX is active outside
-		 *  of the four listed above.
-		 */
-		D_ASSERT(!dtx_is_valid_handle(dth));
-		break;
+		case VOS_ITER_OBJ:
+			rlevel = VOS_TS_READ_CONT;
+			break;
+		case VOS_ITER_DKEY:
+			rlevel = VOS_TS_READ_OBJ;
+			break;
+		case VOS_ITER_AKEY:
+			rlevel = VOS_TS_READ_DKEY;
+			break;
+		case VOS_ITER_RECX:
+			rlevel = VOS_TS_READ_AKEY;
+			break;
+		default:
+			rlevel = 0;
+			/** There should not be any cases where a DTX is active outside
+			 *  of the four listed above.
+			 */
+			D_ASSERT(!dtx_is_valid_handle(dth));
+			break;
 	}
+	
 	rc = vos_ts_set_allocate(&ts_set, 0, rlevel, 1 /* max akeys */, dth);
 	if (rc != 0)
 		goto out;
 
-	D_DEBUG(DB_TRACE, "Preparing standalone iterator of type %s\n",
-		dict->id_name);
+	D_DEBUG(DB_TRACE, "Preparing standalone iterator of type %s\n", dict->id_name);
 
 	old = vos_dth_get();
 	vos_dth_set(dth);
 	rc = dict->id_ops->iop_prepare(type, param, &iter, ts_set);
 	vos_dth_set(old);
 	if (rc != 0) {
-		VOS_TX_LOG_FAIL(rc, "Could not prepare iterator for %s: "DF_RC
-				"\n", dict->id_name, DP_RC(rc));
-
+		VOS_TX_LOG_FAIL(rc, "Could not prepare iterator for %s: "DF_RC"\n", dict->id_name, DP_RC(rc));
 		goto out;
 	}
 
@@ -249,6 +244,7 @@ out:
 		else
 			vos_ts_set_update(ts_set, dth->dth_epoch);
 	}
+	
 	if (rc != 0)
 		vos_ts_set_free(ts_set);
 	return rc;
@@ -324,6 +320,7 @@ vos_iter_probe_ex(daos_handle_t ih, daos_anchor_t *anchor, uint32_t flags)
 	vos_dth_set(iter->it_dth);
 	rc = iter->it_ops->iop_probe(iter, anchor, flags);
 	vos_dth_set(old);
+
 	if (rc == 0)
 		iter->it_state = VOS_ITS_OK;
 	else if (rc == -DER_NONEXIST)

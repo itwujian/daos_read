@@ -1100,36 +1100,36 @@ vos_dtx_status(struct vos_dtx_act_ent *dae)
  */
 int
 vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
-			   daos_epoch_t epoch, uint32_t intent, uint32_t type, bool retry)
+			               daos_epoch_t epoch, uint32_t intent, 
+			               uint32_t type, bool retry)
 {
-	struct dtx_handle		*dth = vos_dth_get();
+	struct dtx_handle		    *dth = vos_dth_get();
 	struct vos_container		*cont;
 	struct vos_dtx_act_ent		*dae = NULL;
-	bool				 found;
+	bool				         found;
 
 	if (dth != NULL && dth->dth_for_migration)
 		intent = DAOS_INTENT_MIGRATION;
 
 	switch (type) {
-	case DTX_RT_SVT:
-	case DTX_RT_EVT:
-	case DTX_RT_ILOG:
-		break;
-	default:
-		D_ERROR("Unexpected DTX type %u\n", type);
-		/* Everything is available to PURGE, even if it belongs to some
-		 * uncommitted DTX that may be garbage because of corruption.
-		 */
-		if (intent == DAOS_INTENT_PURGE)
-			return ALB_AVAILABLE_DIRTY;
+		case DTX_RT_SVT:
+		case DTX_RT_EVT:
+		case DTX_RT_ILOG:
+			break;
+		default:
+			D_ERROR("Unexpected DTX type %u\n", type);
+			/* Everything is available to PURGE, even if it belongs to some
+			 * uncommitted DTX that may be garbage because of corruption.
+			 */
+			if (intent == DAOS_INTENT_PURGE)
+				return ALB_AVAILABLE_DIRTY;
 
-		return -DER_INVAL;
+			return -DER_INVAL;
 	}
 
 	if (intent == DAOS_INTENT_CHECK) {
 		if (dtx_is_aborted(entry))
 			return ALB_UNAVAILABLE;
-
 		return ALB_AVAILABLE_CLEAN;
 	}
 
@@ -1145,13 +1145,9 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 	cont = vos_hdl2cont(coh);
 	D_ASSERT(cont != NULL);
 
-	found = lrua_lookupx(cont->vc_dtx_array, entry - DTX_LID_RESERVED,
-			     epoch, &dae);
+	found = lrua_lookupx(cont->vc_dtx_array, entry - DTX_LID_RESERVED, epoch, &dae);
 	if (!found) {
-		D_DEBUG(DB_TRACE,
-			"Entry %d "DF_U64" not in lru array, it must be committed\n",
-			entry, epoch);
-
+		D_DEBUG(DB_TRACE, "Entry %d "DF_U64" not in lru array, it must be committed\n", entry, epoch);
 		return ALB_AVAILABLE_CLEAN;
 	}
 
@@ -1160,9 +1156,7 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 		 * The DTX entry still references related data record,
 		 * then we cannot (vos) aggregate related data record.
 		 */
-		D_WARN("DTX "DF_DTI" (%u) still references the data, cannot be (VOS) aggregated\n",
-		       DP_DTI(&DAE_XID(dae)), vos_dtx_status(dae));
-
+		D_WARN("DTX "DF_DTI" (%u) still references the data, cannot be (VOS) aggregated\n", DP_DTI(&DAE_XID(dae)), vos_dtx_status(dae));
 		return ALB_AVAILABLE_DIRTY;
 	}
 
@@ -1212,32 +1206,26 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 		return -DER_TX_UNCERTAIN;
 	}
 
-	if (DAOS_FAIL_CHECK(DAOS_DTX_MISS_COMMIT) ||
-	    DAOS_FAIL_CHECK(DAOS_DTX_MISS_ABORT))
+	if (DAOS_FAIL_CHECK(DAOS_DTX_MISS_COMMIT) || DAOS_FAIL_CHECK(DAOS_DTX_MISS_ABORT))
 		return ALB_UNAVAILABLE;
 
 	if (dth != NULL && !(DAE_FLAGS(dae) & DTE_LEADER)) {
 		struct dtx_share_peer	*dsp;
 
 		d_list_for_each_entry(dsp, &dth->dth_share_cmt_list, dsp_link) {
-			if (memcmp(&dsp->dsp_xid, &DAE_XID(dae),
-				   sizeof(struct dtx_id)) == 0)
+			if (memcmp(&dsp->dsp_xid, &DAE_XID(dae), sizeof(struct dtx_id)) == 0)
 				return ALB_AVAILABLE_CLEAN;
 		}
 
 		d_list_for_each_entry(dsp, &dth->dth_share_abt_list, dsp_link) {
-			if (memcmp(&dsp->dsp_xid, &DAE_XID(dae),
-				   sizeof(struct dtx_id)) == 0)
+			if (memcmp(&dsp->dsp_xid, &DAE_XID(dae), sizeof(struct dtx_id)) == 0)
 				return ALB_UNAVAILABLE;
 		}
 
 		d_list_for_each_entry(dsp, &dth->dth_share_act_list, dsp_link) {
-			if (memcmp(&dsp->dsp_xid, &DAE_XID(dae),
-				   sizeof(struct dtx_id)) == 0) {
-				if (!dtx_is_valid_handle(dth) ||
-				    intent == DAOS_INTENT_IGNORE_NONCOMMITTED)
+			if (memcmp(&dsp->dsp_xid, &DAE_XID(dae), sizeof(struct dtx_id)) == 0) {
+				if (!dtx_is_valid_handle(dth) || intent == DAOS_INTENT_IGNORE_NONCOMMITTED)
 					return ALB_UNAVAILABLE;
-
 				return dtx_inprogress(dae, dth, true, true, 4);
 			}
 		}
@@ -1446,25 +1434,25 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 	if (dth->dth_need_validation && !dth->dth_verified) {
 		rc = vos_dtx_validation(dth);
 		switch (rc) {
-		case DTX_ST_INITED:
-			break;
-		case DTX_ST_PREPARED:
-		case DTX_ST_COMMITTED:
-		case DTX_ST_COMMITTABLE:
-			/* Aborted then prepared/committed by race.
-			 * Return -DER_ALREADY to avoid repeated modification.
-			 *
-			 * Reset current dth->dth_ent to bypass cleanup.
-			 */
-			dth->dth_ent = NULL;
-			dth->dth_already = 1;
-			D_GOTO(out, rc = -DER_ALREADY);
-		case DTX_ST_ABORTED:
-			D_ASSERT(dth->dth_ent == NULL);
-			/* Aborted, return -DER_INPROGRESS for client retry. */
-			D_GOTO(out, rc = -DER_INPROGRESS);
-		default:
-			D_ASSERT(0);
+			case DTX_ST_INITED:
+				break;
+			case DTX_ST_PREPARED:
+			case DTX_ST_COMMITTED:
+			case DTX_ST_COMMITTABLE:
+				/* Aborted then prepared/committed by race.
+				 * Return -DER_ALREADY to avoid repeated modification.
+				 *
+				 * Reset current dth->dth_ent to bypass cleanup.
+				 */
+				dth->dth_ent = NULL;
+				dth->dth_already = 1;
+				D_GOTO(out, rc = -DER_ALREADY);
+			case DTX_ST_ABORTED:
+				D_ASSERT(dth->dth_ent == NULL);
+				/* Aborted, return -DER_INPROGRESS for client retry. */
+				D_GOTO(out, rc = -DER_INPROGRESS);
+			default:
+				D_ASSERT(0);
 		}
 	}
 
@@ -1498,11 +1486,8 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 		} else {
 			D_ASSERT(dbd->dbd_magic == DTX_ACT_BLOB_MAGIC);
 
-			dae->dae_df_off = cont_df->cd_dtx_active_tail +
-					offsetof(struct vos_dtx_blob_df,
-						 dbd_active_data) +
-					sizeof(struct vos_dtx_act_ent_df) *
-					dbd->dbd_index;
+			dae->dae_df_off = cont_df->cd_dtx_active_tail + offsetof(struct vos_dtx_blob_df, dbd_active_data) +
+					          sizeof(struct vos_dtx_act_ent_df) * dbd->dbd_index;
 			dae->dae_dbd = dbd;
 		}
 
@@ -1518,8 +1503,7 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 	}
 
 out:
-	D_DEBUG(DB_TRACE, "Register DTX record for "DF_DTI
-		": lid=%d entry %p, type %d, %s ilog entry, rc %d\n", DP_DTI(&dth->dth_xid),
+	D_DEBUG(DB_TRACE, "Register DTX record for "DF_DTI": lid=%d entry %p, type %d, %s ilog entry, rc %d\n", DP_DTI(&dth->dth_xid),
 		dth->dth_ent == NULL ? 0 : DAE_LID((struct vos_dtx_act_ent *)dth->dth_ent),
 		dth->dth_ent, type, dth->dth_modify_shared ? "has" : "has not", rc);
 
@@ -2166,14 +2150,11 @@ vos_dtx_commit(daos_handle_t coh, struct dtx_id dtis[], int count, bool rm_cos[]
 	rc = umem_tx_begin(vos_cont2umm(cont), NULL);
 	if (rc == 0) {
 		committed = vos_dtx_commit_internal(cont, dtis, count, 0, rm_cos, daes, dces);
-		rc = umem_tx_end(vos_cont2umm(cont),
-				 committed > 0 ? 0 : committed);
+		rc = umem_tx_end(vos_cont2umm(cont), committed > 0 ? 0 : committed);
 		if (rc == 0)
-			vos_dtx_post_handle(cont, daes, dces,
-					    count, false, false);
+			vos_dtx_post_handle(cont, daes, dces, count, false, false);
 		else
-			vos_dtx_post_handle(cont, daes, dces,
-					    count, false, true);
+			vos_dtx_post_handle(cont, daes, dces, count, false, true);
 	}
 
 out:
