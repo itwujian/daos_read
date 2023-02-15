@@ -1023,8 +1023,8 @@ btr_check_availability(struct btr_context *tcx, struct btr_check_alb *alb)
 		return PROBE_RC_OK;
 
 	rec = btr_node_rec_at(tcx, alb->nd_off, alb->at);
-	rc = btr_ops(tcx)->to_check_availability(&tcx->tc_tins, rec,
-						 alb->intent);
+	rc = btr_ops(tcx)->to_check_availability(&tcx->tc_tins, rec, alb->intent);
+	
 	if (rc == -DER_INPROGRESS) /* Uncertain */
 		return PROBE_RC_INPROGRESS;
 
@@ -1035,27 +1035,27 @@ btr_check_availability(struct btr_context *tcx, struct btr_check_alb *alb)
 		return PROBE_RC_ERR;
 
 	switch (rc) {
-	case ALB_AVAILABLE_DIRTY:
-		/* XXX: This case is mainly used for purge operation.
-		 *	There are some uncommitted modifications that
-		 *	may belong to some old crashed operations. We
-		 *	hope that the caller can make further check
-		 *	about whether can remove them from the system
-		 *	or not.
-		 *
-		 *	Currently, the main caller with purge intent
-		 *	is the aggregation. We need more handling
-		 *	for the case in the new aggregation logic.
-		 *	But before that, just make it fall through.
-		 */
-	case ALB_AVAILABLE_ABORTED:
-		/** NB: Entry is aborted flag set and we can purge it */
-	case ALB_AVAILABLE_CLEAN:
-		return PROBE_RC_OK;
-	case ALB_UNAVAILABLE:
-	default:
-		/* Unavailable */
-		return PROBE_RC_UNAVAILABLE;
+		case ALB_AVAILABLE_DIRTY:
+			/* XXX: This case is mainly used for purge operation.
+			 *	There are some uncommitted modifications that
+			 *	may belong to some old crashed operations. We
+			 *	hope that the caller can make further check
+			 *	about whether can remove them from the system
+			 *	or not.
+			 *
+			 *	Currently, the main caller with purge intent
+			 *	is the aggregation. We need more handling
+			 *	for the case in the new aggregation logic.
+			 *	But before that, just make it fall through.
+			 */
+		case ALB_AVAILABLE_ABORTED:
+			/** NB: Entry is aborted flag set and we can purge it */
+		case ALB_AVAILABLE_CLEAN:
+			return PROBE_RC_OK;
+		case ALB_UNAVAILABLE:
+		default:
+			/* Unavailable */
+			return PROBE_RC_UNAVAILABLE;
 	}
 }
 
@@ -1994,8 +1994,7 @@ btr_update(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 
 	rec = btr_trace2rec(tcx, tcx->tc_depth - 1);
 
-	D_DEBUG(DB_TRACE, "Update record %s\n",
-		btr_rec_string(tcx, rec, true, sbuf, BTR_PRINT_BUF));
+	D_DEBUG(DB_TRACE, "Update record %s\n", btr_rec_string(tcx, rec, true, sbuf, BTR_PRINT_BUF));
 
 	rc = btr_rec_update(tcx, rec, key, val, val_out);
 	if (rc == -DER_NO_PERM) { /* cannot make inplace change */
@@ -2011,6 +2010,7 @@ btr_update(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 		btr_rec_free(tcx, rec, NULL);
 		rc = btr_rec_alloc(tcx, key, val, rec, val_out);
 	}
+	
 out:
 	if (rc != 0) { /* failed */
 		D_DEBUG(DB_TRACE, "Failed to update record: "DF_RC"\n",

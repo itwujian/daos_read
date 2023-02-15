@@ -21,18 +21,22 @@ vos_ilog_status_get(struct umem_instance *umm, uint32_t tx_id,
 
 	coh.cookie = (unsigned long)args;
 
-	rc = vos_dtx_check_availability(coh, tx_id, epoch, intent, DTX_RT_ILOG, retry);
+	rc = vos_dtx_check_availability(coh, tx_id/*entry*/, epoch, intent, DTX_RT_ILOG, retry);
 	if (rc < 0)
 		return rc;
 
 	switch (rc) {
+		
 		case ALB_UNAVAILABLE:
 		case ALB_AVAILABLE_DIRTY:
 			return ILOG_UNCOMMITTED;
+		
 		case ALB_AVAILABLE_CLEAN:
 			return ILOG_COMMITTED;
+			
 		case ALB_AVAILABLE_ABORTED:
 			break;
+			
 		default:
 			D_ASSERTF(0, "Unexpected availability\n");
 	}
@@ -143,7 +147,7 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 		info->ii_empty = false;
 
 		/** If a punch epoch is passed in, and it is later than any
-		 * punch in this log, treat it as a prior punch
+		 * punch in this log, treat it as a prior(之前) punch
 		 */
 		if (vos_ilog_punched(&entry, punch)) {
 			info->ii_prior_punch = *punch;
@@ -244,10 +248,19 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 }
 
 static int
-vos_ilog_fetch_internal(struct umem_instance *umm, daos_handle_t coh, uint32_t intent,
-			struct ilog_df *ilog, const daos_epoch_range_t *epr, daos_epoch_t bound,
-			const struct vos_punch_record *punched, const struct vos_ilog_info *parent,
-			struct vos_ilog_info *info)
+vos_ilog_fetch_internal(// vpool上偏移的基地址
+                                 struct umem_instance *umm,  
+                                 daos_handle_t coh, 
+                                 uint32_t intent,
+                                 // ilog root for obj/dkey/akey
+			                     struct ilog_df *ilog,       
+			                     const daos_epoch_range_t *epr,
+			                     daos_epoch_t bound,
+			                     // 带下来的punch信息(iter_check和agg使用)
+			                     const struct vos_punch_record *punched, 
+			                     const struct vos_ilog_info *parent,
+			                     // 需要带出来的ilog info信息
+			                     struct vos_ilog_info *info)
 {
 	struct ilog_desc_cbs	 cbs;
 	struct vos_punch_record	 punch = {0};

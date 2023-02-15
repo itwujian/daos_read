@@ -72,7 +72,7 @@ struct pool_component {
 	/** pool_comp_state_t */
 	uint8_t		co_status;
 	/** target index inside the node */
-	uint8_t		co_index;
+	uint8_t		co_index;  // targetId
 	/** padding for 64-bit alignment */
 	uint8_t		co_padding;
 	/** Immutable component ID. */

@@ -203,7 +203,8 @@ struct vos_pool {
 	/** memory attribute of the @vp_umm */
 	struct umem_attr	vp_uma;
 	/** memory class instance of the pool */
-	struct umem_instance	vp_umm;
+	struct umem_instance	vp_umm;  // PMDK上内存偏移的基地址，
+	                                 //各个节点在此地址上基于各自off进行偏移就可以访问树上各个节点
 	/** Size of pool file */
 	uint64_t		vp_size;
 	/** Features enabled for this pool */

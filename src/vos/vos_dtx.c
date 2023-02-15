@@ -116,8 +116,10 @@ dtx_inprogress(struct vos_dtx_act_ent *dae, struct dtx_handle *dth,
 {
 	struct dtx_share_peer	*dsp;
 	struct dtx_memberships	*mbs;
-	bool			 s_try = false;
+	bool			        s_try = false;
 
+    // ilog为modify操作时retry为true
+    // ilog为fetch操作时，DAOS_INTENT_UPDATE或者DAOS_INTENT_PUNCH为false,其余为true
 	if (!retry)
 		return -DER_INPROGRESS;
 
@@ -132,9 +134,7 @@ dtx_inprogress(struct vos_dtx_act_ent *dae, struct dtx_handle *dth,
 	 * to reply at that time.
 	 */
 	if (hit_again) {
-		while ((dsp = d_list_pop_entry(&dth->dth_share_tbd_list,
-					       struct dtx_share_peer,
-					       dsp_link)) != NULL)
+		while ((dsp = d_list_pop_entry(&dth->dth_share_tbd_list, struct dtx_share_peer, dsp_link)) != NULL)
 			dtx_dsp_free(dsp);
 		dth->dth_share_tbd_count = 0;
 		goto out;
@@ -143,8 +143,7 @@ dtx_inprogress(struct vos_dtx_act_ent *dae, struct dtx_handle *dth,
 	s_try = true;
 
 	d_list_for_each_entry(dsp, &dth->dth_share_tbd_list, dsp_link) {
-		if (memcmp(&dsp->dsp_xid, &DAE_XID(dae),
-			   sizeof(struct dtx_id)) == 0)
+		if (memcmp(&dsp->dsp_xid, &DAE_XID(dae), sizeof(struct dtx_id)) == 0)
 			goto out;
 	}
 
@@ -153,9 +152,7 @@ dtx_inprogress(struct vos_dtx_act_ent *dae, struct dtx_handle *dth,
 
 	D_ALLOC(dsp, sizeof(*dsp) + sizeof(*mbs) + DAE_MBS_DSIZE(dae));
 	if (dsp == NULL) {
-		D_ERROR("Hit uncommitted DTX "DF_DTI" at %d: lid=%d, "
-			"but fail to alloc DRAM.\n",
-			DP_DTI(&DAE_XID(dae)), pos, DAE_LID(dae));
+		D_ERROR("Hit uncommitted DTX "DF_DTI" at %d: lid=%d, but fail to alloc DRAM.\n", DP_DTI(&DAE_XID(dae)), pos, DAE_LID(dae));
 		return -DER_NOMEM;
 	}
 
@@ -174,16 +171,15 @@ dtx_inprogress(struct vos_dtx_act_ent *dae, struct dtx_handle *dth,
 		memcpy(mbs->dm_data, DAE_MBS_INLINE(dae), DAE_MBS_DSIZE(dae));
 	} else {
 		struct umem_instance	*umm;
-
 		umm = vos_cont2umm(vos_hdl2cont(dth->dth_coh));
-		memcpy(mbs->dm_data, umem_off2ptr(umm, DAE_MBS_OFF(dae)),
-		       DAE_MBS_DSIZE(dae));
+		memcpy(mbs->dm_data, umem_off2ptr(umm, DAE_MBS_OFF(dae)), DAE_MBS_DSIZE(dae));
 	}
 
 	dsp->dsp_inline_mbs = 1;
 	dsp->dsp_mbs = mbs;
 
-	d_list_add_tail(&dsp->dsp_link, &dth->dth_share_tbd_list);
+    // dtx_refresh时候访问dth_share_tbd_list链表
+	d_list_add_tail(&dsp->dsp_link, &dth->dth_share_tbd_list); 
 	dth->dth_share_tbd_count++;
 
 out:
@@ -579,62 +575,56 @@ do_dtx_rec_release(struct umem_instance *umm, struct vos_container *cont,
 		return 0;
 
 	switch (dtx_umoff_flag2type(rec)) {
-	case DTX_RT_ILOG: {
-		rc = dtx_ilog_rec_release(umm, cont, rec, dae, abort);
-		break;
-	}
-	case DTX_RT_SVT: {
-		struct vos_irec_df	*svt;
-
-		svt = umem_off2ptr(umm, umem_off2offset(rec));
-		if (abort) {
-			if (DAE_INDEX(dae) != DTX_INDEX_INVAL) {
-				rc = umem_tx_add_ptr(umm, &svt->ir_dtx,
-						     sizeof(svt->ir_dtx));
+		
+		case DTX_RT_ILOG: {
+			rc = dtx_ilog_rec_release(umm, cont, rec, dae, abort);
+			break;
+		}
+		
+		case DTX_RT_SVT: {
+			struct vos_irec_df	*svt;
+			svt = umem_off2ptr(umm, umem_off2offset(rec));
+			if (abort) {
+				if (DAE_INDEX(dae) != DTX_INDEX_INVAL) {
+					rc = umem_tx_add_ptr(umm, &svt->ir_dtx, sizeof(svt->ir_dtx));
+					if (rc != 0)
+						return rc;
+				}
+				dtx_set_aborted(&svt->ir_dtx);
+			} else {
+				rc = umem_tx_add_ptr(umm, &svt->ir_dtx, sizeof(svt->ir_dtx));
 				if (rc != 0)
 					return rc;
+				svt->ir_dtx = DTX_LID_COMMITTED;
 			}
-
-			dtx_set_aborted(&svt->ir_dtx);
-		} else {
-			rc = umem_tx_add_ptr(umm, &svt->ir_dtx,
-					     sizeof(svt->ir_dtx));
-			if (rc != 0)
-				return rc;
-
-			svt->ir_dtx = DTX_LID_COMMITTED;
+			break;
 		}
-		break;
-	}
-	case DTX_RT_EVT: {
-		struct evt_desc		*evt;
-
-		evt = umem_off2ptr(umm, umem_off2offset(rec));
-		if (abort) {
-			if (DAE_INDEX(dae) != DTX_INDEX_INVAL) {
-				rc = umem_tx_add_ptr(umm, &evt->dc_dtx,
-						     sizeof(evt->dc_dtx));
+		
+		case DTX_RT_EVT: {
+			struct evt_desc		*evt;
+			evt = umem_off2ptr(umm, umem_off2offset(rec));
+			if (abort) {
+				if (DAE_INDEX(dae) != DTX_INDEX_INVAL) {
+					rc = umem_tx_add_ptr(umm, &evt->dc_dtx, sizeof(evt->dc_dtx));
+					if (rc != 0)
+						return rc;
+				}
+				dtx_set_aborted(&evt->dc_dtx);
+			} else {
+				rc = umem_tx_add_ptr(umm, &evt->dc_dtx, sizeof(evt->dc_dtx));
 				if (rc != 0)
 					return rc;
+				evt->dc_dtx = DTX_LID_COMMITTED;
 			}
-
-			dtx_set_aborted(&evt->dc_dtx);
-		} else {
-			rc = umem_tx_add_ptr(umm, &evt->dc_dtx,
-					     sizeof(evt->dc_dtx));
-			if (rc != 0)
-				return rc;
-
-			evt->dc_dtx = DTX_LID_COMMITTED;
+			break;
 		}
-		break;
-	}
-	default:
-		/* On-disk data corruption case. */
-		rc = -DER_IO;
-		D_ERROR("Unknown DTX "DF_DTI" type %u\n",
-			DP_DTI(&DAE_XID(dae)), dtx_umoff_flag2type(rec));
-		break;
+		
+		default:
+			/* On-disk data corruption case. */
+			rc = -DER_IO;
+			D_ERROR("Unknown DTX "DF_DTI" type %u\n",
+				DP_DTI(&DAE_XID(dae)), dtx_umoff_flag2type(rec));
+			break;
 	}
 
 	return rc;
@@ -1100,8 +1090,9 @@ vos_dtx_status(struct vos_dtx_act_ent *dae)
  */
 int
 vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
-			               daos_epoch_t epoch, uint32_t intent, 
-			               uint32_t type, bool retry)
+			                         daos_epoch_t epoch, /*重点是这个epoch  , 以其为key在cont的vc_dtx_array上找dae*/
+			                         uint32_t intent, 
+			                         uint32_t type, bool retry)
 {
 	struct dtx_handle		    *dth = vos_dth_get();
 	struct vos_container		*cont;
@@ -1111,13 +1102,14 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 	if (dth != NULL && dth->dth_for_migration)
 		intent = DAOS_INTENT_MIGRATION;
 
+/*  只是单纯的校验下type的合法性 */ 
 	switch (type) {
 		case DTX_RT_SVT:
 		case DTX_RT_EVT:
 		case DTX_RT_ILOG:
 			break;
 		default:
-			D_ERROR("Unexpected DTX type %u\n", type);
+			D_ERROR("Unexpected DTX type %u\n", type);  
 			/* Everything is available to PURGE, even if it belongs to some
 			 * uncommitted DTX that may be garbage because of corruption.
 			 */
@@ -1126,7 +1118,9 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 
 			return -DER_INVAL;
 	}
+/*	只是单纯的校验下type的合法性 */ 
 
+    /* check aborted or not */
 	if (intent == DAOS_INTENT_CHECK) {
 		if (dtx_is_aborted(entry))
 			return ALB_UNAVAILABLE;
@@ -1139,23 +1133,23 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 
 	/* Aborted */
 	if (dtx_is_aborted(entry))
-		return intent == DAOS_INTENT_PURGE ?
-			ALB_AVAILABLE_ABORTED : ALB_UNAVAILABLE;
+		return intent == DAOS_INTENT_PURGE ? ALB_AVAILABLE_ABORTED : ALB_UNAVAILABLE;
 
 	cont = vos_hdl2cont(coh);
 	D_ASSERT(cont != NULL);
 
+    // 在cont->vc_dtx_array数组(Array for active DTX records)中找到索引为entry - DTX_LID_RESERVED的array，
+    // 然后找到key为epoch的dae
 	found = lrua_lookupx(cont->vc_dtx_array, entry - DTX_LID_RESERVED, epoch, &dae);
 	if (!found) {
+		// active中没有，表示是干净的
 		D_DEBUG(DB_TRACE, "Entry %d "DF_U64" not in lru array, it must be committed\n", entry, epoch);
 		return ALB_AVAILABLE_CLEAN;
 	}
 
 	if (intent == DAOS_INTENT_PURGE) {
-		/*
-		 * The DTX entry still references related data record,
-		 * then we cannot (vos) aggregate related data record.
-		 */
+		// The DTX entry still references related data record,
+		// then we cannot (vos) aggregate related data record.
 		D_WARN("DTX "DF_DTI" (%u) still references the data, cannot be (VOS) aggregated\n", DP_DTI(&DAE_XID(dae)), vos_dtx_status(dae));
 		return ALB_AVAILABLE_DIRTY;
 	}
@@ -1164,6 +1158,7 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 	if (dtx_is_valid_handle(dth) && dae == dth->dth_ent)
 		return ALB_AVAILABLE_CLEAN;
 
+    /* 以下是 dae != dth->dth_ent */
 	if (dae->dae_committable || dae->dae_committed || DAE_FLAGS(dae) & DTE_PARTIAL_COMMITTED)
 		return ALB_AVAILABLE_CLEAN;
 
@@ -1176,9 +1171,7 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 		 * epoch. But if the obj/key is corrupted, or it is fetch
 		 * operation, then return -DER_DATA_LOSS.
 		 */
-		if ((intent == DAOS_INTENT_UPDATE ||
-		     intent == DAOS_INTENT_PUNCH) &&
-		    (type == DTX_RT_SVT || type == DTX_RT_EVT))
+		if ((intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH) && (type == DTX_RT_SVT || type == DTX_RT_EVT))
 			return ALB_AVAILABLE_CLEAN;
 
 		/* Corrupted DTX is invisible to data migration. */
@@ -1194,9 +1187,7 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 		 * epoch. But if the obj/key is orphan, or it is fetch
 		 * operation, then return -DER_TX_UNCERTAIN.
 		 */
-		if ((intent == DAOS_INTENT_UPDATE ||
-		     intent == DAOS_INTENT_PUNCH) &&
-		    (type == DTX_RT_SVT || type == DTX_RT_EVT))
+		if ((intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH) && (type == DTX_RT_SVT || type == DTX_RT_EVT))
 			return ALB_AVAILABLE_CLEAN;
 
 		/* Orphan DTX is invisible to data migration. */
@@ -1286,8 +1277,7 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 		return ALB_UNAVAILABLE;
 	}
 
-	D_ASSERTF(intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH,
-		  "Unexpected intent (1) %u\n", intent);
+	D_ASSERTF(intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH, "Unexpected intent (1) %u\n", intent);
 
 	if (type == DTX_RT_ILOG) {
 		if (!dtx_is_valid_handle(dth))
@@ -1305,8 +1295,7 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
 		return dtx_inprogress(dae, dth, false, retry, 3);
 	}
 
-	D_ASSERTF(intent == DAOS_INTENT_UPDATE,
-		  "Unexpected intent (2) %u\n", intent);
+	D_ASSERTF(intent == DAOS_INTENT_UPDATE, "Unexpected intent (2) %u\n", intent);
 
 	/*
 	 * We do not share modification between two DTXs for SV/EV value.
@@ -1924,43 +1913,40 @@ vos_dtx_commit_internal(struct vos_container *cont, struct dtx_id dtis[],
 			int count, daos_epoch_t epoch, bool rm_cos[],
 			struct vos_dtx_act_ent **daes, struct vos_dtx_cmt_ent **dces)
 {
-	struct vos_cont_df		*cont_df = cont->vc_cont_df;
+	struct vos_cont_df		    *cont_df = cont->vc_cont_df;
 	struct umem_instance		*umm = vos_cont2umm(cont);
 	struct vos_dtx_blob_df		*dbd;
 	struct vos_dtx_blob_df		*dbd_prev;
-	umem_off_t			 dbd_off;
-	daos_epoch_t			 cmt_time = d_hlc_get();
+	umem_off_t			         dbd_off;
+	daos_epoch_t			     cmt_time = d_hlc_get();
 	int				 committed = 0;
 	int				 cur = 0;
 	int				 rc = 0;
 	int				 rc1 = 0;
 	int				 i = 0;
 	int				 j;
-	bool				 fatal = false;
-	bool				 allocated = false;
+	bool			 fatal = false;
+	bool			 allocated = false;
 
 	dbd = umem_off2ptr(umm, cont_df->cd_dtx_committed_tail);
 	if (dbd == NULL)
 		goto new_blob;
 
-	D_ASSERTF(dbd->dbd_magic == DTX_CMT_BLOB_MAGIC,
-		  "Corrupted committed DTX blob %x\n", dbd->dbd_magic);
+	D_ASSERTF(dbd->dbd_magic == DTX_CMT_BLOB_MAGIC, "Corrupted committed DTX blob %x\n", dbd->dbd_magic);
 
-	D_ASSERTF(dbd->dbd_cap >= dbd->dbd_count,
-		  "Invalid committed DTX blob slots %d/%d\n",
-		  dbd->dbd_cap, dbd->dbd_count);
+	D_ASSERTF(dbd->dbd_cap >= dbd->dbd_count, "Invalid committed DTX blob slots %d/%d\n", dbd->dbd_cap, dbd->dbd_count);
 
 	if (dbd->dbd_cap == dbd->dbd_count)
 		goto new_blob;
 
 again:
-	for (j = dbd->dbd_count; i < count && j < dbd->dbd_cap && rc1 == 0;
-	     i++, cur++) {
+	for (j = dbd->dbd_count; i < count && j < dbd->dbd_cap && rc1 == 0; i++, cur++) {
+		
 		struct vos_dtx_cmt_ent	*dce = NULL;
 
 		rc = vos_dtx_commit_one(cont, &dtis[cur], epoch, cmt_time, &dce,
-					daes != NULL ? &daes[cur] : NULL,
-					rm_cos != NULL ? &rm_cos[cur] : NULL, &fatal);
+					            daes != NULL ? &daes[cur] : NULL,
+					            rm_cos != NULL ? &rm_cos[cur] : NULL, &fatal);
 		if (dces != NULL)
 			dces[cur] = dce;
 
@@ -1977,15 +1963,12 @@ again:
 			rc1 = rc;
 
 		if (dce != NULL)
-			dtx_memcpy_nodrain(umm, &dbd->dbd_committed_data[j++],
-					   &dce->dce_base,
-					   sizeof(struct vos_dtx_cmt_ent_df));
+			dtx_memcpy_nodrain(umm, &dbd->dbd_committed_data[j++], &dce->dce_base, sizeof(struct vos_dtx_cmt_ent_df));
 	}
 
 	if (!allocated) {
 		/* Only need to add range for the first partial blob. */
-		rc = umem_tx_add_ptr(umm, &dbd->dbd_count,
-				     sizeof(dbd->dbd_count));
+		rc = umem_tx_add_ptr(umm, &dbd->dbd_count, sizeof(dbd->dbd_count));
 		if (rc != 0)
 			D_GOTO(out, fatal = true);
 	}
@@ -2063,17 +2046,15 @@ vos_dtx_post_handle(struct vos_container *cont,
 			return;
 
 		for (i = 0; i < count; i++) {
+			
 			if (dces[i] == NULL)
 				continue;
 
-			d_iov_set(&kiov, &DCE_XID(dces[i]),
-				  sizeof(DCE_XID(dces[i])));
-			rc = dbtree_delete(cont->vc_dtx_committed_hdl,
-					   BTR_PROBE_EQ, &kiov, NULL);
+			d_iov_set(&kiov, &DCE_XID(dces[i]), sizeof(DCE_XID(dces[i])));
+			
+			rc = dbtree_delete(cont->vc_dtx_committed_hdl, BTR_PROBE_EQ, &kiov, NULL);
 			if (rc != 0 && rc != -DER_NONEXIST) {
-				D_WARN("Failed to rollback cmt DTX entry "
-				       DF_DTI": "DF_RC"\n",
-				       DP_DTI(&DCE_XID(dces[i])), DP_RC(rc));
+				D_WARN("Failed to rollback cmt DTX entry "DF_DTI": "DF_RC"\n", DP_DTI(&DCE_XID(dces[i])), DP_RC(rc));
 				dces[i]->dce_invalid = 1;
 			}
 		}
@@ -2098,8 +2079,7 @@ vos_dtx_post_handle(struct vos_container *cont,
 			continue;
 
 		d_iov_set(&kiov, &DAE_XID(daes[i]), sizeof(DAE_XID(daes[i])));
-		rc = dbtree_delete(cont->vc_dtx_active_hdl, BTR_PROBE_EQ,
-				   &kiov, NULL);
+		rc = dbtree_delete(cont->vc_dtx_active_hdl, BTR_PROBE_EQ, &kiov, NULL);
 		if (rc == 0 || rc == -DER_NONEXIST) {
 			dtx_evict_lid(cont, daes[i]);
 		} else {
@@ -2108,8 +2088,7 @@ vos_dtx_post_handle(struct vos_container *cont,
 			 * as 'committed' or 'aborted'. That will consume some
 			 * DRAM until server restart.
 			 */
-			D_WARN("Cannot remove DTX "DF_DTI" from active table: "
-			       DF_RC"\n", DP_DTI(&DAE_XID(daes[i])), DP_RC(rc));
+			D_WARN("Cannot remove DTX "DF_DTI" from active table: "DF_RC"\n", DP_DTI(&DAE_XID(daes[i])), DP_RC(rc));
 
 			if (abort) {
 				daes[i]->dae_aborted = 1;

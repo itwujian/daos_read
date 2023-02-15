@@ -1891,7 +1891,7 @@ dkey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_key_t *dkey,
 			update_cond = VOS_ILOG_COND_INSERT;
 	}
 
-    // 更新dky中记录的ilog信息后填充到ic_dkey_info中，
+    // 更新dkey中记录的ilog信息后填充到ic_dkey_info中，
 	rc = vos_ilog_update(ioc->ic_cont, &krec->kr_ilog, // ilog root
 	                    &ioc->ic_epr,                  // Range of update
 			            ioc->ic_bound,                 // Epoch uncertainty bound

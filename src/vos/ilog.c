@@ -33,6 +33,10 @@ enum {
  */
 
 struct ilog_tree {
+    // 1. 二者都为0，表示当前ilog树是空树
+    // 2. it_embedded为0，it_root非0，表示当前有多个ilog entry,
+    //    此时的ilog树更像是set在使用
+    // 3. it_embedded为非0，it_root0，表示当前只有1个ilog entry,
 	umem_off_t	it_root;
 	uint64_t	it_embedded;
 };
@@ -115,11 +119,11 @@ ilog_status_get(struct ilog_context *lctx, const struct ilog_id *id, uint32_t in
 	if (!cbs->dc_log_status_cb)
 		return ILOG_COMMITTED;
 
+    // vos_ilog_status_get
 	rc = cbs->dc_log_status_cb(&lctx->ic_umm, id->id_tx_id, id->id_epoch, intent, retry,
 				   cbs->dc_log_status_args);
 
-	if ((intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH)
-	    && rc == -DER_INPROGRESS)
+	if ((intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH) && rc == -DER_INPROGRESS)
 		return ILOG_UNCOMMITTED;
 
 	return rc;
@@ -944,8 +948,7 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in,
 
 		if (id_in->id_punch_minor_eph == 0 &&
 		    root->lr_id.id_punch_minor_eph < root->lr_id.id_update_minor_eph &&
-		    id_in->id_epoch > root->lr_id.id_epoch &&
-		    visibility == ILOG_COMMITTED) {
+		    id_in->id_epoch > root->lr_id.id_epoch && visibility == ILOG_COMMITTED) {
 			D_DEBUG(DB_TRACE, "No update needed\n");
 			goto done;
 		}
@@ -1043,6 +1046,7 @@ struct ilog_priv {
 	/** Embedded status entries */
 	struct ilog_info	 ip_embedded[NUM_EMBEDDED];
 };
+
 D_CASSERT(sizeof(struct ilog_priv) <= ILOG_PRIV_SIZE);
 
 static inline struct ilog_priv *
@@ -1078,8 +1082,7 @@ ilog_fetch_move(struct ilog_entries *dest, struct ilog_entries *src)
 }
 
 static void
-ilog_status_refresh(struct ilog_context *lctx, uint32_t intent,
-		    struct ilog_entries *entries)
+ilog_status_refresh(struct ilog_context *lctx, uint32_t intent, struct ilog_entries *entries)
 {
 	struct ilog_priv	*priv = ilog_ent2priv(entries);
 	struct ilog_entry	 entry;
@@ -1088,14 +1091,22 @@ ilog_status_refresh(struct ilog_context *lctx, uint32_t intent,
 
 	priv->ip_intent = intent;
 	priv->ip_rc = 0;
+
+    // 遍历所有的long entry
 	ilog_foreach_entry(entries, &entry) {
+
+	    // 本次fetch和上次目的相同，并且ilog已经处于稳态(ILOG_COMMITTED, ILOG_REMOVED)，不处理
 		if (same_intent && (entry.ie_status == ILOG_COMMITTED || entry.ie_status == ILOG_REMOVED))
 			continue;
+
+		// 两次目的不同或者entry.ie_status = ILOG_UNCOMMITTED
+		// 如果当前这个log entry还未提交，再次查询下这个entry的状态并更新
 		status = ilog_status_get(lctx, &entry.ie_id, intent, (intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH) ? false : true);
 		if (status < 0 && status != -DER_INPROGRESS) {
 			priv->ip_rc = status;
 			return;
 		}
+		
 		entries->ie_info[entry.ie_idx].ii_removed = 0;
 		entries->ie_info[entry.ie_idx].ii_status = status;
 	}
@@ -1112,17 +1123,33 @@ ilog_fetch_cached(struct umem_instance *umm, struct ilog_root *root,
 	D_ASSERT(entries->ie_info != NULL);
 	D_ASSERT(priv->ip_alloc_size != 0 || entries->ie_info == &priv->ip_embedded[0]);
 
+
+	// 第一次进来，priv里面的一定是0的，不会命中直接走reset
+
+    // 上次访问的根节点和当前这次访问的根节点不一致                   或者     
+    // 上次访问时ilog版本号和当前这次根节点的ilog版本号不一致
+    // 表示前后这两次操作的是不同的entry， 即没命中，
 	if (priv->ip_lctx.ic_root != root || priv->ip_log_version != ilog_mag2ver(root->lr_magic)) {
 		goto reset;
 	}
 
+    
+    // 上次访问的根节点和当前这次访问的根节点一致                                         同时   
+    // 上次访问时ilog版本号和当前这次根节点的ilog版本号一致
+    // 表示前后这两次操作的是相同的entry， 即命中
 	if (priv->ip_rc == -DER_NONEXIST)
 		return true;
 
 	D_ASSERT(entries->ie_ids != NULL);
+
+	// entries在前一次的fetch中已经填写了
+	// 虽然命中但是前后两次查询的目的不同或者有log entry尚未提交需要再次重新查询下ilog的状态
 	ilog_status_refresh(&priv->ip_lctx, intent, entries);
 
 	return true;
+
+
+	// 在没有命中的场景下，将ilog_priv上次访问的信息更新为当前信息，以备下次使用
 reset:
 	lctx->ic_root = root;
 	lctx->ic_root_off = umem_ptr2off(umm, root);
@@ -1200,18 +1227,27 @@ ilog_fetch(struct umem_instance *umm, struct ilog_df *root_df,
 		return 0;
 	}
 
+// 没有
+
+	// ilog_fetch_cached返回false, ip_lctx为新填的初始化的
 	lctx = &priv->ip_lctx;
 	if (ilog_empty(root))
 		D_GOTO(out, rc = 0);
 
+    // 赋值给ilog_array_cache
 	ilog_log2cache(lctx, &cache);
 
 	rc = prepare_entries(entries, &cache);
 	if (rc != 0)
 		goto fail;
 
+    
 	for (i = 0; i < cache.ac_nr; i++) {
 		id = &cache.ac_entries[i];
+		// 拿着log entry中的ilog_id, 以id_tx_id为索引在cont的dtx_array中找到对应的array
+		// 然后以ilog_id中的id_epoch为key，找到对应的dae(事务)
+		// 在tls的线程变量中获取当前线程的事务，vos_dtx_check_availability函数计算出
+		// 这个log entry的ilog状态(ILOG_COMMITTED,ILOG_UNCOMMITTED,ILOG_ABORT)
 		status = ilog_status_get(lctx, id, intent, (intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH) ? false : true);
 		if (status < 0 && status != -DER_INPROGRESS)
 			D_GOTO(fail, rc = status);
@@ -1227,6 +1263,7 @@ out:
 	priv->ip_rc = rc;
 
 	return rc;
+	
 fail:
 	/* fetch again next time */
 	priv->ip_log_version = ILOG_MAGIC;

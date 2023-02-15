@@ -89,9 +89,9 @@ struct lru_array {
 	/** Callbacks for implementation */
 	struct lru_callbacks	 la_cbs;
 	/** User callback argument passed on init */
-	void			*la_arg;
+	void			         *la_arg;
 	/** Allocated subarrays */
-	struct lru_sub		 la_sub[0];
+	struct lru_sub		     la_sub[0];
 };
 
 /** Internal converter for real index to sub array index */

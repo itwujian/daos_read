@@ -204,7 +204,7 @@ enum daos_ops_intent {
 	DAOS_INTENT_PURGE		= 1, /* purge/aggregation */
 	DAOS_INTENT_UPDATE		= 2, /* write/insert */
 	DAOS_INTENT_PUNCH		= 3, /* punch/delete */
-	DAOS_INTENT_MIGRATION		= 4, /* for migration related scan */
+	DAOS_INTENT_MIGRATION	= 4, /* for migration related scan */
 	DAOS_INTENT_CHECK		= 5, /* check aborted or not */
 	DAOS_INTENT_KILL		= 6, /* delete object/key */
 	DAOS_INTENT_IGNORE_NONCOMMITTED	= 7, /* ignore non-committed DTX. */

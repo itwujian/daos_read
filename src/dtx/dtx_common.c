@@ -1315,10 +1315,8 @@ dtx_leader_end(struct dtx_leader_handle *dlh, struct ds_cont_hdl *coh, int resul
 	if (rc == 0) {
 		if (!DAOS_FAIL_CHECK(DAOS_DTX_NO_COMMITTABLE)) {
 			vos_dtx_mark_committable(dth);
-			if (cont->sc_dtx_committable_count >
-			    DTX_THRESHOLD_COUNT) {
+			if (cont->sc_dtx_committable_count > DTX_THRESHOLD_COUNT) {
 				struct dss_module_info	*dmi;
-
 				dmi = dss_get_module_info();
 				sched_req_wakeup(dmi->dmi_dtx_cmt_req);
 			}
@@ -1338,8 +1336,7 @@ sync:
 		dte = &dth->dth_dte;
 		rc = dtx_commit(cont, &dte, NULL, 1);
 		if (rc != 0)
-			D_WARN(DF_UUID": Fail to sync commit DTX "DF_DTI": "DF_RC"\n",
-			       DP_UUID(cont->sc_uuid), DP_DTI(&dth->dth_xid), DP_RC(rc));
+			D_WARN(DF_UUID": Fail to sync commit DTX "DF_DTI": "DF_RC"\n", DP_UUID(cont->sc_uuid), DP_DTI(&dth->dth_xid), DP_RC(rc));
 
 		/*
 		 * NOTE: The semantics of 'sync' commit does not guarantee that all
@@ -1393,8 +1390,7 @@ out:
 		int	i;
 
 		for (i = 0; i < dth->dth_dti_cos_count; i++)
-			dtx_del_cos(cont, &dth->dth_dti_cos[i],
-				    &dth->dth_leader_oid, dth->dth_dkey_hash);
+			dtx_del_cos(cont, &dth->dth_dti_cos[i], &dth->dth_leader_oid, dth->dth_dkey_hash);
 	}
 
 	D_FREE(dth->dth_oid_array);

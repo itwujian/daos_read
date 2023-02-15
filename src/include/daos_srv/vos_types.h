@@ -68,13 +68,13 @@ enum dtx_entry_flags {
 
 struct dtx_entry {
 	/** The identifier of the DTX. */
-	struct dtx_id			 dte_xid;
+	struct dtx_id			dte_xid;
 	/** The pool map version when the DTX happened. */
-	uint32_t			 dte_ver;
+	uint32_t			    dte_ver;
 	/** The reference count. */
-	uint32_t			 dte_refs;
+	uint32_t			    dte_refs;
 	/** The DAOS targets participating in the DTX. */
-	struct dtx_memberships		*dte_mbs;
+	struct dtx_memberships	*dte_mbs;
 };
 
 /* The 'dte_mbs' must be the last member of 'dtx_entry'. */

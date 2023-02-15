@@ -303,6 +303,8 @@ out:
 	
 	/* For DTX_COMMIT, it is the count of real committed DTX entries. */
 	dout->do_misc = committed;
+
+	// 回响应给发送端(通常是dtx leader)
 	rc = crt_reply_send(rpc);
 	if (rc != 0)
 		D_ERROR("send reply failed for DTX rpc %u: rc = "DF_RC"\n", opc, DP_RC(rc));
@@ -333,9 +335,7 @@ out:
 
 		D_ASSERT(j == rc1);
 
-		/* Commit the DTX after replied the original refresh request to
-		 * avoid further query the same DTX.
-		 */
+		// Commit the DTX after replied the original refresh request to avoid further query the same DTX.
 		rc = dtx_commit(cont, pdte, dcks, j);
 		if (rc < 0)
 			D_WARN("Failed to commit DTX "DF_DTI", count %d: "DF_RC"\n", DP_DTI(&dtes[0].dte_xid), j, DP_RC(rc));

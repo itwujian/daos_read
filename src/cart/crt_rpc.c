@@ -1405,14 +1405,11 @@ crt_req_send(crt_rpc_t *req, crt_cb_t complete_cb, void *arg)
 	if (rpc_priv->crp_coll) {
 		rc = crt_corpc_req_hdlr(rpc_priv);
 		if (rc != 0)
-			RPC_ERROR(rpc_priv,
-				  "crt_corpc_req_hdlr() failed, " DF_RC "\n",
-				  DP_RC(rc));
+			RPC_ERROR(rpc_priv, "crt_corpc_req_hdlr() failed, " DF_RC "\n", DP_RC(rc));
 		D_GOTO(out, rc);
 	} else {
 		if (!rpc_priv->crp_have_ep) {
-			D_WARN("target endpoint not set "
-				"rpc: %p, opc: %#x.\n", rpc_priv, req->cr_opc);
+			D_WARN("target endpoint not set rpc: %p, opc: %#x.\n", rpc_priv, req->cr_opc);
 			D_GOTO(out, rc = -DER_INVAL);
 		}
 	}
@@ -1424,18 +1421,14 @@ crt_req_send(crt_rpc_t *req, crt_cb_t complete_cb, void *arg)
 		/* tracked in crt_ep_inflight::epi_req_q */
 		rc = crt_req_send_internal(rpc_priv);
 		if (rc != 0) {
-			RPC_ERROR(rpc_priv,
-				  "crt_req_send_internal() failed, " DF_RC "\n",
-				  DP_RC(rc));
+			RPC_ERROR(rpc_priv, "crt_req_send_internal() failed, " DF_RC "\n", DP_RC(rc));
 			crt_context_req_untrack(rpc_priv);
 		}
 	} else if (rc == CRT_REQ_TRACK_IN_WAITQ) {
 		/* queued in crt_hg_context::dhc_req_q */
 		rc = 0;
 	} else {
-		RPC_ERROR(rpc_priv,
-			  "crt_context_req_track() failed, " DF_RC "\n",
-			  DP_RC(rc));
+		RPC_ERROR(rpc_priv, "crt_context_req_track() failed, " DF_RC "\n", DP_RC(rc));
 	}
 
 out:
@@ -1482,8 +1475,7 @@ crt_reply_send(crt_rpc_t *req)
 		RPC_TRACE(DB_ALL, rpc_priv, "reply_send\n");
 		rc = crt_hg_reply_send(rpc_priv);
 		if (rc != 0)
-			D_ERROR("crt_hg_reply_send failed, rc: %d,opc: %#x.\n",
-				rc, rpc_priv->crp_pub.cr_opc);
+			D_ERROR("crt_hg_reply_send failed, rc: %d,opc: %#x.\n", rc, rpc_priv->crp_pub.cr_opc);
 	}
 
 	rpc_priv->crp_reply_pending = 0;

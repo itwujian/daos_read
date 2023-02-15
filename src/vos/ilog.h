@@ -170,7 +170,7 @@ struct ilog_entry {
 /* Information about ilog entries */
 struct ilog_info {
 	/** Status of ilog entry */
-	int16_t		ii_status;
+	int16_t		ii_status;  // -> ilog_status
 	/** Used internally to indicate removal during aggregation */
 	uint16_t	ii_removed;
 };
@@ -185,9 +185,9 @@ struct ilog_entries {
 	/** Parsed information about each ilog entry */
 	struct ilog_info	*ie_info;
 	/** Number of entries in the log */
-	int64_t			 ie_num_entries;
+	int64_t			     ie_num_entries;
 	/** Private log data */
-	uint8_t			 ie_priv[ILOG_PRIV_SIZE];
+	uint8_t			     ie_priv[ILOG_PRIV_SIZE];
 };
 
 /**
