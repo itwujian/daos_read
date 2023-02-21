@@ -187,6 +187,7 @@ struct ilog_entries {
 	/** Number of entries in the log */
 	int64_t			     ie_num_entries;
 	/** Private log data */
+	// 缓存的上次fetch时查询出的log entry信息 -> ilog_priv
 	uint8_t			     ie_priv[ILOG_PRIV_SIZE];
 };
 

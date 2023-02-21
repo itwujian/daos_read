@@ -30,8 +30,7 @@ policy_io_size(struct vos_pool *pool, daos_iod_type_t type, daos_size_t size)
 	if (pool->vp_vea_info == NULL)
 		return DAOS_MEDIA_SCM;
 
-	scm_threshold = pool->vp_policy_desc.params[0] > 0 ?
-		pool->vp_policy_desc.params[0] : VOS_POLICY_SCM_THRESHOLD;
+	scm_threshold = pool->vp_policy_desc.params[0] > 0 ? pool->vp_policy_desc.params[0] : VOS_POLICY_SCM_THRESHOLD;
 
 	return (size >= scm_threshold) ? DAOS_MEDIA_NVME : DAOS_MEDIA_SCM;
 }
@@ -49,9 +48,7 @@ policy_write_intensivity(struct vos_pool *pool, daos_iod_type_t type,
 
 /* policy functions table */
 static enum daos_media_type_t
-(*vos_policies[DAOS_MEDIA_POLICY_MAX])(struct vos_pool*, daos_iod_type_t,
-				      daos_size_t) = {policy_io_size,
-						      policy_write_intensivity};
+(*vos_policies[DAOS_MEDIA_POLICY_MAX])(struct vos_pool*, daos_iod_type_t, daos_size_t) = {policy_io_size, policy_write_intensivity};
 
 enum daos_media_type_t
 vos_policy_media_select(struct vos_pool *pool, daos_iod_type_t type,

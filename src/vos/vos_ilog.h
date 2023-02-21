@@ -24,6 +24,7 @@ enum {
 	/** Operation is conditional punch */
 	VOS_ILOG_COND_PUNCH,
 	/** Operation is conditional update */
+	/* 根据dkey、akey的操作是更新还是插入来觉得ilog是更新还是插入  */
 	VOS_ILOG_COND_UPDATE,
 	/** Operation is conditional insert */
 	VOS_ILOG_COND_INSERT,

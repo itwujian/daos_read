@@ -2009,8 +2009,7 @@ vos_reserve_blocks(struct vos_container *cont, d_list_t *rsrvd_nvme,
 }
 
 static int
-reserve_space(struct vos_io_context *ioc, uint16_t media, daos_size_t size,
-	      uint64_t *off)
+reserve_space(struct vos_io_context *ioc, uint16_t media, daos_size_t size, uint64_t *off)
 {
 	uint64_t	now;
 	int		rc;
@@ -2030,14 +2029,12 @@ reserve_space(struct vos_io_context *ioc, uint16_t media, daos_size_t size,
 		if (now - ioc->ic_cont->vc_io_nospc_ts > VOS_NOSPC_ERROR_INTVL) {
 			daos_size_t	scm_used = 0, scm_active = 0;
 
-			rc = pmemobj_ctl_get(vos_cont2pool(ioc->ic_cont)->vp_umm.umm_pool,
-					     "stats.heap.run_allocated", &scm_used);
+			rc = pmemobj_ctl_get(vos_cont2pool(ioc->ic_cont)->vp_umm.umm_pool, "stats.heap.run_allocated", &scm_used);
 
-			rc = pmemobj_ctl_get(vos_cont2pool(ioc->ic_cont)->vp_umm.umm_pool,
-					     "stats.heap.run_active", &scm_active);
+			rc = pmemobj_ctl_get(vos_cont2pool(ioc->ic_cont)->vp_umm.umm_pool, "stats.heap.run_active", &scm_active);
 
-			D_ERROR("Reserve "DF_U64" from SCM failed, run_allocated: "
-				""DF_U64", run_active: "DF_U64"\n", size, scm_used, scm_active);
+			D_ERROR("Reserve "DF_U64" from SCM failed, run_allocated: "DF_U64", run_active: "DF_U64"\n", size, scm_used, scm_active);
+			
 			ioc->ic_cont->vc_io_nospc_ts = now;
 		}
 		return -DER_NOSPACE;
@@ -2072,23 +2069,23 @@ iod_reserve(struct vos_io_context *ioc, struct bio_iov *biov)
 	bsgl->bs_nr_out++;
 
 	D_DEBUG(DB_TRACE, "media %d offset "DF_X64" size %zd\n",
-		biov->bi_addr.ba_type, biov->bi_addr.ba_off,
-		bio_iov2len(biov));
+		biov->bi_addr.ba_type,   // 写入盘的类型
+		biov->bi_addr.ba_off,    // 在盘上的偏移地址
+		bio_iov2len(biov));      // 写入数据的长度大小
 	return 0;
 }
 
 /* Reserve single value record on specified media */
 static int
-vos_reserve_single(struct vos_io_context *ioc, uint16_t media,
-		   daos_size_t size)
+vos_reserve_single(struct vos_io_context *ioc, uint16_t media, daos_size_t size)
 {
-	struct vos_irec_df	*irec;
-	daos_size_t		 scm_size;
-	umem_off_t		 umoff;
-	struct bio_iov		 biov;
-	uint64_t		 off = 0;
-	int			 rc;
-	struct dcs_csum_info	*value_csum = vos_csum_at(ioc->ic_iod_csums, ioc->ic_sgl_at);
+	struct vos_irec_df	  *irec;
+	daos_size_t		       scm_size;
+	umem_off_t		       umoff;
+	struct bio_iov		   biov;
+	uint64_t		       off = 0;
+	int			           rc;
+	struct dcs_csum_info  *value_csum = vos_csum_at(ioc->ic_iod_csums, ioc->ic_sgl_at);
 
 	/*
 	 * TODO:
@@ -2098,9 +2095,7 @@ vos_reserve_single(struct vos_io_context *ioc, uint16_t media,
 	 * vos_irec_df->ir_ex_addr, small unaligned part will be stored on SCM
 	 * along with vos_irec_df, being referenced by vos_irec_df->ir_body.
 	 */
-	scm_size = (media == DAOS_MEDIA_SCM) ?
-		vos_recx2irec_size(size, value_csum) :
-		vos_recx2irec_size(0, value_csum);
+	scm_size = (media == DAOS_MEDIA_SCM) ? vos_recx2irec_size(size, value_csum) : vos_recx2irec_size(0, value_csum);
 
 	rc = reserve_space(ioc, DAOS_MEDIA_SCM, scm_size, &off);
 	if (rc) {
@@ -2119,18 +2114,17 @@ vos_reserve_single(struct vos_io_context *ioc, uint16_t media,
 		goto done;
 	}
 
-	if (media == DAOS_MEDIA_SCM) {
+	if (media == DAOS_MEDIA_SCM) {     // 写到SCM上
 		char *payload_addr;
-
 		/* Get the record payload offset */
 		payload_addr = vos_irec2data(irec);
 		D_ASSERT(payload_addr >= (char *)irec);
 		off = umoff + (payload_addr - (char *)irec);
-	} else {
+	} 
+	else {                             // 写到NVME上
 		rc = reserve_space(ioc, DAOS_MEDIA_NVME, size, &off);
 		if (rc) {
-			D_ERROR("Reserve NVMe for SV failed. "DF_RC"\n",
-				DP_RC(rc));
+			D_ERROR("Reserve NVMe for SV failed. "DF_RC"\n", DP_RC(rc));
 			return rc;
 		}
 	}
@@ -2162,13 +2156,10 @@ vos_reserve_recx(struct vos_io_context *ioc, uint16_t media, daos_size_t size,
 		}
 	}
 
-	if (ioc->ic_dedup && size >= ioc->ic_dedup_th &&
-	    vos_dedup_lookup(vos_cont2pool(ioc->ic_cont), csum, csum_len,
-			     &biov)) {
+	if (ioc->ic_dedup && size >= ioc->ic_dedup_th && vos_dedup_lookup(vos_cont2pool(ioc->ic_cont), csum, csum_len, &biov)) {
 		if (biov.bi_data_len == size) {
 			D_ASSERT(biov.bi_addr.ba_off != 0);
-			ioc->ic_umoffs[ioc->ic_umoffs_cnt] =
-							biov.bi_addr.ba_off;
+			ioc->ic_umoffs[ioc->ic_umoffs_cnt] = biov.bi_addr.ba_off;
 			ioc->ic_umoffs_cnt++;
 			return iod_reserve(ioc, &biov);
 		}
@@ -2213,7 +2204,8 @@ akey_update_begin(struct vos_io_context *ioc)
 		uint16_t media;
 
 		size = (iod->iod_type == DAOS_IOD_SINGLE) ? iod->iod_size : iod->iod_recxs[i].rx_nr * iod->iod_size;
-		
+
+		// 决定写的介质：DAOS_MEDIA_NVME or DAOS_MEDIA_SCM
 		media = vos_policy_media_select(vos_cont2pool(ioc->ic_cont), iod->iod_type, size, VOS_IOS_GENERIC);
 
 		if (iod->iod_type == DAOS_IOD_SINGLE) {

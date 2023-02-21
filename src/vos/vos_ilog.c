@@ -49,7 +49,7 @@ vos_ilog_is_same_tx(struct umem_instance *umm, uint32_t tx_id,
 		    daos_epoch_t epoch, bool *same, void *args)
 {
 	struct dtx_handle	*dth = vos_dth_get();
-	uint32_t		 dtx = vos_dtx_get();
+	uint32_t		     dtx = vos_dtx_get();
 
 	*same = false;
 
@@ -138,7 +138,7 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 
 	D_ASSERT(punch->pr_epc <= epr->epr_hi);
 
-// for循环开始
+// for循环开始遍历所有的log entry
 	ilog_foreach_entry_reverse(&info->ii_entries, &entry) {
 		
 		if (entry.ie_status == ILOG_REMOVED)
@@ -279,6 +279,7 @@ vos_ilog_fetch_internal(// vpool上偏移的基地址
 	}
 
 init:
+    // 不管缓存有没有命中info重新构造
 	info->ii_uncommitted = 0;
 	info->ii_create = 0;
 	info->ii_full_scan = true;
@@ -292,14 +293,16 @@ init:
 	
 	if (punched != NULL)
 		punch = *punched;
-	
+
+	// dkey的ilog以obj为准盖过来， akey的ilog以dkey为准盖过来
 	if (parent != NULL) {
 		info->ii_prior_any_punch = parent->ii_prior_any_punch;
 		punch = parent->ii_prior_punch;
 		info->ii_uncommitted = parent->ii_uncommitted;
 	}
 
-    // 只有找到了才会进这个分支
+    // 只有info->ii_entries中有数据才会进这个分支
+    // 可能是缓存命中用的上次的也可能是ilog发生变化重新找到的
 	if (rc == 0)
 		// 遍历info->ii_entries中有效的entry,与vos_punch_record、epr、bound比较
 		// 以修改vos_ilog_info中记录的信息， 具体算法还没有搞懂？？？
@@ -407,12 +410,12 @@ int vos_ilog_update_(struct vos_container *cont, struct ilog_df *ilog,
 		D_GOTO(done, rc = -DER_INPROGRESS); // 如果父节点的epoch还没有提交，不允许更新子节点的，返回失败
 	if (rc == -DER_TX_RESTART) // Transaction should restart
 		goto done;
-	if (rc == -DER_NONEXIST)   // The specified entity does not exist, 不存在这个ilog
-		goto update;
-	if (rc != 0)               // 其他错误
+	if (rc == -DER_NONEXIST)   // The specified entity does not exist,ilog里面1个entry都没有
+		goto update;          // 说明ilog的这棵树还是空树，应该是第一次插入
+	if (rc != 0)              
 		goto done;
 
-    // 找到了这个ilog，信息放到info里面
+    // 检查这个ilog是否已经被punch了，被punch了反DER_NONEXIST走update
 	rc = vos_ilog_update_check(info, &max_epr);
 	if (rc == 0) {
 		if (cond == VOS_ILOG_COND_INSERT)
@@ -422,13 +425,12 @@ int vos_ilog_update_(struct vos_container *cont, struct ilog_df *ilog,
 		goto done;
 	}
 
-	// 这个ilog已经被punch了,反不存在
 	if (rc != -DER_NONEXIST) {
 		D_ERROR("Check failed: "DF_RC"\n", DP_RC(rc));
 		return rc;
 	}
 
-// 没有找到ilog
+// 第一次插入，此时ilog的树还是空树或者info->ii_create <= info->ii_prior_any_punch.pr_epc
 update:
     // VOS_ILOG_COND_UPDATE和VOS_ILOG_COND_INSERT；更新插入没有找到
 	if (has_cond && rc == -DER_NONEXIST) {
@@ -441,7 +443,7 @@ update:
 			D_GOTO(done, rc = -DER_NONEXIST);
 	}
 
-    // insert和punch没有找到ilog
+    // insert和punch
 	vos_ilog_desc_cbs_init(&cbs, vos_cont2hdl(cont));
 	rc = ilog_open(vos_cont2umm(cont), ilog, &cbs, &loh);
 	if (rc != 0) {
@@ -449,6 +451,7 @@ update:
 		return rc;
 	}
 
+    // 构造 ilog_id, 最终调用ilog_log_add， 向ilog的树里面插入
 	rc = ilog_update(loh, &max_epr, epr->epr_hi, dtx_is_valid_handle(dth) ? dth->dth_op_seq : VOS_SUB_OP_MAX, false);
 
 	ilog_close(loh);

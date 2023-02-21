@@ -459,7 +459,9 @@ check_object:
 	 */
 	if (ts_set && ts_set->ts_flags & VOS_COND_UPDATE_OP_MASK)
 		cond_mask = VOS_ILOG_COND_UPDATE;
-	
+
+	// 传入obj的ilog的树根，针对这次生成对应的ilog的entry,然后vos_dtx_register_record
+	// 并将此次查询产生的ilog info带出来放到obj里面
 	rc = vos_ilog_update(cont, &obj->obj_df->vo_ilog, epr, bound, NULL, 
 	                     &obj->obj_ilog_info, cond_mask, ts_set);
 	

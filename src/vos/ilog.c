@@ -66,7 +66,7 @@ struct ilog_root {
 		struct ilog_id		lr_id;
 		struct ilog_tree	lr_tree;
 	};
-	uint32_t			lr_ts_idx;
+	uint32_t			lr_ts_idx; // 作用是啥和timeset有关
 	uint32_t			lr_magic;
 };
 
@@ -506,8 +506,8 @@ D_CASSERT(sizeof(struct ilog_id) * ILOG_ARRAY_APPEND_NR == ILOG_ARRAY_CHUNK_SIZE
 static int
 ilog_root_migrate(struct ilog_context *lctx, const struct ilog_id *id_in)
 {
-	struct ilog_root	 tmp = {0};
-	umem_off_t		 tree_root;
+	struct ilog_root	tmp = {0};
+	umem_off_t		    tree_root;
 	struct ilog_root	*root;
 	struct ilog_array	*array;
 	int			 rc = 0;
@@ -517,8 +517,7 @@ ilog_root_migrate(struct ilog_context *lctx, const struct ilog_id *id_in)
 
 	rc = ilog_tx_begin(lctx);
 	if (rc != 0) {
-		D_ERROR("Failed to start PMDK transaction: rc = %s\n",
-			d_errstr(rc));
+		D_ERROR("Failed to start PMDK transaction: rc = %s\n", d_errstr(rc));
 		return rc;
 	}
 
@@ -569,6 +568,7 @@ check_equal(struct ilog_context *lctx, struct ilog_id *id_out, const struct ilog
 		return 0;
 
 	if (update) {
+		// vos_ilog_is_same_tx
 		rc = ilog_is_same_tx(lctx, id_out, is_equal);
 		if (rc != 0)
 			return rc;
@@ -598,8 +598,7 @@ check_equal(struct ilog_context *lctx, struct ilog_id *id_out, const struct ilog
 			    id_out->id_punch_minor_eph)
 				return -DER_ALREADY;
 		}
-		D_DEBUG(DB_IO, "Access of incarnation log from multiple DTX"
-			" at same time is not allowed: rc=DER_TX_RESTART\n");
+		D_DEBUG(DB_IO, "Access of incarnation log from multiple DTX at same time is not allowed: rc=DER_TX_RESTART\n");
 		return -DER_TX_RESTART;
 	}
 
@@ -623,19 +622,19 @@ update_inplace(struct ilog_context *lctx, struct ilog_id *id_out, const struct i
 	if (rc != 0 || !*is_equal || opc == ILOG_OP_ABORT)
 		return rc;
 
+// rc == 0 && *is_equal && opc != ILOG_OP_ABORT 往下走
 	saved_id.id_value = id_out->id_value;
 	if (opc == ILOG_OP_PERSIST) {
-		D_DEBUG(DB_TRACE, "Setting "DF_X64" to persistent\n",
-			id_in->id_epoch);
-		saved_id.id_tx_id = 0;
+		D_DEBUG(DB_TRACE, "Setting "DF_X64" to persistent\n", id_in->id_epoch);
+		saved_id.id_tx_id = 0;  // ILOG_OP_PERSIST赋值0，然后给id_out
 		goto set_id;
 	}
 
-	if (saved_id.id_punch_minor_eph > saved_id.id_update_minor_eph &&
-	    id_in->id_punch_minor_eph)
+//  opc == ILOG_OP_UPDATE
+	if (saved_id.id_punch_minor_eph > saved_id.id_update_minor_eph && id_in->id_punch_minor_eph)
 		return 0; /** Already a punch */
-	if (saved_id.id_update_minor_eph > saved_id.id_punch_minor_eph &&
-	    id_in->id_update_minor_eph)
+	
+	if (saved_id.id_update_minor_eph > saved_id.id_punch_minor_eph && id_in->id_update_minor_eph)
 		return 0; /** Already an update */
 
 	if (saved_id.id_punch_minor_eph < id_in->id_punch_minor_eph)
@@ -649,9 +648,8 @@ update_inplace(struct ilog_context *lctx, struct ilog_id *id_out, const struct i
 	/* New operation has a new minor epoch.  Update the old entry
 	 * accordingly.
 	 */
-	D_DEBUG(DB_TRACE, "Updating "DF_X64
-		" lid=%d punch=(%d->%d) update=(%d-%d)\n", id_in->id_epoch,
-		id_out->id_tx_id, id_out->id_punch_minor_eph,
+	D_DEBUG(DB_TRACE, "Updating "DF_X64" lid=%d punch=(%d->%d) update=(%d-%d)\n", 
+	    id_in->id_epoch, id_out->id_tx_id, id_out->id_punch_minor_eph,
 		saved_id.id_punch_minor_eph, id_out->id_update_minor_eph,
 		saved_id.id_update_minor_eph);
 
@@ -660,6 +658,7 @@ set_id:
 		D_ERROR("Matching punch/update minor epoch not allowed\n");
 		return -DER_NO_PERM;
 	}
+	
 	return ilog_ptr_set(lctx, &id_out->id_value, &saved_id.id_value);
 }
 
@@ -739,7 +738,7 @@ ilog_tree_modify(struct ilog_context *lctx, const struct ilog_id *id_in,
 	struct ilog_id		 id = *id_in;
 	struct ilog_id		*id_out;
 	bool			 is_equal;
-	int			 visibility = ILOG_COMMITTED;
+	int			     visibility = ILOG_COMMITTED;
 	uint32_t		 new_len;
 	size_t			 new_size;
 	umem_off_t		 new_array;
@@ -757,6 +756,7 @@ ilog_tree_modify(struct ilog_context *lctx, const struct ilog_id *id_in,
 			break;
 	}
 
+    // 说明ilog里面所有的entry的epoch都要大于传入的ilog的epoch
 	if (i < 0) {
 		if (opc != ILOG_OP_UPDATE) {
 			D_DEBUG(DB_TRACE, "No entry found, done\n");
@@ -765,12 +765,12 @@ ilog_tree_modify(struct ilog_context *lctx, const struct ilog_id *id_in,
 		goto insert;
 	}
 
+    // 找到ilog里面第一个entry(大于传入ilog的epoch)
 	id_out = &cache.ac_entries[i];
 
 	visibility = ILOG_UNCOMMITTED;
 
-	if (id_out->id_epoch <= epr->epr_hi &&
-	    id_out->id_epoch >= epr->epr_lo) {
+	if (id_out->id_epoch <= epr->epr_hi && id_out->id_epoch >= epr->epr_lo) {
 		visibility = ilog_status_get(lctx, id_out, DAOS_INTENT_UPDATE, true);
 		if (visibility < 0 && visibility != -DER_TX_UNCERTAIN)
 			return visibility;
@@ -783,7 +783,6 @@ ilog_tree_modify(struct ilog_context *lctx, const struct ilog_id *id_in,
 	if (is_equal) {
 		if (opc != ILOG_OP_ABORT)
 			return 0;
-
 		return remove_entry(lctx, &cache, i);
 	}
 
@@ -795,6 +794,7 @@ ilog_tree_modify(struct ilog_context *lctx, const struct ilog_id *id_in,
 	if (id_in->id_punch_minor_eph == 0 && visibility != ILOG_UNCOMMITTED &&
 	    id_out->id_update_minor_eph > id_out->id_punch_minor_eph)
 		return 0;
+	
 insert:
 	rc = ilog_tx_begin(lctx);
 	if (rc != 0)
@@ -845,15 +845,13 @@ insert:
 	}
 
 	array = cache.ac_array;
-	rc = umem_tx_add_ptr(&lctx->ic_umm, &array->ia_id[i],
-			     sizeof(array->ia_id[0]) * (cache.ac_nr - i + 1));
+	rc = umem_tx_add_ptr(&lctx->ic_umm, &array->ia_id[i], sizeof(array->ia_id[0]) * (cache.ac_nr - i + 1));
 	if (rc != 0)
 		return rc;
 
 	if (i != cache.ac_nr) {
 		/* Copy the entries after i */
-		memmove(&array->ia_id[i + 1], &array->ia_id[i],
-		       sizeof(array->ia_id[0]) * (cache.ac_nr - i));
+		memmove(&array->ia_id[i + 1], &array->ia_id[i], sizeof(array->ia_id[0]) * (cache.ac_nr - i));
 	}
 
 	array->ia_id[i].id_value = id.id_value;
@@ -905,53 +903,53 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in,
 	}
 
 	if (ilog_empty(root)) {
+		// ilog树为空树，一定是插入/更新UPDATE操作
 		if (opc != ILOG_OP_UPDATE) {
-			D_DEBUG(DB_TRACE, "ilog entry "DF_X64" not found\n",
-				id_in->id_epoch);
+			D_DEBUG(DB_TRACE, "ilog entry "DF_X64" not found\n", id_in->id_epoch);
 			goto done;
 		}
 
-		D_DEBUG(DB_TRACE, "Inserting "DF_X64" at ilog root\n",
-			id_in->id_epoch);
+		D_DEBUG(DB_TRACE, "Inserting "DF_X64" at ilog root\n", id_in->id_epoch);
+		
 		tmp.lr_magic = ilog_ver_inc(lctx);
-		tmp.lr_ts_idx = root->lr_ts_idx;
+		tmp.lr_ts_idx = root->lr_ts_idx; 
 		tmp.lr_id = *id_in;
 		D_ASSERTF(id_in->id_epoch != 0, "epoch "DF_U64" opc %d\n", id_in->id_epoch, opc);
+		// 会增加ilog的版本号，将tmp中的信息拷贝置rooot中
 		rc = ilog_ptr_set(lctx, root, &tmp);
 		if (rc == 0)
+			// 拷贝成功调用：vos_ilog_add和事务关联
 			rc = ilog_log_add(lctx, &root->lr_id);
 	}
 	
 	else if (root->lr_tree.it_embedded) {
 		bool	is_equal;
 
-		rc = update_inplace(lctx, &root->lr_id, id_in,
-				    opc, &is_equal);
+		rc = update_inplace(lctx, &root->lr_id, id_in, opc, &is_equal);
 		if (rc != 0)
 			goto done;
 
 		if (is_equal) {
 			if (opc == ILOG_OP_ABORT) {
-				D_DEBUG(DB_TRACE, "Removing "DF_X64
-					" from ilog root\n", id_in->id_epoch);
+				D_DEBUG(DB_TRACE, "Removing "DF_X64" from ilog root\n", id_in->id_epoch);
 				tmp.lr_magic = ilog_ver_inc(lctx);
+			    // tmp其余部分为0，拷贝至root中
 				rc = ilog_ptr_set(lctx, root, &tmp);
 			}
 			goto done;
 		}
 
 		if (opc != ILOG_OP_UPDATE) {
-			D_DEBUG(DB_TRACE, "Entry "DF_X64" not found in ilog\n",
-				id_in->id_epoch);
+			D_DEBUG(DB_TRACE, "Entry "DF_X64" not found in ilog\n", id_in->id_epoch);
 			goto done;
 		}
 
-		if (id_in->id_punch_minor_eph == 0 &&
-		    root->lr_id.id_punch_minor_eph < root->lr_id.id_update_minor_eph &&
+		if (id_in->id_punch_minor_eph == 0 && root->lr_id.id_punch_minor_eph < root->lr_id.id_update_minor_eph &&
 		    id_in->id_epoch > root->lr_id.id_epoch && visibility == ILOG_COMMITTED) {
 			D_DEBUG(DB_TRACE, "No update needed\n");
 			goto done;
 		}
+			
 		/* Either this entry is earlier or prior entry is uncommitted
 		 * or either entry is a punch
 		 */
@@ -968,6 +966,8 @@ done:
 	D_DEBUG(DB_TRACE, "%s in incarnation log "DF_X64" status: rc=%s tree_version: %d\n",
 		opc_str[opc], id_in->id_epoch, d_errstr(rc), ilog_mag2ver(lctx->ic_root->lr_magic));
 
+    // ILOG_OP_UPDATE直接就回去了
+    // ILOG_OP_PERSIST和ILOG_OP_ABORT需要ilog_log_del -> vos_dtx_deregister_record
 	if (rc == 0 && version != ilog_mag2ver(lctx->ic_root->lr_magic) && (opc == ILOG_OP_PERSIST || opc == ILOG_OP_ABORT)) {
 		/** If we persisted or aborted an entry successfully,
 		 *  invoke the callback, if applicable but without
@@ -1001,6 +1001,7 @@ ilog_update(daos_handle_t loh, const daos_epoch_range_t *epr,
 	if (epr)
 		range = *epr;
 
+    
 	return ilog_modify(loh, &id, &range, ILOG_OP_UPDATE);
 
 }
@@ -1025,8 +1026,8 @@ ilog_abort(daos_handle_t loh, const struct ilog_id *id)
 {
 	daos_epoch_range_t	 range = {0, DAOS_EPOCH_MAX};
 
-	D_DEBUG(DB_IO, "Aborting ilog entry %d "DF_X64"\n", id->id_tx_id,
-		id->id_epoch);
+	D_DEBUG(DB_IO, "Aborting ilog entry %d "DF_X64"\n", id->id_tx_id, id->id_epoch);
+	
 	return ilog_modify(loh, id, &range, ILOG_OP_ABORT);
 }
 
@@ -1213,6 +1214,8 @@ ilog_fetch(struct umem_instance *umm, struct ilog_df *root_df,
 
 	root = (struct ilog_root *)root_df;
 
+// 缓存命中了，说明ilog的根节点没有发生变化，ilog的版本号也没有变化，中间不涉及到ilog_tx_begin的ilog操作
+// 可以用上次查询中的log entry(在上次的fetch中已经缓存到了ilog_entries的ie_priv中)
 	if (ilog_fetch_cached(umm, root, cbs, intent, entries)) {
 		if (priv->ip_rc == -DER_NONEXIST)
 			return priv->ip_rc;
@@ -1227,21 +1230,20 @@ ilog_fetch(struct umem_instance *umm, struct ilog_df *root_df,
 		return 0;
 	}
 
-// 没有
+// 没有缓存命中，前后两次ilog的根节点发生变化或者ilog的根节点记录的ilog版本号发生变化(ilog_root_migrate或者ilog_tx_begin均会触发变化)
 
 	// ilog_fetch_cached返回false, ip_lctx为新填的初始化的
 	lctx = &priv->ip_lctx;
 	if (ilog_empty(root))
 		D_GOTO(out, rc = 0);
 
-    // 赋值给ilog_array_cache
+    // 需要重新获取vos_ilog_info中的ilog_entries信息
 	ilog_log2cache(lctx, &cache);
-
 	rc = prepare_entries(entries, &cache);
 	if (rc != 0)
 		goto fail;
 
-    
+    // 遍历每个log entry, 通过事务的状态，获取ilog entry的状态，更新到vos_ilog_info中的ilog_entries
 	for (i = 0; i < cache.ac_nr; i++) {
 		id = &cache.ac_entries[i];
 		// 拿着log entry中的ilog_id, 以id_tx_id为索引在cont的dtx_array中找到对应的array

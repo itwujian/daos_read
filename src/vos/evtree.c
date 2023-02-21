@@ -3172,6 +3172,9 @@ evt_common_insert(struct evt_context *tcx, struct evt_node *nd,
 		desc->dc_ex_addr = ent->ei_addr;
 		evt_desc_csum_fill(tcx, desc, ent, csum_bufp);
 		desc->dc_ver = ent->ei_ver;
+		D_DEBUG(DB_TRACE, "add node entry : %d, nr %d, "
+				"off "UMOFF_PF", desc_off:%lu, desc:%p, desc ba_off=%lu (1)\n",
+				i, nd->tn_nr, UMOFF_P(desc_off), desc_off, desc, desc->dc_ex_addr.ba_off);
 	} else {
 		nd->tn_child[i] = in_off;
 	}
