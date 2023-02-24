@@ -90,7 +90,7 @@ struct btr_trace {
 	/** pointer to a tree node */
 	umem_off_t			tr_node;
 	/** child/record index within this node */
-	unsigned int			tr_at;
+	unsigned int		tr_at;
 };
 
 /** backtrace depth */
@@ -102,35 +102,35 @@ struct btr_trace {
  */
 struct btr_context {
 	/** Tree domain: root pointer, memory pool and memory class etc */
-	struct btr_instance		 tc_tins;
+	struct btr_instance	  tc_tins;
 	/** embedded iterator */
-	struct btr_iterator		 tc_itr;
+	struct btr_iterator	  tc_itr;
 	/** cached configured tree order */
-	uint16_t			 tc_order;
+	uint16_t			  tc_order;
 	/** cached tree depth, avoid loading from slow memory */
-	uint16_t			 tc_depth;
+	uint16_t			  tc_depth;
 	/** credits for drain, see dbtree_drain */
-	uint32_t                         tc_creds    : 30;
+	uint32_t              tc_creds    : 30;
 	/**
 	 * credits is turned on, \a tcx::tc_creds should be checked
 	 * while draining the tree
 	 */
-	uint32_t                         tc_creds_on : 1;
+	uint32_t              tc_creds_on : 1;
 	/**
 	 * returned value of the probe, it should be reset after upsert
 	 * or delete because the probe path could have been changed.
 	 */
-	int				 tc_probe_rc;
+	int				      tc_probe_rc;
 	/** refcount, used by iterator */
-	int				 tc_ref;
+	int				      tc_ref;
 	/** cached tree class, avoid loading from slow memory */
-	int				 tc_class;
+	int				      tc_class;
 	/** cached feature bits, avoid loading from slow memory */
-	uint64_t			 tc_feats;
+	uint64_t			  tc_feats;
 	/** trace for the tree root */
-	struct btr_trace		*tc_trace;
+	struct btr_trace	 *tc_trace;
 	/** trace buffer */
-	struct btr_trace		 tc_traces[BTR_TRACE_MAX];
+	struct btr_trace	  tc_traces[BTR_TRACE_MAX];
 };
 
 /** size of print buffer */
@@ -281,11 +281,9 @@ btr_context_create(umem_off_t root_off, struct btr_root *root,
 		return -DER_NOMEM;
 
 	tcx->tc_ref = 1; /* for the caller */
-	rc = btr_class_init(root_off, root, tree_class, &tree_feats, uma,
-			    coh, priv, &tcx->tc_tins);
+	rc = btr_class_init(root_off, root, tree_class, &tree_feats, uma, coh, priv, &tcx->tc_tins);
 	if (rc != 0) {
-		D_ERROR("Failed to setup mem class %d: "DF_RC"\n", uma->uma_id,
-			DP_RC(rc));
+		D_ERROR("Failed to setup mem class %d: "DF_RC"\n", uma->uma_id, DP_RC(rc));
 		D_GOTO(failed, rc);
 	}
 
@@ -302,8 +300,7 @@ btr_context_create(umem_off_t root_off, struct btr_root *root,
 		tcx->tc_feats		= root->tr_feats;
 		tcx->tc_order		= root->tr_order;
 		depth			= root->tr_depth;
-		D_DEBUG(DB_TRACE, "Load tree context from "DF_X64"\n",
-			root_off);
+		D_DEBUG(DB_TRACE, "Load tree context from "DF_X64"\n", root_off);
 	}
 
 	btr_context_set_depth(tcx, depth);
@@ -311,8 +308,7 @@ btr_context_create(umem_off_t root_off, struct btr_root *root,
 	return 0;
 
  failed:
-	D_DEBUG(DB_TRACE, "Failed to create tree context: "DF_RC"\n",
-		DP_RC(rc));
+	D_DEBUG(DB_TRACE, "Failed to create tree context: "DF_RC"\n", DP_RC(rc));
 	btr_context_decref(tcx);
 	return rc;
 }
@@ -470,8 +466,7 @@ static inline int
 btr_verify_key(struct btr_context *tcx, d_iov_t *key)
 {
 	if (btr_is_int_key(tcx) && key->iov_len != sizeof(uint64_t)) {
-		D_ERROR("invalid integer key, expected: %lu, got: "DF_U64"\n",
-			sizeof(uint64_t), key->iov_len);
+		D_ERROR("invalid integer key, expected: %lu, got: "DF_U64"\n", sizeof(uint64_t), key->iov_len);
 		return -DER_INVAL;
 	}
 
@@ -698,33 +693,42 @@ btr_node_tx_add(struct btr_context *tcx, umem_off_t nd_off)
 	return umem_tx_add(btr_umm(tcx), nd_off, btr_node_size(tcx));
 }
 
-/* helper functions */
 
 static struct btr_record *
-btr_node_rec_at(struct btr_context *tcx, umem_off_t nd_off,
-		unsigned int at)
+btr_node_rec_at(struct btr_context *tcx, umem_off_t nd_off, unsigned int at)
 {
 	struct btr_node *nd = btr_off2ptr(tcx, nd_off);
+
+	// addr能直接偏移到 btr_node->btr_record
 	char		*addr = (char *)&nd[1];
 
+    // at为0，表示取到btr_node中的第一个btr_record
 	return (struct btr_record *)&addr[btr_rec_size(tcx) * at];
 }
 
+// at是从0开始的，获取的是某节点的第一个孩子
 static umem_off_t
-btr_node_child_at(struct btr_context *tcx, umem_off_t nd_off,
-		  unsigned int at)
+btr_node_child_at(struct btr_context *tcx, umem_off_t nd_off, unsigned int at)
 {
+    // 在btr_context的btr_instance的umem_instance上偏移nd_off
+	// 即：tcx->tc_tins.ti_umm + nd_off， 得到1个节点btr_node
 	struct btr_node	  *nd = btr_off2ptr(tcx, nd_off);
+	
 	struct btr_record *rec;
 
+    // 因为是要获取孩子节点，所以一定不可能是叶子
 	D_ASSERT(!(nd->tn_flags & BTR_NODE_LEAF));
+	
 	/* NB: non-leaf node has +1 children than number of keys */
+	// 非叶子节点存放的孩子的数量比key的数量多1个
+	// 非叶子节点存放1个孩子节点，剩余的存放key ????
 	if (at == 0)
 		return nd->tn_child;
 
 	rec = btr_node_rec_at(tcx, nd_off, at - 1);
-	return rec->rec_off;
+	return rec->rec_off;  // 返回孩子节点的内存地址
 }
+
 
 static inline bool
 btr_node_is_full(struct btr_context *tcx, umem_off_t nd_off)
@@ -1381,10 +1385,8 @@ btr_cmp(struct btr_context *tcx, umem_off_t nd_off,
 			cmp = btr_key_cmp(tcx, rec, key);
 		}
 	}
-	D_ASSERT((cmp & (BTR_CMP_LT | BTR_CMP_GT)) != 0 ||
-		  cmp == BTR_CMP_EQ || cmp == BTR_CMP_ERR);
-	D_ASSERT((cmp & (BTR_CMP_LT | BTR_CMP_GT)) !=
-		 (BTR_CMP_LT | BTR_CMP_GT));
+	D_ASSERT((cmp & (BTR_CMP_LT | BTR_CMP_GT)) != 0 || cmp == BTR_CMP_EQ || cmp == BTR_CMP_ERR);
+	D_ASSERT((cmp & (BTR_CMP_LT | BTR_CMP_GT)) != (BTR_CMP_LT | BTR_CMP_GT));
 
 	D_DEBUG(DB_TRACE, "compared record at %d, cmp %d\n", at, cmp);
 	return cmp;
@@ -1408,8 +1410,7 @@ btr_probe_valid(dbtree_probe_opc_t opc)
  * \return	see btr_probe_rc
  */
 static enum btr_probe_rc
-btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc,
-	  uint32_t intent, d_iov_t *key, char hkey[DAOS_HKEY_MAX])
+btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc, uint32_t intent, d_iov_t *key, char hkey[DAOS_HKEY_MAX])
 {
 	int			 start;
 	int			 end;
@@ -1418,18 +1419,18 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc,
 	int			 cmp;
 	int			 level = -1;
 	int			 saved = -1;
-	bool			 next_level;
-	struct btr_node		*nd;
-	struct btr_check_alb	 alb;
-	umem_off_t		 nd_off;
+	bool			       next_level;
+	struct btr_node		  *nd;
+	struct btr_check_alb   alb;
+	umem_off_t		       nd_off;
 
 	if (!btr_probe_valid(probe_opc)) {
 		rc = PROBE_RC_ERR;
 		goto out;
 	}
 
-	memset(&tcx->tc_traces[0], 0,
-	       sizeof(tcx->tc_traces[0]) * BTR_TRACE_MAX);
+    // 搜索深度最多40层搜索路径？？
+	memset(&tcx->tc_traces[0], 0, sizeof(tcx->tc_traces[0]) * BTR_TRACE_MAX);
 
 	/* depth could be changed by dbtree_delete/dbtree_iter_delete from
 	 * a different btr_context, so we always reinitialize both depth
@@ -1443,24 +1444,24 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc,
 		goto out;
 	}
 
+    // 拿到根节点的偏移地址
 	nd_off = tcx->tc_tins.ti_root->tr_node;
 
-	for (start = end = 0, level = 0, next_level = true ;;) {
-		if (next_level) { /* search a new level of the tree */
+	for (start = end = 0, level = 0, next_level = true; ; ) {
+		
+		if (next_level) {  /* search a new level of the tree */
 			next_level = false;
-			start	= 0;
-			nd	= btr_off2ptr(tcx, nd_off);
-			end	= nd->tn_keyn - 1;
+			
+			start = 0;
+			nd	  = btr_off2ptr(tcx, nd_off);  // 拿到根节点
+			end	  = nd->tn_keyn - 1;           // 拿到btrnode中最后1个record的位置
 
-			D_DEBUG(DB_TRACE,
-				"Probe level %d, node "DF_X64" keyn %d\n",
-				level, nd_off, end + 1);
+			D_DEBUG(DB_TRACE, "Probe level %d, node "DF_X64" keyn %d\n", level, nd_off, end + 1);
 		}
 
 		if (probe_opc == BTR_PROBE_FIRST) {
 			at = start = end = 0;
 			cmp = BTR_CMP_GT;
-
 		} else if (probe_opc == BTR_PROBE_LAST) {
 			at = start = end;
 			cmp = BTR_CMP_LT;
@@ -1472,8 +1473,7 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc,
 		}
 
 		if (cmp == BTR_CMP_ERR) {
-			D_DEBUG(DB_TRACE, "compared record at %d, got "
-				"BTR_CMP_ERR, return PROBE_RC_ERR.", at);
+			D_DEBUG(DB_TRACE, "compared record at %d, got BTR_CMP_ERR, return PROBE_RC_ERR.", at);
 			rc = PROBE_RC_ERR;
 			goto out;
 		}
@@ -1562,8 +1562,7 @@ again:
 			 * probed one, this if for the follow-on insert if
 			 * applicable.
 			 */
-			btr_trace_set(tcx, level, nd_off,
-				      at + !(cmp & BTR_CMP_GT));
+			btr_trace_set(tcx, level, nd_off, at + !(cmp & BTR_CMP_GT));
 		}
 
 		rc = PROBE_RC_NONE;
@@ -1591,7 +1590,6 @@ again:
 			if (rc != PROBE_RC_UNAVAILABLE) {
 				if (rc == PROBE_RC_OK)
 					break;
-
 				goto out;
 			}
 
@@ -1633,7 +1631,6 @@ again:
 			if (rc != PROBE_RC_UNAVAILABLE) {
 				if (rc == PROBE_RC_OK)
 					break;
-
 				goto out;
 			}
 		}
@@ -1657,6 +1654,7 @@ again:
 	D_ASSERT(cmp != BTR_CMP_EQ);
 	/* GT/GE/LT/LE */
 	rc = PROBE_RC_OK;
+	
  out:
 	tcx->tc_probe_rc = rc;
 	if (rc == PROBE_RC_ERR)
@@ -1674,6 +1672,7 @@ btr_probe_key(struct btr_context *tcx, dbtree_probe_opc_t probe_opc,
 	char hkey[DAOS_HKEY_MAX];
 
 	btr_hkey_gen(tcx, key, hkey);
+	
 	return btr_probe(tcx, probe_opc, intent, key, hkey);
 }
 
@@ -1831,20 +1830,20 @@ dbtree_fetch(daos_handle_t toh, dbtree_probe_opc_t opc, uint32_t intent,
 
 	rc = btr_probe_key(tcx, opc, intent, key);
 	switch (rc) {
-	case PROBE_RC_INPROGRESS:
-		D_DEBUG(DB_TRACE, "Target is in some uncommitted DTX.\n");
-		return -DER_INPROGRESS;
-	case PROBE_RC_DATA_LOSS:
-		D_DEBUG(DB_TRACE, "Fetch hit some corrupted transaction.\n");
-		return -DER_DATA_LOSS;
-	case PROBE_RC_NONE:
-		D_DEBUG(DB_TRACE, "Key does not exist.\n");
-		return -DER_NONEXIST;
-	case PROBE_RC_ERR:
-		D_DEBUG(DB_TRACE, "Cannot find key: %d\n", tcx->tc_probe_rc);
-		return -DER_NONEXIST;
-	default:
-		break;
+		case PROBE_RC_INPROGRESS:
+			D_DEBUG(DB_TRACE, "Target is in some uncommitted DTX.\n");
+			return -DER_INPROGRESS;
+		case PROBE_RC_DATA_LOSS:
+			D_DEBUG(DB_TRACE, "Fetch hit some corrupted transaction.\n");
+			return -DER_DATA_LOSS;
+		case PROBE_RC_NONE:
+			D_DEBUG(DB_TRACE, "Key does not exist.\n");
+			return -DER_NONEXIST;
+		case PROBE_RC_ERR:
+			D_DEBUG(DB_TRACE, "Cannot find key: %d\n", tcx->tc_probe_rc);
+			return -DER_NONEXIST;
+		default:
+			break;
 	}
 
 	rec = btr_trace2rec(tcx, tcx->tc_depth - 1);
@@ -2080,42 +2079,40 @@ btr_upsert(struct btr_context *tcx, dbtree_probe_opc_t probe_opc,
 {
 	int	 rc;
 
-
 	if (probe_opc == BTR_PROBE_BYPASS)
 		rc = tcx->tc_probe_rc; /* trust previous probe... */
 	else
 		rc = btr_probe_key(tcx, probe_opc, intent, key);
 
 	switch (rc) {
-	default:
-		D_ASSERTF(false, "unknown returned value: "DF_RC"\n",
-			DP_RC(rc));
-		break;
+		default:
+			D_ASSERTF(false, "unknown returned value: "DF_RC"\n", DP_RC(rc));
+			break;
 
-	case PROBE_RC_OK:
-		rc = btr_update(tcx, key, val, val_out);
-		break;
+		case PROBE_RC_OK:
+			rc = btr_update(tcx, key, val, val_out);
+			break;
 
-	case PROBE_RC_NONE:
-		rc = btr_insert(tcx, key, val, val_out);
-		break;
+		case PROBE_RC_NONE:
+			rc = btr_insert(tcx, key, val, val_out);
+			break;
 
-	case PROBE_RC_UNKNOWN:
-		rc = -DER_NO_PERM;
-		break;
+		case PROBE_RC_UNKNOWN:
+			rc = -DER_NO_PERM;
+			break;
 
-	case PROBE_RC_ERR:
-		D_DEBUG(DB_TRACE, "btr_probe got PROBE_RC_ERR, probably due to "
-			"key_cmp returned BTR_CMP_ERR, treats it as invalid "
-			"operation.\n");
-		rc = -DER_INVAL;
-		break;
-	case PROBE_RC_INPROGRESS:
-		D_DEBUG(DB_TRACE, "The target is in some uncommitted DTX.");
-		return -DER_INPROGRESS;
-	case PROBE_RC_DATA_LOSS:
-		D_DEBUG(DB_TRACE, "Upsert hit some corrupted transaction.\n");
-		return -DER_DATA_LOSS;
+		case PROBE_RC_ERR:
+			D_DEBUG(DB_TRACE, "btr_probe got PROBE_RC_ERR, probably due to key_cmp returned BTR_CMP_ERR, treats it as invalid operation.\n");
+			rc = -DER_INVAL;
+			break;
+			
+		case PROBE_RC_INPROGRESS:
+			D_DEBUG(DB_TRACE, "The target is in some uncommitted DTX.");
+			return -DER_INPROGRESS;
+		
+		case PROBE_RC_DATA_LOSS:
+			D_DEBUG(DB_TRACE, "Upsert hit some corrupted transaction.\n");
+			return -DER_DATA_LOSS;
 	}
 
 	tcx->tc_probe_rc = PROBE_RC_UNKNOWN; /* path changed */
@@ -2172,13 +2169,13 @@ dbtree_update(daos_handle_t toh, d_iov_t *key, d_iov_t *val)
 	if (rc)
 		return rc;
 
-	rc = btr_tx_begin(tcx);
+	rc = btr_tx_begin(tcx);     // 常驻内存事务开始
 	if (rc != 0)
 		return rc;
 
 	rc = btr_upsert(tcx, BTR_PROBE_EQ, DAOS_INTENT_UPDATE, key, val, NULL);
 
-	return btr_tx_end(tcx, rc);
+	return btr_tx_end(tcx, rc);  // 常驻内存事务结束， btr_upsert失败abort,btr_upsert成功commit
 }
 
 /**
@@ -3401,8 +3398,7 @@ dbtree_open_inplace_ex(struct btr_root *root, struct umem_attr *uma,
 		return -DER_NONEXIST;
 	}
 
-	rc = btr_context_create(BTR_ROOT_NULL, root, -1, -1, -1, uma,
-				coh, priv, &tcx);
+	rc = btr_context_create(BTR_ROOT_NULL, root, -1, -1, -1, uma, coh, priv, &tcx);
 	if (rc != 0)
 		return rc;
 

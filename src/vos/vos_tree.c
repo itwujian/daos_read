@@ -805,8 +805,12 @@ vos_evt_desc_cbs_init(struct evt_desc_cbs *cbs, struct vos_pool *pool,
 }
 
 static int
-tree_open_create(struct vos_object *obj, enum vos_tree_class tclass, int flags,
-		 struct vos_krec_df *krec, bool created, daos_handle_t *sub_toh)
+tree_open_create(struct vos_object *obj, 
+                        enum vos_tree_class tclass, 
+                        int flags,
+		                struct vos_krec_df *krec,
+		                bool created,
+		                daos_handle_t *sub_toh)
 {
 	struct umem_attr    *uma = vos_obj2uma(obj);
 	struct vos_pool		*pool = vos_obj2pool(obj);
@@ -841,7 +845,7 @@ tree_open_create(struct vos_object *obj, enum vos_tree_class tclass, int flags,
 	// record里面记录的树的类型时evtree或btree
 	if (krec->kr_bmap & expected_flag) {
 		if (flags & SUBTR_EVT) {
-			rc = evt_open(&krec->kr_evt, uma, &cbs, sub_toh);  // evtree的open
+			rc = evt_open(&krec->kr_evt, uma, &cbs, sub_toh);                    // evtree的open
 		} else {
 			rc = dbtree_open_inplace_ex(&krec->kr_btr, uma, coh, pool, sub_toh); // svtree的open
 		}

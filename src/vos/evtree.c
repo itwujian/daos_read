@@ -1179,25 +1179,26 @@ evt_tcx_create(struct evt_root *root, uint64_t feats, unsigned int order,
 		tcx->tc_feats	= root->tr_feats;
 		tcx->tc_order	= root->tr_order;
 		tcx->tc_inob	= root->tr_inob;
-		depth		= root->tr_depth;
+		depth		    = root->tr_depth;
 		V_TRACE(DB_TRACE, "Load tree context from %p\n", root);
 	}
 
 	policy = tcx->tc_feats & EVT_FEATS_SUPPORTED;
 	switch (policy) {
-	case EVT_FEAT_SORT_SOFF:
-		tcx->tc_ops = evt_policies[0];
-		break;
-	case EVT_FEAT_SORT_DIST:
-		tcx->tc_ops = evt_policies[1];
-		break;
-	case EVT_FEAT_SORT_DIST_EVEN:
-		tcx->tc_ops = evt_policies[2];
-		break;
-	default:
-		D_ERROR("Bad sort policy specified: %#x\n", policy);
-		D_GOTO(failed, rc = -DER_INVAL);
+		case EVT_FEAT_SORT_SOFF:
+			tcx->tc_ops = evt_policies[0];
+			break;
+		case EVT_FEAT_SORT_DIST:
+			tcx->tc_ops = evt_policies[1];
+			break;
+		case EVT_FEAT_SORT_DIST_EVEN:
+			tcx->tc_ops = evt_policies[2];
+			break;
+		default:
+			D_ERROR("Bad sort policy specified: %#x\n", policy);
+			D_GOTO(failed, rc = -DER_INVAL);
 	}
+	
 	D_DEBUG(DB_TRACE, "EVTree sort policy is %#x\n", policy);
 
 	/* Initialize the embedded iterator entry array.  This is a minor
@@ -1209,8 +1210,7 @@ evt_tcx_create(struct evt_root *root, uint64_t feats, unsigned int order,
 	return 0;
 
  failed:
-	V_TRACE(DB_TRACE, "Failed to create tree context: "DF_RC"\n",
-		DP_RC(rc));
+	V_TRACE(DB_TRACE, "Failed to create tree context: "DF_RC"\n", DP_RC(rc));
 	evt_tcx_decref(tcx);
 	return rc;
 }
@@ -3087,8 +3087,7 @@ evt_common_insert(struct evt_context *tcx, struct evt_node *nd,
 
 		ne = evt_node_entry_at(tcx, nd, i);
 		desc = evt_off2desc(tcx, ne->ne_child);
-		rc = evt_desc_log_status(tcx, ne->ne_rect.rd_epc, desc,
-					 DAOS_INTENT_CHECK);
+		rc = evt_desc_log_status(tcx, ne->ne_rect.rd_epc, desc, DAOS_INTENT_CHECK);
 		if (rc != ALB_UNAVAILABLE) {
 			nr = nd->tn_nr - i;
 			memmove(ne + 1, ne, nr * sizeof(*ne));
@@ -3722,8 +3721,7 @@ evt_remove_all(daos_handle_t toh, const struct evt_extent *ext,
 
 	evt_ent_array_init(ent_array, 0);
 
-	rc = evt_ent_array_fill(tcx, EVT_FIND_ALL, DAOS_INTENT_PURGE,
-				&filter, &rect, ent_array);
+	rc = evt_ent_array_fill(tcx, EVT_FIND_ALL, DAOS_INTENT_PURGE, &filter, &rect, ent_array);
 	if (rc != 0)
 		goto done;
 
@@ -3753,7 +3751,9 @@ evt_remove_all(daos_handle_t toh, const struct evt_extent *ext,
 		if (rc < 0)
 			break;
 	}
+	
 	rc = evt_tx_end(tcx, rc);
+	
 done:
 	evt_ent_array_fini(ent_array);
 

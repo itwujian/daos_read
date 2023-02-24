@@ -164,8 +164,7 @@ manual_find_free(struct lru_array *array, struct lru_entry **entryp,
 }
 
 int
-lrua_find_free(struct lru_array *array, struct lru_entry **entryp,
-	       uint32_t *idx, uint64_t key)
+lrua_find_free(struct lru_array *array, struct lru_entry **entryp, uint32_t *idx, uint64_t key)
 {
 	struct lru_sub		*sub;
 	struct lru_entry	*entry;

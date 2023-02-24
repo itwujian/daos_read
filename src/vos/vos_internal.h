@@ -1075,8 +1075,8 @@ tree_rec_bundle2iov(struct vos_rec_bundle *rbund, d_iov_t *iov)
 }
 
 enum {
-	SUBTR_CREATE	= (1 << 0),	/**< may create the subtree */
-	SUBTR_EVT	= (1 << 1),	/**< subtree is evtree */
+	SUBTR_CREATE	= (1 << 0),	/**< may create the subtree for single value or key*/   // 01
+	SUBTR_EVT	= (1 << 1),  	/**< subtree is evtree for array value*/                // 10       
 };
 
 /* vos_common.c */

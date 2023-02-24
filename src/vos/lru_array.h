@@ -319,16 +319,14 @@ lrua_peek_(struct lru_array *array, const uint32_t *idx, void **entryp)
  * \param	entryp[out]	Valid only if function returns success.
  *
  * \return	0		Success, entryp points to new entry
- *		-DER_NOMEM	Memory allocation needed but no memory is
- *				available.
- *		-DER_BUSY	Entries need to be evicted to free up
- *				entries in the table
+ *		-DER_NOMEM	Memory allocation needed but no memory is available.
+ *		-DER_BUSY	Entries need to be evicted to free up entries in the table
  */
-#define lrua_allocx(array, idx, key, entryp)	\
-	lrua_allocx_(array, idx, key, (void **)(entryp))
+// 在array上申请1个entry空间，key入参作为key用于搜索， idx作为出参知道在哪个array的子数组上找 
+#define lrua_allocx(array, idx, key, entryp)  lrua_allocx_(array, idx, key, (void **)(entryp))
+	
 static inline int
-lrua_allocx_(struct lru_array *array, uint32_t *idx, uint64_t key,
-	     void **entryp)
+lrua_allocx_(struct lru_array *array, uint32_t *idx, uint64_t key, void **entryp)
 {
 	struct lru_entry	*new_entry;
 	int			 rc;

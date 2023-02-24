@@ -135,6 +135,7 @@ evt_desc_log_status(struct evt_context *tcx, daos_epoch_t epoch,
 		    struct evt_desc *desc, int intent);
 
 /** Helper function for starting a PMDK transaction, if applicable */
+// evtree的常驻内存操作的事务开始
 static inline int
 evt_tx_begin(struct evt_context *tcx)
 {
@@ -145,6 +146,7 @@ evt_tx_begin(struct evt_context *tcx)
 }
 
 /** Helper function for ending a PMDK transaction, if applicable */
+// evtree的常驻内存操作的事务结束 - abort or commit
 static inline int
 evt_tx_end(struct evt_context *tcx, int rc)
 {

@@ -23,8 +23,10 @@
  */
 struct btr_record {
 	/**
-	 * It could either be memory ID for the child node, or body of this
-	 * record. The record body could be any of various things:
+	 * It could either be memory ID for the child node, or body of this record.
+	 * The record body could be any of various things:
+	 *
+	 * 记录的是孩子节点的内存地址或者record本身
 	 *
 	 * - the value address of KV record.
 	 * - a structure includes both the variable-length key and value.

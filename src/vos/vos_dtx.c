@@ -660,10 +660,8 @@ dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae,
 	if (dae->dae_records != NULL) {
 		D_ASSERT(DAE_REC_CNT(dae) > DTX_INLINE_REC_CNT);
 
-		for (i = DAE_REC_CNT(dae) - DTX_INLINE_REC_CNT - 1;
-		     i >= 0; i--) {
-			rc = do_dtx_rec_release(umm, cont, dae,
-						dae->dae_records[i], abort);
+		for (i = DAE_REC_CNT(dae) - DTX_INLINE_REC_CNT - 1; i >= 0; i--) {
+			rc = do_dtx_rec_release(umm, cont, dae, dae->dae_records[i], abort);
 			if (rc != 0)
 				return rc;
 		}
@@ -675,8 +673,7 @@ dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae,
 		count = DAE_REC_CNT(dae);
 
 	for (i = count - 1; i >= 0; i--) {
-		rc = do_dtx_rec_release(umm, cont, dae, DAE_REC_INLINE(dae)[i],
-					abort);
+		rc = do_dtx_rec_release(umm, cont, dae, DAE_REC_INLINE(dae)[i], abort);
 		if (rc != 0)
 			return rc;
 	}
@@ -688,16 +685,14 @@ dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae,
 	}
 
 	if (dbd->dbd_count > 1 || dbd->dbd_index < dbd->dbd_cap) {
-		rc = umem_tx_add_ptr(umm, &dae_df->dae_flags,
-				sizeof(dae_df->dae_flags));
+		rc = umem_tx_add_ptr(umm, &dae_df->dae_flags, sizeof(dae_df->dae_flags));
 		if (rc != 0)
 			return rc;
 
 		/* Mark the DTX entry as invalid in SCM. */
 		dae_df->dae_flags = DTE_INVALID;
 
-		rc = umem_tx_add_ptr(umm, &dbd->dbd_count,
-				     sizeof(dbd->dbd_count));
+		rc = umem_tx_add_ptr(umm, &dbd->dbd_count, sizeof(dbd->dbd_count));
 		if (rc != 0)
 			return rc;
 
@@ -710,8 +705,7 @@ dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae,
 		dbd_off = umem_ptr2off(umm, dbd);
 		tmp = umem_off2ptr(umm, dbd->dbd_prev);
 		if (tmp != NULL) {
-			rc = umem_tx_add_ptr(umm, &tmp->dbd_next,
-					     sizeof(tmp->dbd_next));
+			rc = umem_tx_add_ptr(umm, &tmp->dbd_next, sizeof(tmp->dbd_next));
 			if (rc != 0)
 				return rc;
 
@@ -956,6 +950,10 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 	cont = vos_hdl2cont(dth->dth_coh);
 	D_ASSERT(cont != NULL);
 
+    // 在vc_dtx_array上的某个子数组中找1个空间存放entry
+    // idx为出参，知道存在vc_dtx_array的哪个子数组中
+    // dth->dth_epoch为入参， 作为key存进去
+    // dae为返回的数组内存，用于填写数据
 	rc = lrua_allocx(cont->vc_dtx_array, &idx, dth->dth_epoch, &dae);
 	if (rc != 0) {
 		/* The array is full, need to commit some transactions first */
@@ -1608,8 +1606,9 @@ vos_dtx_prepared(struct dtx_handle *dth, struct vos_dtx_cmt_ent **dce_p)
 
 	dae = dth->dth_ent;
 
+// 单副本模式
 	if (dth->dth_solo) {
-		if (dth->dth_drop_cmt) {
+		if (dth->dth_drop_cmt) {  // 无需保存，事务不要了，删除走清理
 			if (unlikely(dae == NULL))
 				D_GOTO(done, rc = 0);
 
@@ -1624,14 +1623,13 @@ vos_dtx_prepared(struct dtx_handle *dth, struct vos_dtx_cmt_ent **dce_p)
 			 * We cannot remove the DTX entry from the active table, mark it
 			 * as 'committed'. That will consume some DRAM until server restart.
 			 */
-			D_WARN("Cannot remove DTX "DF_DTI" from active table: "DF_RC"\n",
-			       DP_DTI(&dth->dth_xid), DP_RC(rc));
+			D_WARN("Cannot remove DTX "DF_DTI" from active table: "DF_RC"\n", DP_DTI(&dth->dth_xid), DP_RC(rc));
 
 			dae->dae_committed = 1;
 			dtx_act_ent_cleanup(cont, dae, dth, false);
 		} else {
-			rc = vos_dtx_commit_internal(cont, &dth->dth_xid, 1,
-						     dth->dth_epoch, NULL, NULL, dce_p);
+			// 单副本模式走提交
+			rc = vos_dtx_commit_internal(cont, &dth->dth_xid, 1, dth->dth_epoch, NULL, NULL, dce_p);
 		}
 
 done:
@@ -1644,6 +1642,7 @@ done:
 
 		return rc;
 	}
+// 单副本模式
 
 	D_ASSERT(dae != NULL);
 
@@ -1664,13 +1663,12 @@ done:
 	 * If someone (from non-leader) tried to refresh the DTX status
 	 * before its 'prepared', then let's commit it synchronously.
 	 */
-	if ((DAE_DKEY_HASH(dae) == 0 || dae->dae_maybe_shared) &&
-	    (dth->dth_modification_cnt > 0))
+	if ((DAE_DKEY_HASH(dae) == 0 || dae->dae_maybe_shared) && (dth->dth_modification_cnt > 0))
 		dth->dth_sync = 1;
 
+//  dae->dae_oids从dth中获取
 	if (dth->dth_oid_array != NULL) {
 		D_ASSERT(dth->dth_oid_cnt > 0);
-
 		dae->dae_oid_cnt = dth->dth_oid_cnt;
 		if (dth->dth_oid_cnt == 1) {
 			dae->dae_oid_inline = dth->dth_oid_array[0];
@@ -1680,8 +1678,7 @@ done:
 			D_ALLOC_NZ(dae->dae_oids, size);
 			if (dae->dae_oids == NULL) {
 				/* Not fatal. */
-				D_WARN("No DRAM to store ACT DTX OIDs "
-				       DF_DTI"\n", DP_DTI(&DAE_XID(dae)));
+				D_WARN("No DRAM to store ACT DTX OIDs "DF_DTI"\n", DP_DTI(&DAE_XID(dae)));
 				dae->dae_oid_cnt = 0;
 			} else {
 				memcpy(dae->dae_oids, dth->dth_oid_array, size);
@@ -1691,53 +1688,52 @@ done:
 		dae->dae_oids = &DAE_OID(dae);
 		dae->dae_oid_cnt = 1;
 	}
+//  dae->dae_oids从dth中获取
 
+
+// (dae)->dae_base.dae_mbs从dth->dth_mbs中获取
 	if (DAE_MBS_DSIZE(dae) <= sizeof(DAE_MBS_INLINE(dae))) {
-		memcpy(DAE_MBS_INLINE(dae), dth->dth_mbs->dm_data,
-		       DAE_MBS_DSIZE(dae));
+		memcpy(DAE_MBS_INLINE(dae), dth->dth_mbs->dm_data, DAE_MBS_DSIZE(dae));
 	} else {
 		rec_off = umem_zalloc(umm, DAE_MBS_DSIZE(dae));
 		if (umoff_is_null(rec_off)) {
-			D_ERROR("No space to store DTX mbs "
-				DF_DTI"\n", DP_DTI(&DAE_XID(dae)));
+			D_ERROR("No space to store DTX mbs "DF_DTI"\n", DP_DTI(&DAE_XID(dae)));
 			return -DER_NOSPACE;
 		}
 
-		memcpy(umem_off2ptr(umm, rec_off),
-		       dth->dth_mbs->dm_data, DAE_MBS_DSIZE(dae));
+		memcpy(umem_off2ptr(umm, rec_off), dth->dth_mbs->dm_data, DAE_MBS_DSIZE(dae));
 		DAE_MBS_OFF(dae) = rec_off;
 	}
+// (dae)->dae_base.dae_mbs从dth->dth_mbs中获取
 
+
+// (dae)->dae_base.dae_rec_off赋值
 	if (dae->dae_records != NULL) {
 		count = DAE_REC_CNT(dae) - DTX_INLINE_REC_CNT;
 		D_ASSERTF(count > 0, "Invalid DTX rec count %d\n", count);
-
 		size = sizeof(umem_off_t) * count;
 		rec_off = umem_zalloc(umm, size);
 		if (umoff_is_null(rec_off)) {
-			D_ERROR("No space to store active DTX "DF_DTI"\n",
-				DP_DTI(&DAE_XID(dae)));
+			D_ERROR("No space to store active DTX "DF_DTI"\n", DP_DTI(&DAE_XID(dae)));
 			return -DER_NOSPACE;
 		}
 
 		memcpy(umem_off2ptr(umm, rec_off), dae->dae_records, size);
 		DAE_REC_OFF(dae) = rec_off;
 	}
+// (dae)->dae_base.dae_rec_off赋值
 
+
+// 将dae->dae_base(*_df)内容拷贝至dae->dae_df_off
 	DAE_INDEX(dae) = dbd->dbd_index;
 	if (DAE_INDEX(dae) > 0) {
-		dtx_memcpy_nodrain(umm, umem_off2ptr(umm, dae->dae_df_off),
-				   &dae->dae_base,
-				   sizeof(struct vos_dtx_act_ent_df));
+		dtx_memcpy_nodrain(umm, umem_off2ptr(umm, dae->dae_df_off), &dae->dae_base, sizeof(struct vos_dtx_act_ent_df));
 		/* dbd_index is next to dbd_count */
-		rc = umem_tx_add_ptr(umm, &dbd->dbd_count,
-				     sizeof(dbd->dbd_count) +
-				     sizeof(dbd->dbd_index));
+		rc = umem_tx_add_ptr(umm, &dbd->dbd_count, sizeof(dbd->dbd_count) + sizeof(dbd->dbd_index));
 		if (rc != 0)
 			return rc;
 	} else {
-		memcpy(umem_off2ptr(umm, dae->dae_df_off),
-		       &dae->dae_base, sizeof(struct vos_dtx_act_ent_df));
+		memcpy(umem_off2ptr(umm, dae->dae_df_off), &dae->dae_base, sizeof(struct vos_dtx_act_ent_df));
 	}
 
 	dbd->dbd_count++;
@@ -2210,6 +2206,7 @@ out:
 
 	if (rc == -DER_ALREADY)
 		rc = 0;
+	
 	if (rc == 0)
 		vos_dtx_post_handle(cont, &dae, NULL, 1, true, false);
 
@@ -2864,12 +2861,18 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 	D_ASSERT(cont != NULL);
 
 	if (dth->dth_ent != NULL) {
+		// persistent: 只有dtx_begin和dtx_leader_begin下发的false
 		if (!persistent || dth->dth_active)
 			return 0;
-	} else {
+	} 
+	
+	else { // dth->dth_ent == NULL
 		D_ASSERT(dth->dth_pinned == 0);
 
-		if (exist) {
+		if (exist) { // 只有dtx_leader_begin可能会置true
+			// 处理场景： 事务重试时dth中没有dth_ent
+			// 事务本地已经prepared了， 到cont的active树上拿着dtx_id找对应的dae, 
+			// 找到后赋值到dth中
 			d_iov_set(&kiov, &dth->dth_xid, sizeof(dth->dth_xid));
 			d_iov_set(&riov, NULL, 0);
 			rc = dbtree_lookup(cont->vc_dtx_active_hdl, &kiov, &riov);
@@ -2887,7 +2890,7 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 		}
 	}
 
-	if (persistent) {
+	if (persistent) {  // 只有ds_obj_dtx_follower为true
 		struct vos_cont_df	*cont_df;
 
 		umm = vos_cont2umm(cont);
@@ -2900,6 +2903,7 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 		began = true;
 		dbd = umem_off2ptr(umm, cont_df->cd_dtx_active_tail);
 		if (dbd == NULL || dbd->dbd_index >= dbd->dbd_cap) {
+			// 需要扩充 DTXs blob 
 			rc = vos_dtx_extend_act_table(cont);
 			if (rc != 0)
 				return rc;
@@ -2909,26 +2913,26 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 	}
 
 	if (dth->dth_ent == NULL) {
+		// 核心逻辑
+		// 在cont->vc_dtx_array上以epoch为key申请个dae，然后挂到dth->dth_ent=dae上
 		rc = vos_dtx_alloc(dbd, dth);
 	} else if (dbd != NULL) {
 		D_ASSERT(dbd->dbd_magic == DTX_ACT_BLOB_MAGIC);
-
 		dae = dth->dth_ent;
-		dae->dae_df_off = cont->vc_cont_df->cd_dtx_active_tail +
-			offsetof(struct vos_dtx_blob_df, dbd_active_data) +
-			sizeof(struct vos_dtx_act_ent_df) * dbd->dbd_index;
+		dae->dae_df_off = cont->vc_cont_df->cd_dtx_active_tail + offsetof(struct vos_dtx_blob_df, dbd_active_data) + sizeof(struct vos_dtx_act_ent_df) * dbd->dbd_index;
 		dae->dae_dbd = dbd;
 	}
 
 out:
 	if (rc == 0) {
-		if (persistent) {
+		if (persistent) {   // 只有ds_obj_dtx_follower为true
 			dth->dth_active = 1;
 			rc = vos_dtx_prepared(dth, &dce);
 		} else {
 			dth->dth_pinned = 1;
 		}
 	} else {
+	    // 添加失败就清理
 		if (dth->dth_ent != NULL) {
 			dth->dth_pinned = 0;
 			vos_dtx_cleanup_internal(dth);
@@ -2942,8 +2946,7 @@ out:
 		rc = umem_tx_end(umm, rc);
 		if (dce != NULL) {
 			dae = dth->dth_ent;
-			vos_dtx_post_handle(cont, &dae, &dce, 1,
-					    false, rc != 0 ? true : false);
+			vos_dtx_post_handle(cont, &dae, &dce, 1, false, rc != 0 ? true : false);
 			dth->dth_ent = NULL;
 		}
 	}

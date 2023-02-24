@@ -274,18 +274,15 @@ evt_has_data(struct evt_root *root, struct umem_attr *uma);
 
 enum evt_feats {
 	/** rectangles are Sorted by their Start Offset */
-	EVT_FEAT_SORT_SOFF		= (1 << 0),
-	/** rectangles split by closest side of MBR
-	 */
-	EVT_FEAT_SORT_DIST		= (1 << 1),
-	/** rectangles are sorted by distance to sides of MBR and split
-	 *  evenly
-	 */
-	EVT_FEAT_SORT_DIST_EVEN		= (1 << 2),
+	EVT_FEAT_SORT_SOFF		 = (1 << 0),
+	/** rectangles split by closest side of MBR */
+	EVT_FEAT_SORT_DIST		 = (1 << 1),
+	/** rectangles are sorted by distance to sides of MBR and split evenly */
+	EVT_FEAT_SORT_DIST_EVEN	 = (1 << 2),
 	/** Place new feats above this line */
 	EVT_FEATS_END,
 	/** Calculated mask for all supported feats */
-	EVT_FEATS_SUPPORTED		= ((EVT_FEATS_END - 1) << 1) - 1,
+	EVT_FEATS_SUPPORTED		 = ((EVT_FEATS_END - 1) << 1) - 1,
 };
 
 /** These are "internal" flags meant to match the btree ones */
