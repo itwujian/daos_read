@@ -632,8 +632,8 @@ dtx_batched_commit(void *arg)
 
 	while (1) {
 		struct ds_cont_child	*cont;
-		struct dtx_stat		 stat = { 0 };
-		int			 sleep_time = 10; /* ms */
+		struct dtx_stat		     stat = { 0 };
+		int			             sleep_time = 10; /* ms */
 
 		if (d_list_empty(&dmi->dmi_dtx_batched_cont_open_list))
 			goto check;
@@ -642,14 +642,12 @@ dtx_batched_commit(void *arg)
 		    DAOS_FAIL_CHECK(DAOS_DTX_NO_COMMITTABLE))
 			goto check;
 
-		dbca = d_list_entry(dmi->dmi_dtx_batched_cont_open_list.next,
-				    struct dtx_batched_cont_args, dbca_sys_link);
+		dbca = d_list_entry(dmi->dmi_dtx_batched_cont_open_list.next, struct dtx_batched_cont_args, dbca_sys_link);
 		D_ASSERT(!dbca->dbca_deregister);
 
 		dtx_get_dbca(dbca);
 		cont = dbca->dbca_cont;
-		d_list_move_tail(&dbca->dbca_sys_link,
-				 &dmi->dmi_dtx_batched_cont_open_list);
+		d_list_move_tail(&dbca->dbca_sys_link, &dmi->dmi_dtx_batched_cont_open_list);
 		dtx_stat(cont, &stat);
 
 		if (dbca->dbca_commit_req != NULL && dbca->dbca_commit_done) {
@@ -660,21 +658,16 @@ dtx_batched_commit(void *arg)
 
 		if (dtx_cont_opened(cont) && dbca->dbca_commit_req == NULL &&
 		    (dtx_batched_ult_max != 0 && tls->dt_batched_ult_cnt < dtx_batched_ult_max) &&
-		    ((stat.dtx_committable_count > DTX_THRESHOLD_COUNT) ||
-		     (stat.dtx_oldest_committable_time != 0 &&
-		      dtx_hlc_age2sec(stat.dtx_oldest_committable_time) >=
-		      DTX_COMMIT_THRESHOLD_AGE))) {
+		    ((stat.dtx_committable_count > DTX_THRESHOLD_COUNT) || (stat.dtx_oldest_committable_time != 0 && dtx_hlc_age2sec(stat.dtx_oldest_committable_time) >= DTX_COMMIT_THRESHOLD_AGE))) {
 			D_ASSERT(!dbca->dbca_commit_done);
 			sleep_time = 0;
 			dtx_get_dbca(dbca);
 
 			D_ASSERT(dbca->dbca_cont);
 			sched_req_attr_init(&attr, SCHED_REQ_GC, &dbca->dbca_cont->sc_pool_uuid);
-			dbca->dbca_commit_req = sched_create_ult(&attr, dtx_batched_commit_one,
-								 dbca, 0);
+			dbca->dbca_commit_req = sched_create_ult(&attr, dtx_batched_commit_one, dbca, 0);
 			if (dbca->dbca_commit_req == NULL) {
-				D_WARN("Fail to start DTX ULT (1) for "DF_UUID"\n",
-				       DP_UUID(cont->sc_uuid));
+				D_WARN("Fail to start DTX ULT (1) for "DF_UUID"\n", DP_UUID(cont->sc_uuid));
 				dtx_put_dbca(dbca);
 			}
 		}
@@ -1155,14 +1148,14 @@ dtx_leader_wait(struct dtx_leader_handle *dlh)
 int
 dtx_leader_end(struct dtx_leader_handle *dlh, struct ds_cont_hdl *coh, int result)
 {
-	struct ds_cont_child		*cont = coh->sch_cont;
+	struct ds_cont_child	*cont = coh->sch_cont;
 	struct dtx_handle		*dth = &dlh->dlh_handle;
 	struct dtx_entry		*dte;
-	struct dtx_memberships		*mbs;
+	struct dtx_memberships	*mbs;
 	size_t				 size;
 	uint32_t			 flags;
-	int				 status = -1;
-	int				 rc = 0;
+	int				     status = -1;
+	int				     rc = 0;
 	bool				 aborted = false;
 	bool				 unpin = false;
 
@@ -1174,8 +1167,7 @@ dtx_leader_end(struct dtx_leader_handle *dlh, struct ds_cont_hdl *coh, int resul
 		result = 0;
 
 	if (result == 0 && rc == 0 && unlikely(coh->sch_closed)) {
-		D_ERROR("Cont hdl "DF_UUID" is closed/evicted unexpectedly\n",
-			DP_UUID(coh->sch_uuid));
+		D_ERROR("Cont hdl "DF_UUID" is closed/evicted unexpectedly\n", DP_UUID(coh->sch_uuid));
 		result = -DER_IO;
 	}
 
@@ -1528,8 +1520,7 @@ dtx_flush_on_close(struct dss_module_info *dmi, struct dtx_batched_cont_args *db
 		struct dtx_entry	**dtes = NULL;
 		struct dtx_cos_key	 *dcks = NULL;
 
-		cnt = dtx_fetch_committable(cont, DTX_THRESHOLD_COUNT,
-					    NULL, DAOS_EPOCH_MAX, &dtes, &dcks);
+		cnt = dtx_fetch_committable(cont, DTX_THRESHOLD_COUNT, NULL, DAOS_EPOCH_MAX, &dtes, &dcks);
 		if (cnt <= 0)
 			D_GOTO(out, rc = cnt);
 
@@ -1541,8 +1532,7 @@ dtx_flush_on_close(struct dss_module_info *dmi, struct dtx_batched_cont_args *db
 		 * Under such case, have to break the dtx_flush.
 		 */
 		if (unlikely(total > stat.dtx_committable_count)) {
-			D_WARN("Some DTX in CoS cannot be committed: %lu/%lu\n",
-			       (unsigned long)total, (unsigned long)stat.dtx_committable_count);
+			D_WARN("Some DTX in CoS cannot be committed: %lu/%lu\n", (unsigned long)total, (unsigned long)stat.dtx_committable_count);
 			D_GOTO(out, rc = -DER_MISC);
 		}
 
@@ -1552,8 +1542,7 @@ dtx_flush_on_close(struct dss_module_info *dmi, struct dtx_batched_cont_args *db
 
 out:
 	if (rc < 0)
-		D_ERROR(DF_UUID": Fail to flush CoS cache: rc = %d\n",
-			DP_UUID(cont->sc_uuid), rc);
+		D_ERROR(DF_UUID": Fail to flush CoS cache: rc = %d\n", DP_UUID(cont->sc_uuid), rc);
 }
 
 /* Per VOS container DTX re-index ULT ***************************************/
@@ -1872,6 +1861,8 @@ struct dtx_ult_arg {
 	struct dtx_leader_handle	*dlh;
 };
 
+
+// 所有执行结果的汇总
 static void
 dtx_comp_cb(void **arg)
 {
@@ -1881,6 +1872,7 @@ dtx_comp_cb(void **arg)
 	uint32_t			 j;
 
 	if (dlh->dlh_agg_cb != NULL) {
+		// 当前只有obj_punch_agg_cb这个走这个分支
 		dlh->dlh_result = dlh->dlh_agg_cb(dlh, dlh->dlh_allow_failure);
 	} else {
 		for (i = dlh->dlh_forward_idx, j = 0; j < dlh->dlh_forward_cnt; i++, j++) {
@@ -1898,6 +1890,7 @@ dtx_comp_cb(void **arg)
 	}
 }
 
+// 单个消息的发送回调，即：收到对端的response
 static void
 dtx_sub_comp_cb(struct dtx_leader_handle *dlh, int idx, int rc)
 {
@@ -1954,13 +1947,14 @@ dtx_leader_exec_ops_ult(void *arg)
 			sub->dss_comp = 0;
 		}
 
-		if (tgt->st_rank == DAOS_TGT_IGNORE ||
-		    (i == daos_fail_value_get() && DAOS_FAIL_CHECK(DAOS_DTX_SKIP_PREPARE))) {
+		if (tgt->st_rank == DAOS_TGT_IGNORE || (i == daos_fail_value_get() && DAOS_FAIL_CHECK(DAOS_DTX_SKIP_PREPARE))) {
 			if (dlh->dlh_normal_sub_done == 0 || tgt->st_flags & DTF_DELAY_FORWARD)
 				dtx_sub_comp_cb(dlh, i, 0);
 			continue;
 		}
 
+        // 调用函数：obj_obj_dtx_leader
+		// 发送的回调： dtx_sub_comp_cb
 		rc = ult_arg->func(dlh, ult_arg->func_arg, i, dtx_sub_comp_cb);
 		if (rc != 0) {
 			if (sub->dss_comp == 0)
@@ -2037,6 +2031,8 @@ again:
 	 * Create the future with dlh->dlh_forward_cnt + 1, the additional one is used by the IO
 	 * forward ULT itself to prevent the DTX handle being freed before the IO forward ULT exit.
 	 */
+
+	// 这个是feature完成之后的结果汇总函数
 	rc = ABT_future_create(dlh->dlh_forward_cnt + 1, dtx_comp_cb, &dlh->dlh_future);
 	if (rc != ABT_SUCCESS) {
 		D_ERROR("ABT_future_create failed [%u, %u] (1): "DF_RC"\n", dlh->dlh_forward_idx, dlh->dlh_forward_cnt, DP_RC(rc));

@@ -97,6 +97,9 @@ struct ds_cont_child {
 	uint32_t		 sc_snapshots_nr;
 	uint32_t		 sc_open;
 
+    //  dtx_cos_rec_alloc/dtx_cos_rec_update计数增加
+    //
+    
 	uint64_t		 sc_dtx_committable_count;
 
 	/* The global minimum EC aggregation epoch, which will be upper

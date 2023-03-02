@@ -37,6 +37,10 @@ struct dtx_cos_rec {
 	 * commit RPC instead of piggyback via dispatched update/punch RPC.
 	 */
 	d_list_t		 dcr_expcmt_list;
+
+    // 上述三个链表在dtx_cos_rec_alloc/dtx_cos_rec_update时挂链
+    // 在dtx_cos_rec_free/dtx_del_cos时摘链
+	
 	/* The number of the PUNCH DTXs in the dcr_reg_list. */
 	int			 dcr_reg_count;
 	/* The number of the DTXs in the dcr_prio_list. */
@@ -235,8 +239,7 @@ dtx_cos_rec_update(struct btr_instance *tins, struct btr_record *rec,
 	dcrc->dcrc_epoch = rbund->epoch;
 	dcrc->dcrc_ptr = dcr;
 
-	d_list_add_tail(&dcrc->dcrc_gl_committable,
-			&cont->sc_dtx_cos_list);
+	d_list_add_tail(&dcrc->dcrc_gl_committable, &cont->sc_dtx_cos_list);
 	cont->sc_dtx_committable_count++;
 	d_tm_inc_gauge(tls->dt_committable, 1);
 

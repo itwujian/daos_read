@@ -80,8 +80,7 @@ dtx_resync_commit(struct ds_cont_child *cont,
 	}
 
 	for (i = 0; i < count; i++) {
-		dre = d_list_entry(drh->drh_list.next,
-				   struct dtx_resync_entry, dre_link);
+		dre = d_list_entry(drh->drh_list.next, struct dtx_resync_entry, dre_link);
 
 		/* Someone (the DTX owner or batched commit ULT) may have
 		 * committed or aborted the DTX during we handling other
@@ -642,7 +641,6 @@ dtx_resync(daos_handle_t po_hdl, uuid_t po_uuid, uuid_t co_uuid, uint32_t ver, b
 		ABT_cond_wait(cont->sc_dtx_resync_cond, cont->sc_mutex);
 	}
 
-    // 打点验证，无逻辑代码
 	if (myrank == daos_fail_value_get() && DAOS_FAIL_CHECK(DAOS_DTX_SRV_RESTART)) {
 		
 		uint64_t	hint = 0;
@@ -661,7 +659,6 @@ dtx_resync(daos_handle_t po_hdl, uuid_t po_uuid, uuid_t co_uuid, uint32_t ver, b
 			ABT_thread_yield();
 		}
 	}
-    // 打点验证，无逻辑代码
 
 	cont->sc_dtx_resyncing = 1;
 	cont->sc_dtx_resync_ver = ver;
@@ -706,8 +703,7 @@ dtx_resync(daos_handle_t po_hdl, uuid_t po_uuid, uuid_t co_uuid, uint32_t ver, b
 	if (rc >= 0)
 		rc = rc1;
 
-	D_INFO("Stop DTX resync scan for "DF_UUID"/"DF_UUID" with version %u: rc = %d\n",
-	       DP_UUID(po_uuid), DP_UUID(co_uuid), ver, rc);
+	D_INFO("Stop DTX resync scan for "DF_UUID"/"DF_UUID" with version %u: rc = %d\n", DP_UUID(po_uuid), DP_UUID(co_uuid), ver, rc);
 
 fail:
 	ABT_mutex_lock(cont->sc_mutex);

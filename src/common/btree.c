@@ -86,9 +86,12 @@ struct btr_iterator {
 /**
  * Trace for tree search.
  */
+ /* 树的每一层有个trace, 记录为了查找最终节点找的每一层的信息 */
 struct btr_trace {
 	/** pointer to a tree node */
+    /* 当前搜索路径找到的那个节点 */
 	umem_off_t			tr_node;
+	/* 当前搜索路径找到的那个节点下面的第几个child/record  */
 	/** child/record index within this node */
 	unsigned int		tr_at;
 };

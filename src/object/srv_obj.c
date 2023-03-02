@@ -2548,8 +2548,8 @@ process_epoch(uint64_t *epoch, uint64_t *epoch_first, uint32_t *flags)
 void
 ds_obj_rw_handler(crt_rpc_t *rpc)
 {
-	struct obj_rw_in		*orw = crt_req_get(rpc);
-	struct obj_rw_out		*orwo = crt_reply_get(rpc);
+	struct obj_rw_in		    *orw = crt_req_get(rpc);
+	struct obj_rw_out		    *orwo = crt_reply_get(rpc);
 	struct dtx_leader_handle	*dlh = NULL;
 	struct ds_obj_exec_arg		exec_arg = { 0 };
 	struct obj_io_context		ioc = { 0 };
@@ -2559,13 +2559,13 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 	struct obj_ec_split_req		*split_req = NULL;
 	struct dtx_memberships		*mbs = NULL;
 	struct daos_shard_tgt		*tgts = NULL;
-	struct dtx_id			*dti_cos = NULL;
+	struct dtx_id			    *dti_cos = NULL;
 	struct obj_pool_metrics		*opm;
-	int				dti_cos_cnt;
+	int				    dti_cos_cnt;
 	uint32_t			tgt_cnt;
 	uint32_t			version = 0;
-	struct dtx_epoch		epoch = {0};
-	int				rc;
+	struct dtx_epoch	epoch = {0};
+	int				    rc;
 	bool				need_abort = false;
 
 	D_ASSERT(orw != NULL);
@@ -4302,8 +4302,7 @@ ds_obj_dtx_follower(crt_rpc_t *rpc, struct obj_io_context *ioc)
 	int				 rc = 0;
 	int				 rc1 = 0;
 
-	D_DEBUG(DB_IO, "Handling DTX "DF_DTI" on non-leader\n",
-		DP_DTI(&dcsh->dcsh_xid));
+	D_DEBUG(DB_IO, "Handling DTX "DF_DTI" on non-leader\n", DP_DTI(&dcsh->dcsh_xid));
 
 	D_ASSERT(dcsh->dcsh_epoch.oe_value != 0);
 	D_ASSERT(dcsh->dcsh_epoch.oe_value != DAOS_EPOCH_MAX);
@@ -4332,20 +4331,20 @@ ds_obj_dtx_follower(crt_rpc_t *rpc, struct obj_io_context *ioc)
 	}
 
 	switch (rc1) {
-	case -DER_NONEXIST:
-	case 0:
-		break;
-	case -DER_MISMATCH:
-		/* For resent RPC, abort it firstly if exist but with different
-		 * (old) epoch, then re-execute with new epoch.
-		 */
-		rc = vos_dtx_abort(ioc->ioc_vos_coh, &dcsh->dcsh_xid, e);
-		if (rc < 0 && rc != -DER_NONEXIST)
-			D_GOTO(out, rc);
-		break;
-	default:
-		D_ASSERTF(rc1 < 0, "Resend check result: %d\n", rc1);
-		D_GOTO(out, rc = rc1);
+		case -DER_NONEXIST:
+		case 0:
+			break;
+		case -DER_MISMATCH:
+			/* For resent RPC, abort it firstly if exist but with different
+			 * (old) epoch, then re-execute with new epoch.
+			 */
+			rc = vos_dtx_abort(ioc->ioc_vos_coh, &dcsh->dcsh_xid, e);
+			if (rc < 0 && rc != -DER_NONEXIST)
+				D_GOTO(out, rc);
+			break;
+		default:
+			D_ASSERTF(rc1 < 0, "Resend check result: %d\n", rc1);
+			D_GOTO(out, rc = rc1);
 	}
 
 	if (oci->oci_flags & ORF_DTX_SYNC)
@@ -4404,10 +4403,9 @@ obj_obj_dtx_leader(struct dtx_leader_handle *dlh, void *arg, int idx,
 					goto comp;
 			}
 
-			dcsh = ds_obj_cpd_get_dcsh(dca->dca_rpc, dca->dca_idx);
+			dcsh  = ds_obj_cpd_get_dcsh(dca->dca_rpc, dca->dca_idx);
 			dcsrs = ds_obj_cpd_get_dcsr(dca->dca_rpc, dca->dca_idx);
-			rc = ds_cpd_handle_one_wrap(dca->dca_rpc, dcsh, dcde,
-						    dcsrs, ioc, &dlh->dlh_handle);
+			rc    = ds_cpd_handle_one_wrap(dca->dca_rpc, dcsh, dcde, dcsrs, ioc, &dlh->dlh_handle);
 		}
 
 comp:
@@ -4418,6 +4416,7 @@ comp:
 	}
 
 	/* Dispatch CPD RPC and handle sub requests remotely */
+	// 发送消息到非leader节点
 	return ds_obj_cpd_dispatch(dlh, arg, idx, comp_cb);
 }
 
@@ -4451,16 +4450,15 @@ ds_obj_dtx_leader_prep_handle(struct daos_cpd_sub_head *dcsh,
 
 		start_tgt = obj_ec_grp_start(ioc->ioc_layout_ver, dcsr->dcsr_dkey_hash,
 					     obj_ec_tgt_nr(&ioc->ioc_oca));
+		
 		rc = obj_ec_rw_req_split(dcsr->dcsr_oid, start_tgt,
 					 &dcu->dcu_iod_array, dcsr->dcsr_nr,
 					 dcu->dcu_start_shard, 0, ddt->ddt_id,
 					 dcu->dcu_ec_tgts, dcsr->dcsr_ec_tgt_nr, NULL,
 					 tgt_cnt, tgts, &dcu->dcu_ec_split_req, NULL);
 		if (rc != 0) {
-			D_ERROR("obj_ec_rw_req_split failed for obj "
-				DF_UOID", DTX "DF_DTI": "DF_RC"\n",
-				DP_UOID(dcsr->dcsr_oid),
-				DP_DTI(&dcsh->dcsh_xid), DP_RC(rc));
+			D_ERROR("obj_ec_rw_req_split failed for obj "DF_UOID", DTX "DF_DTI": "DF_RC"\n",
+				DP_UOID(dcsr->dcsr_oid), DP_DTI(&dcsh->dcsh_xid), DP_RC(rc));
 			break;
 		}
 	}
@@ -4481,9 +4479,9 @@ ds_obj_dtx_leader(struct daos_cpd_args *dca)
 	struct daos_shard_tgt		*tgts;
 	uint32_t			 flags = 0;
 	uint32_t			 dtx_flags = DTX_DIST;
-	int				 tgt_cnt = 0;
-	int				 req_cnt = 0;
-	int				 rc = 0;
+	int				     tgt_cnt = 0;
+	int				     req_cnt = 0;
+	int				     rc = 0;
 	bool				 need_abort = false;
 
 	dcsh = ds_obj_cpd_get_dcsh(dca->dca_rpc, dca->dca_idx);
@@ -4518,39 +4516,39 @@ again:
 		 * that the DTX has been restarted with newer epoch.
 		 */
 		rc = dtx_handle_resend(dca->dca_ioc->ioc_vos_coh,
-				       &dcsh->dcsh_xid,
-				       &dcsh->dcsh_epoch.oe_value, NULL);
+				               &dcsh->dcsh_xid,
+				               &dcsh->dcsh_epoch.oe_value, NULL);
 		switch (rc) {
-		case -DER_ALREADY:
-			/* Do nothing if 'committed'. */
-			D_GOTO(out, rc = 0);
-		case 0:
-			/* For 'prepared' case, still need to dispatch. */
-			flags = ORF_RESEND;
-			break;
-		case -DER_MISMATCH:
-			/* XXX: For distributed transaction, there is race
-			 *	between the client DTX commit with restart
-			 *	and the DTX recovery on the new leader. It
-			 *	is possible that the new leader is waiting
-			 *	for others reply for related DTX recovery,
-			 *	or the DTX recovery ULT is not started yet.
-			 *
-			 *	But we do not know whether the old leader
-			 *	has ever committed related DTX before its
-			 *	corruption or not. If yes, then abort DTX
-			 *	with old epoch will break the semantics.
-			 *
-			 *	So here we need to wait the new leader to
-			 *	recover such DTX: either commit or abort.
-			 *	Let's return '-DER_INPROGRESS' to ask the
-			 *	client to retry sometime later.
-			 */
-			D_GOTO(out, rc = -DER_INPROGRESS);
-		default:
-			if (rc < 0 && rc != -DER_NONEXIST)
-				D_GOTO(out, rc);
-			break;
+			case -DER_ALREADY:
+				/* Do nothing if 'committed'. */
+				D_GOTO(out, rc = 0);
+			case 0:
+				/* For 'prepared' case, still need to dispatch. */
+				flags = ORF_RESEND;
+				break;
+			case -DER_MISMATCH:
+				/* XXX: For distributed transaction, there is race
+				 *	between the client DTX commit with restart
+				 *	and the DTX recovery on the new leader. It
+				 *	is possible that the new leader is waiting
+				 *	for others reply for related DTX recovery,
+				 *	or the DTX recovery ULT is not started yet.
+				 *
+				 *	But we do not know whether the old leader
+				 *	has ever committed related DTX before its
+				 *	corruption or not. If yes, then abort DTX
+				 *	with old epoch will break the semantics.
+				 *
+				 *	So here we need to wait the new leader to
+				 *	recover such DTX: either commit or abort.
+				 *	Let's return '-DER_INPROGRESS' to ask the
+				 *	client to retry sometime later.
+				 */
+				D_GOTO(out, rc = -DER_INPROGRESS);
+			default:
+				if (rc < 0 && rc != -DER_NONEXIST)
+					D_GOTO(out, rc);
+				break;
 		}
 	} else if (DAOS_FAIL_CHECK(DAOS_DTX_LOST_RPC_REQUEST)) {
 		D_GOTO(out, rc = 0);
@@ -4562,8 +4560,7 @@ again:
 	req_cnt = ds_obj_cpd_get_dcsr_cnt(dca->dca_rpc, dca->dca_idx);
 	tgt_cnt = ds_obj_cpd_get_tgt_cnt(dca->dca_rpc, dca->dca_idx);
 
-	if (dcde == NULL || dcsrs == NULL || tgts == NULL ||
-	    req_cnt < 0 || tgt_cnt < 0)
+	if (dcde == NULL || dcsrs == NULL || tgts == NULL || req_cnt < 0 || tgt_cnt < 0)
 		D_GOTO(out, rc = -DER_INVAL);
 
 	/* Refuse any modification with old epoch. */
@@ -4609,10 +4606,9 @@ again:
 	rc = dtx_leader_end(dlh, dca->dca_ioc->ioc_coh, rc);
 
 out:
-	D_CDEBUG(rc != 0 && rc != -DER_INPROGRESS && rc != -DER_TX_RESTART &&
-		 rc != -DER_AGAIN, DLOG_ERR, DB_IO,
-		 "Handled DTX "DF_DTI" on leader, idx %u: "DF_RC"\n",
-		 DP_DTI(&dcsh->dcsh_xid), dca->dca_idx, DP_RC(rc));
+	D_CDEBUG(rc != 0 && rc != -DER_INPROGRESS && rc != -DER_TX_RESTART && rc != -DER_AGAIN, 
+		DLOG_ERR, DB_IO, "Handled DTX "DF_DTI" on leader, idx %u: "DF_RC"\n",
+		DP_DTI(&dcsh->dcsh_xid), dca->dca_idx, DP_RC(rc));
 
 	if (tgt_cnt > 0) {
 		struct daos_cpd_sub_req	*dcsr;
@@ -4622,9 +4618,7 @@ out:
 			dcsr = &dcsrs[i];
 			if (dcsr->dcsr_opc != DCSO_UPDATE)
 				continue;
-
-			obj_ec_split_req_fini(
-					dcsr->dcsr_update.dcu_ec_split_req);
+			obj_ec_split_req_fini(dcsr->dcsr_update.dcu_ec_split_req);
 		}
 	}
 
@@ -4644,12 +4638,10 @@ out:
 		dte.dte_mbs = dcsh->dcsh_mbs;
 		rc1 = dtx_abort(dca->dca_ioc->ioc_coc, &dte, dcsh->dcsh_epoch.oe_value);
 		if (rc1 != 0 && rc1 != -DER_NONEXIST)
-			D_WARN("Failed to abort DTX "DF_DTI": "DF_RC"\n",
-			       DP_DTI(&dcsh->dcsh_xid), DP_RC(rc1));
+			D_WARN("Failed to abort DTX "DF_DTI": "DF_RC"\n", DP_DTI(&dcsh->dcsh_xid), DP_RC(rc1));
 	}
 
-	ds_obj_cpd_set_sub_result(oco, dca->dca_idx, rc,
-				  dcsh->dcsh_epoch.oe_value);
+	ds_obj_cpd_set_sub_result(oco, dca->dca_idx, rc, dcsh->dcsh_epoch.oe_value);
 }
 
 static void
@@ -4661,6 +4653,7 @@ ds_obj_dtx_leader_ult(void *arg)
 	ds_obj_dtx_leader(dca);
 
 	rc = ABT_future_set(dca->dca_future, NULL);
+	
 	D_ASSERTF(rc == ABT_SUCCESS, "ABT_future_set failed %d.\n", rc);
 }
 
@@ -4819,17 +4812,17 @@ out:
 void
 ds_obj_cpd_handler(crt_rpc_t *rpc)
 {
-	struct obj_cpd_in	*oci = crt_req_get(rpc);
-	struct obj_cpd_out	*oco = crt_reply_get(rpc);
+	struct obj_cpd_in	    *oci = crt_req_get(rpc);
+	struct obj_cpd_out	    *oco = crt_reply_get(rpc);
 	struct daos_cpd_args	*dcas = NULL;
 	struct obj_io_context	 ioc;
-	ABT_future		 future = ABT_FUTURE_NULL;
+	ABT_future		         future = ABT_FUTURE_NULL;
 	struct daos_cpd_bulk   **dcbs = NULL;
-	uint32_t		 dcb_nr = 0;
+	uint32_t	 dcb_nr = 0;
 	int			 tx_count = oci->oci_sub_heads.ca_count;
 	int			 rc = 0;
 	int			 i;
-	bool			 leader;
+	bool		 leader;
 
 	D_ASSERT(oci != NULL);
 
@@ -4869,12 +4862,10 @@ ds_obj_cpd_handler(crt_rpc_t *rpc)
 	} else {
 		if (tx_count != oci->oci_sub_reqs.ca_count ||
 		    tx_count != oci->oci_disp_ents.ca_count ||
-		    tx_count != oci->oci_disp_tgts.ca_count || tx_count == 0) {
-			D_ERROR("Unexpected CPD RPC format for leader: "
-				"head %u, req set %lu, disp %lu, tgts %lu\n",
-				tx_count, oci->oci_sub_reqs.ca_count,
-				oci->oci_disp_ents.ca_count, oci->oci_disp_tgts.ca_count);
-
+		    tx_count != oci->oci_disp_tgts.ca_count || 
+		    tx_count == 0) {
+			D_ERROR("Unexpected CPD RPC format for leader: head %u, req set %lu, disp %lu, tgts %lu\n",
+				tx_count, oci->oci_sub_reqs.ca_count, oci->oci_disp_ents.ca_count, oci->oci_disp_tgts.ca_count);
 			D_GOTO(reply, rc = -DER_PROTO);
 		}
 	}
@@ -4887,7 +4878,6 @@ ds_obj_cpd_handler(crt_rpc_t *rpc)
 		oco->oco_sub_rets.ca_arrays = NULL;
 		oco->oco_sub_rets.ca_count = 0;
 		rc = ds_obj_dtx_follower(rpc, &ioc);
-
 		D_GOTO(reply, rc);
 	}
 
@@ -4928,21 +4918,19 @@ ds_obj_cpd_handler(crt_rpc_t *rpc)
 		dcas[i].dca_future = future;
 		dcas[i].dca_idx = i;
 
-		rc = dss_ult_create(ds_obj_dtx_leader_ult, &dcas[i],
-				    DSS_XS_SELF, 0, 0, NULL);
+		rc = dss_ult_create(ds_obj_dtx_leader_ult, &dcas[i], DSS_XS_SELF, 0, 0, NULL);
 		if (rc != 0) {
 			struct daos_cpd_sub_head	*dcsh;
-
 			ABT_future_set(future, NULL);
 			dcsh = ds_obj_cpd_get_dcsh(rpc, i);
-			ds_obj_cpd_set_sub_result(oco, i, rc,
-						  dcsh->dcsh_epoch.oe_value);
+			ds_obj_cpd_set_sub_result(oco, i, rc, dcsh->dcsh_epoch.oe_value);
 			/* Continue to handle other independent DTXs. */
 			continue;
 		}
 	}
 
 	rc = ABT_future_wait(future);
+	
 	D_ASSERTF(rc == ABT_SUCCESS, "ABT_future_wait failed %d.\n", rc);
 
 	ABT_future_free(&future);

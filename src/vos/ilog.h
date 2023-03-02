@@ -19,7 +19,12 @@ struct ilog_id {
 	union {
 		uint64_t	id_value;
 		struct {
+			// id_tx_id为DAE_LID(dae)= idx + DTX_LID_RESERVED
+			// idx: lrua_allocx(cont->vc_dtx_array, &idx, dth->dth_epoch, &dae)
+			// 通常应该是在ilog_log_add->vos_dtx_register_record中vos_dtx_append成功后赋值的
+			// 还有3个保留字段：commit,abort,reserve
 			uint32_t	 id_tx_id;
+			
 			uint16_t	 id_punch_minor_eph;
 			uint16_t	 id_update_minor_eph;
 		};

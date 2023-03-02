@@ -394,12 +394,9 @@ dtx_init(void)
 	d_getenv_int("DAOS_DTX_BATCHED_ULT_MAX", &dtx_batched_ult_max);
 	D_INFO("Set the max count of DTX batched commit ULTs as %d\n", dtx_batched_ult_max);
 
-	rc = dbtree_class_register(DBTREE_CLASS_DTX_CF,
-				   BTR_FEAT_UINT_KEY | BTR_FEAT_DYNAMIC_ROOT,
-				   &dbtree_dtx_cf_ops);
+	rc = dbtree_class_register(DBTREE_CLASS_DTX_CF, BTR_FEAT_UINT_KEY | BTR_FEAT_DYNAMIC_ROOT, &dbtree_dtx_cf_ops);
 	if (rc == 0)
-		rc = dbtree_class_register(DBTREE_CLASS_DTX_COS, 0,
-					   &dtx_btr_cos_ops);
+		rc = dbtree_class_register(DBTREE_CLASS_DTX_COS, 0, &dtx_btr_cos_ops);
 
 	return rc;
 }

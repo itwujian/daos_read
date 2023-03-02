@@ -218,12 +218,10 @@ dtx_act_ent_cleanup(struct vos_container *cont, struct vos_dtx_act_ent *dae,
 		}
 
 		for (i = 0; i < count; i++)
-			vos_obj_evict_by_oid(vos_obj_cache_current(), cont,
-					     oids[i]);
+			vos_obj_evict_by_oid(vos_obj_cache_current(), cont, oids[i]);
 	}
 
-	if (dae->dae_oids != NULL && dae->dae_oids != &dae->dae_oid_inline &&
-	    dae->dae_oids != &DAE_OID(dae)) {
+	if (dae->dae_oids != NULL && dae->dae_oids != &dae->dae_oid_inline && dae->dae_oids != &DAE_OID(dae)) {
 		D_FREE(dae->dae_oids);
 		dae->dae_oid_cnt = 0;
 	}
@@ -622,8 +620,7 @@ do_dtx_rec_release(struct umem_instance *umm, struct vos_container *cont,
 		default:
 			/* On-disk data corruption case. */
 			rc = -DER_IO;
-			D_ERROR("Unknown DTX "DF_DTI" type %u\n",
-				DP_DTI(&DAE_XID(dae)), dtx_umoff_flag2type(rec));
+			D_ERROR("Unknown DTX "DF_DTI" type %u\n", DP_DTI(&DAE_XID(dae)), dtx_umoff_flag2type(rec));
 			break;
 	}
 
@@ -631,8 +628,7 @@ do_dtx_rec_release(struct umem_instance *umm, struct vos_container *cont,
 }
 
 static int
-dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae,
-		bool abort)
+dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae, bool abort)
 {
 	struct umem_instance		*umm = vos_cont2umm(cont);
 	struct vos_dtx_act_ent_df	*dae_df;
@@ -659,7 +655,6 @@ dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae,
 
 	if (dae->dae_records != NULL) {
 		D_ASSERT(DAE_REC_CNT(dae) > DTX_INLINE_REC_CNT);
-
 		for (i = DAE_REC_CNT(dae) - DTX_INLINE_REC_CNT - 1; i >= 0; i--) {
 			rc = do_dtx_rec_release(umm, cont, dae, dae->dae_records[i], abort);
 			if (rc != 0)
@@ -714,26 +709,21 @@ dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae,
 
 		tmp = umem_off2ptr(umm, dbd->dbd_next);
 		if (tmp != NULL) {
-			rc = umem_tx_add_ptr(umm, &tmp->dbd_prev,
-					     sizeof(tmp->dbd_prev));
+			rc = umem_tx_add_ptr(umm, &tmp->dbd_prev, sizeof(tmp->dbd_prev));
 			if (rc != 0)
 				return rc;
-
 			tmp->dbd_prev = dbd->dbd_prev;
 		}
 
 		if (cont_df->cd_dtx_active_head == dbd_off) {
-			rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_active_head,
-					sizeof(cont_df->cd_dtx_active_head));
+			rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_active_head, sizeof(cont_df->cd_dtx_active_head));
 			if (rc != 0)
 				return rc;
-
 			cont_df->cd_dtx_active_head = dbd->dbd_next;
 		}
 
 		if (cont_df->cd_dtx_active_tail == dbd_off) {
-			rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_active_tail,
-					sizeof(cont_df->cd_dtx_active_tail));
+			rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_active_tail, sizeof(cont_df->cd_dtx_active_tail));
 			if (rc != 0)
 				return rc;
 
@@ -746,6 +736,12 @@ dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae,
 	return rc;
 }
 
+
+//  主要干的事情：
+//  1. 用dti为key,在active树上找到dae
+//  2. 用dae中的值构造dce,然后将dce插入committed树上
+//  3. ilog的话删掉dae中对应的record
+//     evtree,svtree置committed
 static int
 vos_dtx_commit_one(struct vos_container *cont, struct dtx_id *dti, daos_epoch_t epoch,
 		   daos_epoch_t cmt_time, struct vos_dtx_cmt_ent **dce_p,
@@ -758,28 +754,30 @@ vos_dtx_commit_one(struct vos_container *cont, struct dtx_id *dti, daos_epoch_t 
 	int				 rc = 0;
 
 	d_iov_set(&kiov, dti, sizeof(*dti));
+	
 	/* For single replicated object, we trigger commit just after local
 	 * modification done. Under such case, the caller exactly knows the
 	 * @epoch and no need to lookup the active DTX table. On the other
 	 * hand, for modifying single replicated object, there is no DTX
 	 * entry in the active DTX table.
 	 */
+	 
 	if (epoch == 0) {
+
+	    // solo模式不进来， 多副本一定走进来
 		d_iov_set(&riov, NULL, 0);
 		rc = dbtree_lookup(cont->vc_dtx_active_hdl, &kiov, &riov);
+	
 		if (rc == -DER_NONEXIST) {
-			rc = dbtree_lookup(cont->vc_dtx_committed_hdl,
-					   &kiov, &riov);
+			rc = dbtree_lookup(cont->vc_dtx_committed_hdl, &kiov, &riov);
 			if (rc == 0) {
 				dce = (struct vos_dtx_cmt_ent *)riov.iov_buf;
 				if (dce->dce_invalid) {
 					dce = NULL;
 					D_GOTO(out, rc = -DER_NONEXIST);
 				}
-
 				dce = NULL;
 			}
-
 			goto out;
 		}
 
@@ -788,8 +786,7 @@ vos_dtx_commit_one(struct vos_container *cont, struct dtx_id *dti, daos_epoch_t 
 
 		dae = riov.iov_buf;
 		if (dae->dae_aborted) {
-			D_ERROR("NOT allow to commit an aborted DTX "DF_DTI"\n",
-				DP_DTI(dti));
+			D_ERROR("NOT allow to commit an aborted DTX "DF_DTI"\n", DP_DTI(dti));
 			D_GOTO(out, rc = -DER_NONEXIST);
 		}
 
@@ -797,8 +794,7 @@ vos_dtx_commit_one(struct vos_container *cont, struct dtx_id *dti, daos_epoch_t 
 		 * from the active table, just remove it again.
 		 */
 		if (dae->dae_committed) {
-			rc = dbtree_delete(cont->vc_dtx_active_hdl,
-					   BTR_PROBE_BYPASS, &kiov, &dae);
+			rc = dbtree_delete(cont->vc_dtx_active_hdl, BTR_PROBE_BYPASS, &kiov, &dae);
 			if (rc == 0) {
 				dtx_act_ent_cleanup(cont, dae, NULL, false);
 				dtx_evict_lid(cont, dae);
@@ -846,9 +842,8 @@ vos_dtx_commit_one(struct vos_container *cont, struct dtx_id *dti, daos_epoch_t 
 	*dae_p = dae;
 
 out:
-	D_CDEBUG(rc != 0 && rc != -DER_NONEXIST, DLOG_ERR, DB_IO,
-		 "Commit the DTX "DF_DTI": rc = "DF_RC"\n",
-		 DP_DTI(dti), DP_RC(rc));
+	D_CDEBUG(rc != 0 && rc != -DER_NONEXIST, DLOG_ERR, DB_IO, "Commit the DTX "DF_DTI": rc = "DF_RC"\n", DP_DTI(dti), DP_RC(rc));
+	
 	if (rc != 0)
 		D_FREE(dce);
 
@@ -918,8 +913,7 @@ vos_dtx_extend_act_table(struct vos_container *cont)
 
 		cont_df->cd_dtx_active_head = dbd_off;
 	} else {
-		rc = umem_tx_add_ptr(umm, &tmp->dbd_next,
-				     sizeof(tmp->dbd_next));
+		rc = umem_tx_add_ptr(umm, &tmp->dbd_next, sizeof(tmp->dbd_next));
 		if (rc != 0)
 			return rc;
 
@@ -996,13 +990,12 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 	dae->dae_dbd = dbd;
 	dae->dae_dth = dth;
 
-	D_DEBUG(DB_IO, "Allocated new lid DTX: "DF_DTI" lid=%d dae=%p"
-		" dae_dbd=%p\n", DP_DTI(&dth->dth_xid), DAE_LID(dae), dae, dbd);
+	D_DEBUG(DB_IO, "Allocated new lid DTX: "DF_DTI" lid=%d dae=%p dae_dbd=%p\n", DP_DTI(&dth->dth_xid), DAE_LID(dae), dae, dbd);
 
 	d_iov_set(&kiov, &DAE_XID(dae), sizeof(DAE_XID(dae)));
 	d_iov_set(&riov, dae, sizeof(*dae));
-	rc = dbtree_upsert(cont->vc_dtx_active_hdl, BTR_PROBE_EQ,
-			   DAOS_INTENT_UPDATE, &kiov, &riov, NULL);
+	
+	rc = dbtree_upsert(cont->vc_dtx_active_hdl, BTR_PROBE_EQ, DAOS_INTENT_UPDATE, &kiov, &riov, NULL);
 	if (rc == 0) {
 		dae->dae_start_time = d_hlc_get();
 		d_list_add_tail(&dae->dae_link, &cont->vc_dtx_act_list);
@@ -1038,8 +1031,7 @@ vos_dtx_append(struct dtx_handle *dth, umem_off_t record, uint32_t type)
 				return -DER_NOMEM;
 
 			if (dae->dae_records != NULL) {
-				memcpy(rec, dae->dae_records,
-				       sizeof(*rec) * dae->dae_rec_cap);
+				memcpy(rec, dae->dae_records, sizeof(*rec) * dae->dae_rec_cap);
 				D_FREE(dae->dae_records);
 			}
 
@@ -1463,6 +1455,7 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 			dbd = umem_off2ptr(umm, cont_df->cd_dtx_active_tail);
 		}
 
+        // 这个是什么场景？？？
 		if (dae == NULL) {
 			rc = vos_dtx_alloc(dbd, dth);
 			if (rc != 0)
@@ -1506,8 +1499,7 @@ vos_dtx_deregister_record(struct umem_instance *umm, daos_handle_t coh,
 	struct vos_dtx_act_ent_df	*dae_df;
 	umem_off_t			*rec_df;
 	bool				 found;
-	int				 count;
-	int				 i;
+	int				     count, i;
 
 	if (!vos_dtx_is_normal_entry(entry))
 		return;
@@ -1522,17 +1514,15 @@ vos_dtx_deregister_record(struct umem_instance *umm, daos_handle_t coh,
 	if (cont == NULL)
 		return;
 
-	found = lrua_lookupx(cont->vc_dtx_array, entry - DTX_LID_RESERVED,
-			     epoch, &dae);
+	found = lrua_lookupx(cont->vc_dtx_array, entry - DTX_LID_RESERVED, epoch, &dae);
 	if (!found) {
-		D_WARN("Could not find active DTX record for lid=%d, epoch="
-		       DF_U64"\n", entry, epoch);
+		D_WARN("Could not find active DTX record for lid=%d, epoch="DF_U64"\n", entry, epoch);
 		return;
 	}
 
 	dae_df = umem_off2ptr(umm, dae->dae_df_off);
-	if (daos_is_zero_dti(&dae_df->dae_xid) ||
-	    dae_df->dae_flags & DTE_INVALID)
+	
+	if (daos_is_zero_dti(&dae_df->dae_xid) || dae_df->dae_flags & DTE_INVALID)
 		return;
 
 	if (DAE_REC_CNT(dae) > DTX_INLINE_REC_CNT)
@@ -1903,10 +1893,14 @@ vos_dtx_load_mbs(daos_handle_t coh, struct dtx_id *dti, struct dtx_memberships *
 	return rc;
 }
 
+// 一次可以提交多个dtx_id
 int
-vos_dtx_commit_internal(struct vos_container *cont, struct dtx_id dtis[],
-			int count, daos_epoch_t epoch, bool rm_cos[],
-			struct vos_dtx_act_ent **daes, struct vos_dtx_cmt_ent **dces)
+vos_dtx_commit_internal(struct vos_container *cont, 
+                                  struct dtx_id dtis[], int count,  // 待提交的dtx_id数组以及数量
+                                  daos_epoch_t epoch,               // 除了单副本模式为dth->epoch, 其余为0
+                                  bool rm_cos[],                    // OUT：数组中的每个值代表每个dti commite的结果，改为true表示成功
+			                      struct vos_dtx_act_ent **daes,    // OUT：数组中的每个值代表每个dti查询出来的dae
+			                      struct vos_dtx_cmt_ent **dces)    // OUT：数组中的每个值代表每个dti commite时插入的dce
 {
 	struct vos_cont_df		    *cont_df = cont->vc_cont_df;
 	struct umem_instance		*umm = vos_cont2umm(cont);
@@ -1925,6 +1919,7 @@ vos_dtx_commit_internal(struct vos_container *cont, struct dtx_id dtis[],
 
 	dbd = umem_off2ptr(umm, cont_df->cd_dtx_committed_tail);
 	if (dbd == NULL)
+		// 第一次进来，还没有添加过数据，cd_dtx_committed_tail为初始化的值NULL
 		goto new_blob;
 
 	D_ASSERTF(dbd->dbd_magic == DTX_CMT_BLOB_MAGIC, "Corrupted committed DTX blob %x\n", dbd->dbd_magic);
@@ -1955,7 +1950,7 @@ again:
 			rc = 0;
 
 		if (rc1 == 0)
-			rc1 = rc;
+			rc1 = rc;  //如果rc有失败的，赋值给rc1, 会结束循环，意味着在提交多个时，1个失败其余不在提交
 
 		if (dce != NULL)
 			dtx_memcpy_nodrain(umm, &dbd->dbd_committed_data[j++], &dce->dce_base, sizeof(struct vos_dtx_cmt_ent_df));
@@ -1978,19 +1973,17 @@ new_blob:
 	/* Need new @dbd */
 	dbd_off = umem_zalloc(umm, DTX_BLOB_SIZE);
 	if (umoff_is_null(dbd_off)) {
-		D_ERROR("No space to store committed DTX %d "DF_DTI"\n",
-			count, DP_DTI(&dtis[cur]));
+		D_ERROR("No space to store committed DTX %d "DF_DTI"\n", count, DP_DTI(&dtis[cur]));
 		fatal = true;
 		D_GOTO(out, rc = -DER_NOSPACE);
 	}
 
 	dbd = umem_off2ptr(umm, dbd_off);
 	dbd->dbd_magic = DTX_CMT_BLOB_MAGIC;
-	dbd->dbd_cap = (DTX_BLOB_SIZE - sizeof(struct vos_dtx_blob_df)) /
-		       sizeof(struct vos_dtx_cmt_ent_df);
+	dbd->dbd_cap = (DTX_BLOB_SIZE - sizeof(struct vos_dtx_blob_df)) / sizeof(struct vos_dtx_cmt_ent_df);
 	dbd->dbd_prev = umem_ptr2off(umm, dbd_prev);
 
-	if (dbd_prev == NULL) {
+	if (dbd_prev == NULL) {   // 添加第一个dae， dbd_off挂入cd_dtx_committed_head和cont_df->cd_dtx_committed_tai
 		D_ASSERT(umoff_is_null(cont_df->cd_dtx_committed_head));
 		D_ASSERT(umoff_is_null(cont_df->cd_dtx_committed_tail));
 
@@ -2002,16 +1995,14 @@ new_blob:
 			D_GOTO(out, fatal = true);
 
 		cont_df->cd_dtx_committed_head = dbd_off;
-	} else {
-		rc = umem_tx_add_ptr(umm, &dbd_prev->dbd_next,
-				     sizeof(dbd_prev->dbd_next));
+	} else {                 // 后续的第二个第三个 挂入dbd_prev->dbd_next和cont_df->cd_dtx_committed_tai
+		rc = umem_tx_add_ptr(umm, &dbd_prev->dbd_next, sizeof(dbd_prev->dbd_next));
 		if (rc != 0)
 			D_GOTO(out, fatal = true);
 
 		dbd_prev->dbd_next = dbd_off;
 
-		rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_committed_tail,
-				     sizeof(cont_df->cd_dtx_committed_tail));
+		rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_committed_tail, sizeof(cont_df->cd_dtx_committed_tail));
 		if (rc != 0)
 			D_GOTO(out, fatal = true);
 	}
@@ -2057,9 +2048,9 @@ vos_dtx_post_handle(struct vos_container *cont,
 		return;
 	}
 
+//  事务提交成功计数加1
 	if (!abort && dces != NULL) {
 		struct vos_tls		*tls = vos_tls_get();
-
 		for (i = 0; i < count; i++) {
 			if (dces[i] != NULL) {
 				cont->vc_dtx_committed_count++;
@@ -2068,6 +2059,7 @@ vos_dtx_post_handle(struct vos_container *cont,
 			}
 		}
 	}
+//
 
 	for (i = 0; i < count; i++) {
 		if (daes[i] == NULL)
@@ -2123,11 +2115,13 @@ vos_dtx_commit(daos_handle_t coh, struct dtx_id dtis[], int count, bool rm_cos[]
 	/* Commit multiple DTXs via single PMDK transaction. */
 	rc = umem_tx_begin(vos_cont2umm(cont), NULL);
 	if (rc == 0) {
+		// 出参：daes, dces
 		committed = vos_dtx_commit_internal(cont, dtis, count, 0, rm_cos, daes, dces);
 		rc = umem_tx_end(vos_cont2umm(cont), committed > 0 ? 0 : committed);
 		if (rc == 0)
 			vos_dtx_post_handle(cont, daes, dces, count, false, false);
 		else
+			//   abort rollback 标记
 			vos_dtx_post_handle(cont, daes, dces, count, false, true);
 	}
 
@@ -2223,29 +2217,29 @@ vos_dtx_set_flags_one(struct vos_container *cont, struct dtx_id *dti, uint32_t f
 	d_iov_t				 kiov;
 	int				 rc;
 
+/* BEG:  现在active树上查找dae, active树上没有committed树上有，已经active的不能修改状态了 */
 	d_iov_set(&kiov, dti, sizeof(*dti));
 	d_iov_set(&riov, NULL, 0);
 	rc = dbtree_lookup(cont->vc_dtx_active_hdl, &kiov, &riov);
 	if (rc == -DER_NONEXIST) {
 		rc = dbtree_lookup(cont->vc_dtx_committed_hdl, &kiov, &riov);
 		if (rc == 0) {
-			D_ERROR("Not allow to set flag %s on committed (1) DTX entry "DF_DTI"\n",
-				vos_dtx_flags2name(flags), DP_DTI(dti));
+			D_ERROR("Not allow to set flag %s on committed (1) DTX entry "DF_DTI"\n", vos_dtx_flags2name(flags), DP_DTI(dti));
 			D_GOTO(out, rc = -DER_NO_PERM);
 		}
 	}
 
 	if (rc != 0)
 		goto out;
+/* END */
 
 	dae = (struct vos_dtx_act_ent *)riov.iov_buf;
-	if (DAE_FLAGS(dae) & flags)
+	if (DAE_FLAGS(dae) & flags)  // 已经被标记了该状态了，反成功
 		goto out;
 
-	if (dae->dae_committable || dae->dae_committed || dae->dae_aborted) {
-		D_ERROR("Not allow to set flag %s on the %s DTX entry "DF_DTI"\n",
-			vos_dtx_flags2name(flags), dae->dae_committable ? "committable" :
-			dae->dae_committed ? "committed (2)" : "aborted", DP_DTI(dti));
+	if (dae->dae_committable || dae->dae_committed || dae->dae_aborted) {  // 这几种状态不允许设了，除非设DTE_PARTIAL_COMMITTED，否则返失败
+		D_ERROR("Not allow to set flag %s on the %s DTX entry "DF_DTI"\n", 
+			vos_dtx_flags2name(flags), dae->dae_committable ? "committable" : dae->dae_committed ? "committed (2)" : "aborted", DP_DTI(dti));
 		D_GOTO(out, rc = -DER_NO_PERM);
 	}
 
@@ -2260,9 +2254,7 @@ vos_dtx_set_flags_one(struct vos_container *cont, struct dtx_id *dti, uint32_t f
 	}
 
 out:
-	D_CDEBUG(rc != 0, DLOG_ERR, DLOG_WARN,
-		 "Mark the DTX entry "DF_DTI" as %s: "DF_RC"\n",
-		 DP_DTI(dti), vos_dtx_flags2name(flags), DP_RC(rc));
+	D_CDEBUG(rc != 0, DLOG_ERR, DLOG_WARN, "Mark the DTX entry "DF_DTI" as %s: "DF_RC"\n", DP_DTI(dti), vos_dtx_flags2name(flags), DP_RC(rc));
 
 	if ((rc == -DER_NO_PERM || rc == -DER_NONEXIST) && flags == DTE_PARTIAL_COMMITTED)
 		rc = 0;
@@ -2270,6 +2262,13 @@ out:
 	return rc;
 }
 
+
+// dtx全局事务统筹后的事务结果设置给节点内的事务状态
+// 基本也就会设置这三种状态：
+//  DTE_CORRUPTED            事务被损坏了，部分事务的参与者丢失了
+//  DTE_ORPHAN               leader丢失了， 不能协商状态
+//  DTE_PARTIAL_COMMITTED    只有部分事务的参与者committed
+// 设置状态叠加到DAE_FLAGS(dae) 
 int
 vos_dtx_set_flags(daos_handle_t coh, struct dtx_id dtis[], int count, uint32_t flags)
 {
@@ -2453,9 +2452,7 @@ vos_dtx_stat(daos_handle_t coh, struct dtx_stat *stat, uint32_t flags)
 					goto cmt;
 				}
 
-				dae = d_list_entry(dae->dae_link.next,
-						   struct vos_dtx_act_ent,
-						   dae_link);
+				dae = d_list_entry(dae->dae_link.next, struct vos_dtx_act_ent, dae_link);
 			}
 		}
 

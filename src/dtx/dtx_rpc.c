@@ -1029,14 +1029,11 @@ again:
 		 * then pool map may be refreshed during that. Let's retry
 		 * to find out the new leader.
 		 */
-		if (target->ta_comp.co_status != PO_COMP_ST_UP &&
-		    target->ta_comp.co_status != PO_COMP_ST_UPIN) {
+		if (target->ta_comp.co_status != PO_COMP_ST_UP && target->ta_comp.co_status != PO_COMP_ST_UPIN) {
 			if (unlikely(++count % 10 == 3))
-				D_WARN("Get stale DTX leader %u/%u (st: %x) for "DF_DTI
-				       " %d times, maybe dead loop\n",
+				D_WARN("Get stale DTX leader %u/%u (st: %x) for "DF_DTI" %d times, maybe dead loop\n",
 				       target->ta_comp.co_rank, target->ta_comp.co_id,
 				       target->ta_comp.co_status, DP_DTI(&dsp->dsp_xid), count);
-
 			goto again;
 		}
 
@@ -1120,46 +1117,45 @@ next:
 		dte.dte_refs = 1;
 		dte.dte_mbs = dsp->dsp_mbs;
 
-		rc = dtx_status_handle_one(cont, &dte, dsp->dsp_epoch,
-					   NULL, NULL);
+		rc = dtx_status_handle_one(cont, &dte, dsp->dsp_epoch, NULL, NULL);
 		switch (rc) {
-		case DSHR_NEED_COMMIT: {
-			struct dtx_entry	*pdte = &dte;
-			struct dtx_cos_key	 dck;
+			case DSHR_NEED_COMMIT: {
+				struct dtx_entry	*pdte = &dte;
+				struct dtx_cos_key	 dck;
 
-			dck.oid = dsp->dsp_oid;
-			dck.dkey_hash = dsp->dsp_dkey_hash;
-			rc = dtx_commit(cont, &pdte, &dck, 1);
-			if (rc < 0 && rc != -DER_NONEXIST && cmt_list != NULL)
-				d_list_add_tail(&dsp->dsp_link, cmt_list);
-			else
+				dck.oid = dsp->dsp_oid;
+				dck.dkey_hash = dsp->dsp_dkey_hash;
+				rc = dtx_commit(cont, &pdte, &dck, 1);
+				if (rc < 0 && rc != -DER_NONEXIST && cmt_list != NULL)
+					d_list_add_tail(&dsp->dsp_link, cmt_list);
+				else
+					dtx_dsp_free(dsp);
+				continue;
+			}
+			case DSHR_NEED_RETRY:
 				dtx_dsp_free(dsp);
-			continue;
-		}
-		case DSHR_NEED_RETRY:
-			dtx_dsp_free(dsp);
-			if (failout)
-				D_GOTO(out, rc = -DER_INPROGRESS);
-			continue;
-		case DSHR_IGNORE:
-			dtx_dsp_free(dsp);
-			continue;
-		case DSHR_ABORT_FAILED:
-			if (abt_list != NULL)
-				d_list_add_tail(&dsp->dsp_link, abt_list);
-			else
+				if (failout)
+					D_GOTO(out, rc = -DER_INPROGRESS);
+				continue;
+			case DSHR_IGNORE:
 				dtx_dsp_free(dsp);
-			continue;
-		case DSHR_CORRUPT:
-			dtx_dsp_free(dsp);
-			if (failout)
-				D_GOTO(out, rc = -DER_DATA_LOSS);
-			continue;
-		default:
-			dtx_dsp_free(dsp);
-			if (failout)
-				goto out;
-			continue;
+				continue;
+			case DSHR_ABORT_FAILED:
+				if (abt_list != NULL)
+					d_list_add_tail(&dsp->dsp_link, abt_list);
+				else
+					dtx_dsp_free(dsp);
+				continue;
+			case DSHR_CORRUPT:
+				dtx_dsp_free(dsp);
+				if (failout)
+					D_GOTO(out, rc = -DER_DATA_LOSS);
+				continue;
+			default:
+				dtx_dsp_free(dsp);
+				if (failout)
+					goto out;
+				continue;
 		}
 	}
 
@@ -1174,8 +1170,7 @@ out:
 		D_FREE(drr);
 	}
 
-	while ((dsp = d_list_pop_entry(&self, struct dtx_share_peer,
-				       dsp_link)) != NULL)
+	while ((dsp = d_list_pop_entry(&self, struct dtx_share_peer, dsp_link)) != NULL)
 		dtx_dsp_free(dsp);
 
 	return rc;
@@ -1190,6 +1185,11 @@ out:
  * to refresh such DTX status from the leader. The DTX_REFRESH RPC is used
  * for such purpose.
  */
+
+// 由于异步批量提交的语义，就会导致dtx的状态在leader和非leader上不同。
+// leader上当然知道dtx是否提交了，但是非leader却不知道集群内的事务情况。
+// dtx_refresh用于非leader向leader查询dtx状态，用于某些特定场景
+			 
 int
 dtx_refresh(struct dtx_handle *dth, struct ds_cont_child *cont)
 {

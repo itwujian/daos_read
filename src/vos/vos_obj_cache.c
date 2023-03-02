@@ -451,9 +451,11 @@ check_object:
 			 *  actual uncertainty check.
 			 */
 		}
+		// 非创建流程，这里就回去了
 		goto out;
 	}
 
+// 创建流程
 	/** If it's a conditional update, we need to preserve the -DER_NONEXIST
 	 *  for the caller.
 	 */

@@ -162,6 +162,8 @@ ilog_log_del(struct ilog_context *lctx, const struct ilog_id *id,
 	if (!cbs->dc_log_del_cb || !id->id_tx_id)
 		return 0;
 
+    // (struct umem_instance *umm, umem_off_t ilog_off, uint32_t tx_id,
+	//    daos_epoch_t epoch, bool deregister, void *args)
 	rc = cbs->dc_log_del_cb(&lctx->ic_umm, lctx->ic_root_off, id->id_tx_id,
 				id->id_epoch, deregister, cbs->dc_log_del_args);
 	if (rc != 0) {
@@ -868,8 +870,7 @@ const char *opc_str[] = {
 };
 
 static int
-ilog_modify(daos_handle_t loh, const struct ilog_id *id_in,
-	    const daos_epoch_range_t *epr, int opc)
+ilog_modify(daos_handle_t loh, const struct ilog_id *id_in, const daos_epoch_range_t *epr, int opc)
 {
 	struct ilog_context	*lctx;
 	struct ilog_root	*root;
@@ -890,9 +891,7 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in,
 
 	version = ilog_mag2ver(root->lr_magic);
 
-	D_DEBUG(DB_TRACE, "%s in incarnation log: log:"DF_X64 " epoch:" DF_X64
-		" tree_version: %d\n", opc_str[opc], lctx->ic_root_off,
-		id_in->id_epoch, version);
+	D_DEBUG(DB_TRACE, "%s in incarnation log: log:"DF_X64 " epoch:" DF_X64" tree_version: %d\n", opc_str[opc], lctx->ic_root_off, id_in->id_epoch, version);
 
 	if (root->lr_tree.it_embedded && root->lr_id.id_epoch <= epr->epr_hi && root->lr_id.id_epoch >= epr->epr_lo) {
 		visibility = ilog_status_get(lctx, &root->lr_id, DAOS_INTENT_UPDATE, true);
