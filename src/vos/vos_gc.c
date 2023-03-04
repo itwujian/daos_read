@@ -860,8 +860,7 @@ gc_init_cont(struct umem_instance *umm, struct vos_cont_df *cd)
 {
 	int	i;
 
-	D_DEBUG(DB_IO, "Init garbage bins for cont="DF_UUID"\n",
-		DP_UUID(cd->cd_id));
+	D_DEBUG(DB_IO, "Init garbage bins for cont="DF_UUID"\n", DP_UUID(cd->cd_id));
 
 	for (i = 0; i < GC_CONT; i++) {
 		struct vos_gc_bin_df *bin = &cd->cd_gc_bins[i];

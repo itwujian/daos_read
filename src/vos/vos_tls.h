@@ -52,7 +52,7 @@ struct vos_tls {
 	/** profile for standalone vos test */
 	struct daos_profile		*vtl_dp;
 	/** In-memory object cache for the PMEM object table */
-	struct daos_lru_cache		*vtl_ocache;
+	struct daos_lru_cache	*vtl_ocache;
 	/** pool open handle hash table */
 	struct d_hash_table		*vtl_pool_hhash;
 	/** container open handle hash table */
@@ -62,7 +62,7 @@ struct vos_tls {
 		uint64_t		 vtl_hash;
 		bool			 vtl_hash_set;
 	};
-	struct d_tm_node_t		 *vtl_committed;
+	struct d_tm_node_t	 *vtl_committed;
 };
 
 struct bio_xs_context *vos_xsctxt_get(void);

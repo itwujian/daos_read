@@ -54,7 +54,7 @@ union btr_rec_buf {
 	struct {
 		struct btr_record	rec;
 		char			key[DAOS_HKEY_MAX];
-	}				rb_buf;
+	} rb_buf;
 };
 
 /** internal state of iterator */
@@ -277,13 +277,15 @@ btr_context_create(umem_off_t root_off, struct btr_root *root,
 {
 	struct btr_context	*tcx;
 	unsigned int		 depth;
-	int			 rc;
+	int			         rc;
 
 	D_ALLOC_PTR(tcx);
 	if (tcx == NULL)
 		return -DER_NOMEM;
 
 	tcx->tc_ref = 1; /* for the caller */
+
+	// 根据树的具体类型初始化btr_context->btr_instance
 	rc = btr_class_init(root_off, root, tree_class, &tree_feats, uma, coh, priv, &tcx->tc_tins);
 	if (rc != 0) {
 		D_ERROR("Failed to setup mem class %d: "DF_RC"\n", uma->uma_id, DP_RC(rc));
@@ -302,7 +304,7 @@ btr_context_create(umem_off_t root_off, struct btr_root *root,
 		tcx->tc_class		= root->tr_class;
 		tcx->tc_feats		= root->tr_feats;
 		tcx->tc_order		= root->tr_order;
-		depth			= root->tr_depth;
+		depth			    = root->tr_depth;
 		D_DEBUG(DB_TRACE, "Load tree context from "DF_X64"\n", root_off);
 	}
 
@@ -480,13 +482,17 @@ static void
 btr_hkey_gen(struct btr_context *tcx, d_iov_t *key, void *hkey)
 {
 	if (btr_is_direct_key(tcx)) {
+		// feats: BTR_FEAT_DIRECT_KEY
 		/* We store umem offset to record when bubbling up */
 		return;
 	}
+	
 	if (btr_is_int_key(tcx)) {
+		// feats: BTR_FEAT_UINT_KEY
 		hkey_int_gen(key, hkey);
 		return;
 	}
+	
 	btr_ops(tcx)->to_hkey_gen(&tcx->tc_tins, key, hkey);
 }
 
@@ -662,8 +668,7 @@ btr_node_alloc(struct btr_context *tcx, umem_off_t *nd_off_p)
 	umem_off_t		 nd_off;
 
 	if (btr_ops(tcx)->to_node_alloc != NULL)
-		nd_off = btr_ops(tcx)->to_node_alloc(&tcx->tc_tins,
-						     btr_node_size(tcx));
+		nd_off = btr_ops(tcx)->to_node_alloc(&tcx->tc_tins, btr_node_size(tcx));
 	else
 		nd_off = umem_zalloc(btr_umm(tcx), btr_node_size(tcx));
 
@@ -885,11 +890,9 @@ btr_root_tx_add(struct btr_context *tcx)
 	int			 rc;
 
 	if (!UMOFF_IS_NULL(tins->ti_root_off)) {
-		rc = umem_tx_add(btr_umm(tcx), tcx->tc_tins.ti_root_off,
-				 sizeof(struct btr_root));
+		rc = umem_tx_add(btr_umm(tcx), tcx->tc_tins.ti_root_off, sizeof(struct btr_root));
 	} else {
-		rc = umem_tx_add_ptr(btr_umm(tcx), tcx->tc_tins.ti_root,
-				     sizeof(struct btr_root));
+		rc = umem_tx_add_ptr(btr_umm(tcx), tcx->tc_tins.ti_root, sizeof(struct btr_root));
 	}
 	return rc;
 }
@@ -919,23 +922,27 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 
 	/* root is also leaf, records are stored in root */
 	btr_node_set(tcx, nd_off, BTR_NODE_ROOT | BTR_NODE_LEAF);
+	
 	nd = btr_off2ptr(tcx, nd_off);
 	nd->tn_keyn = 1;
 
+    // 获取rec的地址，把record内容拷过去
 	rec_dst = btr_node_rec_at(tcx, nd_off, 0);
 	btr_rec_copy(tcx, rec_dst, rec, 1);
 
 	if (btr_has_tx(tcx)) {
+		// 如果是带内存事务的树(使用了PMDK)
+		// Add the specified range of umoff to current memory transaction
 		rc = btr_root_tx_add(tcx);
 		if (rc != 0) {
-			D_ERROR("Failed to add root into TX: %s\n",
-				strerror(errno));
+			D_ERROR("Failed to add root into TX: %s\n", strerror(errno));
 			return rc;
 		}
 	}
 
 	root->tr_node = nd_off;
 	root->tr_depth = 1;
+	
 	btr_context_set_depth(tcx, root->tr_depth);
 
 	btr_trace_set(tcx, 0, nd_off, 0);
@@ -1019,6 +1026,8 @@ btr_check_availability(struct btr_context *tcx, struct btr_check_alb *alb)
 	if (btr_ops(tcx)->to_check_availability == NULL)
 		return PROBE_RC_OK;
 
+// 只有singv_btr_ops树需要检查，目的还不清楚
+
 	if (UMOFF_IS_NULL(alb->nd_off)) { /* compare the leaf trace */
 		struct btr_trace *trace = &tcx->tc_traces[BTR_TRACE_MAX - 1];
 
@@ -1030,6 +1039,7 @@ btr_check_availability(struct btr_context *tcx, struct btr_check_alb *alb)
 		return PROBE_RC_OK;
 
 	rec = btr_node_rec_at(tcx, alb->nd_off, alb->at);
+	
 	rc = btr_ops(tcx)->to_check_availability(&tcx->tc_tins, rec, alb->intent);
 	
 	if (rc == -DER_INPROGRESS) /* Uncertain */
@@ -1067,25 +1077,27 @@ btr_check_availability(struct btr_context *tcx, struct btr_check_alb *alb)
 }
 
 static void
-btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace,
-			 struct btr_record *rec)
+btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace, struct btr_record *rec)
 {
-	struct btr_record *rec_a;
-	struct btr_node   *nd;
-	bool		   leaf;
+	struct btr_record  *rec_a;
+	struct btr_node    *nd;
+	bool		       leaf;
 	bool		   reuse = false;
 	char		   sbuf[BTR_PRINT_BUF];
 
 	/* NB: assume trace->tr_node has been added to TX */
 	D_ASSERT(!btr_node_is_full(tcx, trace->tr_node));
 
+    // 当前要插入的node，也就是搜索路径找到的node是否是叶子， 只是打印，没啥鸟用
 	leaf = btr_node_is_leaf(tcx, trace->tr_node);
-	btr_trace_debug(tcx, trace, "insert %s now size %d\n",
-			btr_rec_string(tcx, rec, leaf, sbuf, BTR_PRINT_BUF),
-			btr_rec_size(tcx));
+	
+	btr_trace_debug(tcx, trace, "insert %s now size %d\n", btr_rec_string(tcx, rec, leaf, sbuf, BTR_PRINT_BUF), btr_rec_size(tcx));
 
 	nd = btr_off2ptr(tcx, trace->tr_node);
+
+// 这个分支只有singv_btr_ops有用，其余树不走
 	if (nd->tn_keyn > 0) {
+		
 		struct btr_check_alb	alb;
 		int			rc;
 
@@ -1093,31 +1105,35 @@ btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace,
 			alb.at = trace->tr_at;
 		else
 			alb.at = trace->tr_at - 1;
-
 		alb.nd_off = trace->tr_node;
 		alb.intent = DAOS_INTENT_CHECK;
+		
 		rc = btr_check_availability(tcx, &alb);
 		if (rc == PROBE_RC_UNAVAILABLE) {
 			reuse = true;
-			btr_trace_debug(tcx, trace, "reuse at %d for insert\n",
-					alb.at);
+			btr_trace_debug(tcx, trace, "reuse at %d for insert\n", alb.at);
 			if (trace->tr_at == nd->tn_keyn)
 				trace->tr_at -= 1;
 		}
 	}
+// 这个分支只有singv_btr_ops有用，其余树不走
 
+
+//   场景1.   trace->tr_at == nd->tn_keyn
+//          说明当前查找访问的trace层的record就是最后最后1个key, 那么直接再后面追加写
+//   场景2. trace->tr_at != nd->tn_keyn
+//          说明当前查找访问的trace层的record是中间的某个key，后面的往前搬移1个，新的record查入at后面
 	rec_a = btr_node_rec_at(tcx, trace->tr_node, trace->tr_at);
 
 	if (reuse) {
+		// 只有singv_btr_ops会进来
 		btr_rec_free(tcx, rec_a, NULL);
 	} else {
+	
 		if (trace->tr_at != nd->tn_keyn) {
 			struct btr_record *rec_b;
-
-			rec_b = btr_node_rec_at(tcx, trace->tr_node,
-						trace->tr_at + 1);
-			btr_rec_move(tcx, rec_b, rec_a,
-				     nd->tn_keyn - trace->tr_at);
+			rec_b = btr_node_rec_at(tcx, trace->tr_node, trace->tr_at + 1);
+			btr_rec_move(tcx, rec_b, rec_a, nd->tn_keyn - trace->tr_at);
 		}
 		nd->tn_keyn++;
 	}
@@ -1130,13 +1146,13 @@ btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace,
  */
 static int
 btr_split_at(struct btr_context *tcx, int level,
-	     umem_off_t off_left,
-	     umem_off_t off_right)
+	              umem_off_t off_left,
+	              umem_off_t off_right)
 {
 	struct btr_trace *trace = &tcx->tc_trace[level];
 	int		  order = tcx->tc_order;
 	int		  split_at;
-	bool		  left;
+	bool	  left;
 
 	split_at = order / 2;
 
@@ -1144,8 +1160,8 @@ btr_split_at(struct btr_context *tcx, int level,
 	if (!btr_node_is_leaf(tcx, off_left))
 		split_at -= left;
 
-	btr_trace_debug(tcx, trace, "split_at %d, insert to the %s node\n",
-			split_at, left ? "left" : "right");
+	btr_trace_debug(tcx, trace, "split_at %d, insert to the %s node\n", split_at, left ? "left" : "right");
+	
 	if (left)
 		btr_trace_set(tcx, level, off_left, trace->tr_at);
 	else
@@ -1158,8 +1174,7 @@ btr_split_at(struct btr_context *tcx, int level,
  * split a tree node at level \a level
  */
 static int
-btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace,
-			  struct btr_record *rec)
+btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace, struct btr_record *rec)
 {
 	struct btr_record	*rec_src;
 	struct btr_record	*rec_dst;
@@ -1168,9 +1183,9 @@ btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace,
 	umem_off_t		 off_left;
 	umem_off_t		 off_right;
 	char			 hkey_buf[DAOS_HKEY_MAX];
-	int			 split_at;
-	int			 level;
-	int			 rc;
+	int			     split_at;
+	int			     level;
+	int			     rc;
 	bool			 leaf;
 	bool			 right;
 
@@ -1212,8 +1227,9 @@ btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace,
 			btr_rec_copy_hkey(tcx, rec, rec_dst);
 		goto bubble_up;
 	}
-	/* non-leaf */
 
+	
+	/* non-leaf */
 	right = btr_node_is_equal(tcx, trace->tr_node, off_right);
 	if (trace->tr_at == 0 && right) {
 		/* the new record is the first one on the right node */
@@ -1253,8 +1269,7 @@ btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace,
 	btr_hkey_copy(tcx, &rec->rec_hkey[0], &hkey_buf[0]);
 
  bubble_up:
-	D_DEBUG(DB_TRACE, "left keyn %d, right keyn %d\n",
-		nd_left->tn_keyn, nd_right->tn_keyn);
+	D_DEBUG(DB_TRACE, "left keyn %d, right keyn %d\n", nd_left->tn_keyn, nd_right->tn_keyn);
 
 	rec->rec_off = off_right;
 	if (level == 0)
@@ -1345,15 +1360,15 @@ btr_node_insert_rec(struct btr_context *tcx, struct btr_trace *trace,
 	if (!node_alloc && btr_has_tx(tcx)) {
 		rc = btr_node_tx_add(tcx, trace->tr_node);
 		if (rc != 0) {
-			D_ERROR("Failed to add node to txn record: %s",
-				d_errstr(rc));
+			D_ERROR("Failed to add node to txn record: %s", d_errstr(rc));
 			goto done;
 		}
 	}
 
+    // node节点上存放的key的数量已经满了，需要分裂
 	if (btr_node_is_full(tcx, trace->tr_node))
 		rc = btr_node_split_and_insert(tcx, trace, rec);
-	else
+	else // 没满，直接在node节点插入
 		btr_node_insert_rec_only(tcx, trace, rec);
 done:
 	return rc;
@@ -2028,19 +2043,19 @@ out:
 static int
 btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out)
 {
-	struct btr_record *rec;
-	char		  *rec_str = NULL;
-	char		   str[BTR_PRINT_BUF];
-	union btr_rec_buf  rec_buf = {0};
-	int		   rc;
+	struct btr_record   *rec;
+	char		        *rec_str = NULL;
+	char		         str[BTR_PRINT_BUF];
+	union btr_rec_buf    rec_buf = {0};
+	int rc;
 
 	rec = &rec_buf.rb_rec;
 	btr_hkey_gen(tcx, key, &rec->rec_hkey[0]);
 
+    // for example: ktr_rec_alloc
 	rc = btr_rec_alloc(tcx, key, val, rec, val_out);
 	if (rc != 0) {
-		D_DEBUG(DB_TRACE, "Failed to create new record: "DF_RC"\n",
-			DP_RC(rc));
+		D_DEBUG(DB_TRACE, "Failed to create new record: "DF_RC"\n", DP_RC(rc));
 		return rc;
 	}
 
@@ -2048,31 +2063,29 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 		rec_str = btr_rec_string(tcx, rec, true, str, BTR_PRINT_BUF);
 
 	if (tcx->tc_depth != 0) {
+		// 
 		struct btr_trace *trace;
-
 		/* trace for the leaf */
 		trace = &tcx->tc_trace[tcx->tc_depth - 1];
 		btr_trace_debug(tcx, trace, "try to insert\n");
 
 		rc = btr_node_insert_rec(tcx, trace, rec);
 		if (rc != 0) {
-			D_DEBUG(DB_TRACE,
-				"Failed to insert record to leaf: "DF_RC"\n",
-					DP_RC(rc));
+			D_DEBUG(DB_TRACE, "Failed to insert record to leaf: "DF_RC"\n", DP_RC(rc));
 			return rc;
 		}
-
+		
 	} else {
-		/* empty tree */
+        // 当前是1棵空树，需要先创建1个btr_node, 然后往里面插入record
 		D_DEBUG(DB_TRACE, "Add record %s to an empty tree\n", rec_str);
-
+        //  root->tr_node指向新创建的这个btr_node
 		rc = btr_root_start(tcx, rec);
 		if (rc != 0) {
-			D_DEBUG(DB_TRACE, "Failed to start the tree: "DF_RC"\n",
-				DP_RC(rc));
+			D_DEBUG(DB_TRACE, "Failed to start the tree: "DF_RC"\n", DP_RC(rc));
 			return rc;
 		}
 	}
+	
 	return 0;
 }
 
@@ -3304,6 +3317,8 @@ btr_tx_tree_init(struct btr_context *tcx, struct btr_root *root)
 {
 	int		      rc = 0;
 
+    // 因为这里面要修改 btr_context->btr_instance->umem_instance内存盘上的地址
+    // 所以需要在umem_tx_begin里面
 	rc = btr_tx_begin(tcx);
 	if (rc != 0)
 		return rc;
@@ -3314,9 +3329,12 @@ btr_tx_tree_init(struct btr_context *tcx, struct btr_root *root)
 }
 
 int
-dbtree_create_inplace(unsigned int tree_class, uint64_t tree_feats,
-		      unsigned int tree_order, struct umem_attr *uma,
-		      struct btr_root *root, daos_handle_t *toh)
+dbtree_create_inplace(unsigned int tree_class, // vos_tree_class 树的具体类型
+                      uint64_t tree_feats,     // btr_feats      树的特点
+		              unsigned int tree_order, // 树中node的key的数量
+		              struct umem_attr *uma,
+		              struct btr_root *root,   // 传入的需要填写内容的待创建树的根节点
+		              daos_handle_t *toh)      // 返回的树的操作句柄：btr_context
 {
 	return dbtree_create_inplace_ex(tree_class, tree_feats, tree_order,
 					uma, root, DAOS_HDL_INVAL, NULL, toh);
@@ -3341,6 +3359,7 @@ dbtree_create_inplace_ex(unsigned int tree_class, uint64_t tree_feats,
 		return -DER_NO_PERM;
 	}
 
+    // 赋值btr_context
 	rc = btr_context_create(BTR_ROOT_NULL, root, tree_class, tree_feats, tree_order, uma, coh, priv, &tcx);
 	if (rc != 0)
 		return rc;
@@ -3350,8 +3369,10 @@ dbtree_create_inplace_ex(unsigned int tree_class, uint64_t tree_feats,
 	if (rc != 0)
 		goto failed;
 
+    // 转换btr_context成句柄toh
 	*toh = btr_tcx2hdl(tcx);
 	return 0;
+	
  failed:
 	btr_context_decref(tcx);
 	return rc;
@@ -4134,11 +4155,8 @@ btr_class_init(umem_off_t root_off, struct btr_root *root,
 	 * appropriate flag.
 	 */
 	special_feat = tc->tc_feats & (BTR_FEAT_UINT_KEY | BTR_FEAT_DIRECT_KEY);
-	if (!(special_feat & *tree_feats) &&
-	    (tc->tc_ops->to_hkey_gen == NULL ||
-	     tc->tc_ops->to_hkey_size == NULL)) {
-		D_DEBUG(DB_TRACE, "Setting feature "DF_X64" required"
-			" by tree class %d", special_feat, tree_class);
+	if (!(special_feat & *tree_feats) && (tc->tc_ops->to_hkey_gen == NULL || tc->tc_ops->to_hkey_size == NULL)) {
+		D_DEBUG(DB_TRACE, "Setting feature "DF_X64" required by tree class %d", special_feat, tree_class);
 		*tree_feats |= special_feat;
 	}
 
@@ -4150,8 +4168,7 @@ btr_class_init(umem_off_t root_off, struct btr_root *root,
 
 	/** Only check btree managed bits */
 	if ((*tree_feats & tc->tc_feats) != (*tree_feats & BTR_FEAT_MASK)) {
-		D_ERROR("Unsupported features "DF_X64"/"DF_X64"\n",
-			*tree_feats, tc->tc_feats);
+		D_ERROR("Unsupported features "DF_X64"/"DF_X64"\n", *tree_feats, tc->tc_feats);
 		return -DER_PROTO;
 	}
 
@@ -4175,8 +4192,7 @@ dbtree_class_register(unsigned int tree_class, uint64_t tree_feats,
 
 	/* XXX should be multi-thread safe */
 	if (btr_class_registered[tree_class].tc_ops != NULL) {
-		if (btr_class_registered[tree_class].tc_ops != ops ||
-		    btr_class_registered[tree_class].tc_feats != tree_feats)
+		if (btr_class_registered[tree_class].tc_ops != ops || btr_class_registered[tree_class].tc_feats != tree_feats)
 			return -DER_EXIST;
 		return 0;
 	}
@@ -4239,8 +4255,7 @@ dbtree_overhead_get(int alloc_overhead, unsigned int tclass, uint64_t otype,
 	ovhd->to_node_rec_msize = btr_size;
 
 	ovhd->to_leaf_overhead.no_order = tree_order;
-	ovhd->to_leaf_overhead.no_size = alloc_overhead +
-		sizeof(struct btr_node) + btr_size * tree_order;
+	ovhd->to_leaf_overhead.no_size = alloc_overhead + sizeof(struct btr_node) + btr_size * tree_order;
 	ovhd->to_int_node_size = ovhd->to_leaf_overhead.no_size;
 
 	order_idx = 0;
@@ -4251,8 +4266,7 @@ dbtree_overhead_get(int alloc_overhead, unsigned int tclass, uint64_t otype,
 	order = 1;
 	while (order != tree_order) {
 		ovhd->to_dyn_overhead[order_idx].no_order = order;
-		ovhd->to_dyn_overhead[order_idx].no_size = alloc_overhead +
-			sizeof(struct btr_node) + btr_size * order;
+		ovhd->to_dyn_overhead[order_idx].no_size = alloc_overhead + sizeof(struct btr_node) + btr_size * order;
 		order_idx++;
 		order = MIN(order * 2 + 1, tree_order);
 	}

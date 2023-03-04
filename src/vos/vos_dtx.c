@@ -1008,7 +1008,9 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 }
 
 static int
-vos_dtx_append(struct dtx_handle *dth, umem_off_t record, uint32_t type)
+vos_dtx_append(struct dtx_handle *dth, 
+                     umem_off_t record /* ilog的根节点作为record传入, obj、dkey、akey */,
+                     uint32_t type)
 {
 	struct vos_dtx_act_ent		*dae = dth->dth_ent;
 	umem_off_t			*rec;
@@ -1131,11 +1133,12 @@ vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
     // 然后找到key为epoch的dae
 	found = lrua_lookupx(cont->vc_dtx_array, entry - DTX_LID_RESERVED, epoch, &dae);
 	if (!found) {
-		// active中没有，表示是干净的
+		// 数组中没有，表示是干净的
 		D_DEBUG(DB_TRACE, "Entry %d "DF_U64" not in lru array, it must be committed\n", entry, epoch);
 		return ALB_AVAILABLE_CLEAN;
 	}
 
+// vc_dtx_array数组中存在
 	if (intent == DAOS_INTENT_PURGE) {
 		// The DTX entry still references related data record,
 		// then we cannot (vos) aggregate related data record.
@@ -1347,8 +1350,7 @@ vos_dtx_validation(struct dtx_handle *dth)
 
 		rc = dbtree_lookup(cont->vc_dtx_committed_hdl, &kiov, &riov);
 		if (rc == 0) {
-			D_DEBUG(DB_IO, "DTX "DF_DTI" is committed by race(1)\n",
-				DP_DTI(&dth->dth_xid));
+			D_DEBUG(DB_IO, "DTX "DF_DTI" is committed by race(1)\n", DP_DTI(&dth->dth_xid));
 			return DTX_ST_COMMITTED;
 		}
 
@@ -1357,8 +1359,7 @@ vos_dtx_validation(struct dtx_handle *dth)
 			/* Failed to lookup DTX entry, in spite of whether it is DER_NONEXIST
 			 * or not, then handle it as aborted that will cause client to retry.
 			 */
-			D_DEBUG(DB_IO, "DTX "DF_DTI" is aborted by race(1): "DF_RC"\n",
-				DP_DTI(&dth->dth_xid), DP_RC(rc));
+			D_DEBUG(DB_IO, "DTX "DF_DTI" is aborted by race(1): "DF_RC"\n", DP_DTI(&dth->dth_xid), DP_RC(rc));
 			return DTX_ST_ABORTED;
 		}
 
@@ -1366,14 +1367,12 @@ vos_dtx_validation(struct dtx_handle *dth)
 	}
 
 	if (dae->dae_committed) {
-		D_DEBUG(DB_IO, "DTX "DF_DTI" is committed by race(2)\n",
-			DP_DTI(&dth->dth_xid));
+		D_DEBUG(DB_IO, "DTX "DF_DTI" is committed by race(2)\n", DP_DTI(&dth->dth_xid));
 		return DTX_ST_COMMITTED;
 	}
 
 	if (dae->dae_aborted) {
-		D_DEBUG(DB_IO, "DTX "DF_DTI" is aborted by race(2)\n",
-			DP_DTI(&dth->dth_xid));
+		D_DEBUG(DB_IO, "DTX "DF_DTI" is aborted by race(2)\n", DP_DTI(&dth->dth_xid));
 		return DTX_ST_ABORTED;
 	}
 
@@ -1409,6 +1408,7 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 		return 0;
 	}
 
+    // dth_need_validation: 只有leader在dtx_iter_fetch时会置为true
 	if (dth->dth_need_validation && !dth->dth_verified) {
 		rc = vos_dtx_validation(dth);
 		switch (rc) {
@@ -1465,8 +1465,8 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 		} else {
 			D_ASSERT(dbd->dbd_magic == DTX_ACT_BLOB_MAGIC);
 
-			dae->dae_df_off = cont_df->cd_dtx_active_tail + offsetof(struct vos_dtx_blob_df, dbd_active_data) +
-					          sizeof(struct vos_dtx_act_ent_df) * dbd->dbd_index;
+			dae->dae_df_off = cont_df->cd_dtx_active_tail + offsetof(struct vos_dtx_blob_df, dbd_active_data) + sizeof(struct vos_dtx_act_ent_df) * dbd->dbd_index;
+			
 			dae->dae_dbd = dbd;
 		}
 

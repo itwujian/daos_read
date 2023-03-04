@@ -504,8 +504,7 @@ umem_class_init(struct umem_attr *uma, struct umem_instance *umm)
 	bool		   found;
 
 	found = false;
-	for (umc = &umem_class_defined[0];
-	     umc->umc_id != UMEM_CLASS_UNKNOWN; umc++) {
+	for (umc = &umem_class_defined[0]; umc->umc_id != UMEM_CLASS_UNKNOWN; umc++) {
 		if (umc->umc_id == uma->uma_id) {
 			found = true;
 			break;
@@ -516,21 +515,19 @@ umem_class_init(struct umem_attr *uma, struct umem_instance *umm)
 		return -DER_ENOENT;
 	}
 
-	umm->umm_id		= umc->umc_id;
+	umm->umm_id		    = umc->umc_id;
 	umm->umm_ops		= umc->umc_ops;
 	umm->umm_name		= umc->umc_name;
 	umm->umm_pool		= uma->uma_pool;
-	umm->umm_nospc_rc	= umc->umc_id == UMEM_CLASS_VMEM ?
-		-DER_NOMEM : -DER_NOSPACE;
+	umm->umm_nospc_rc	= umc->umc_id == UMEM_CLASS_VMEM ? -DER_NOMEM : -DER_NOSPACE;
+	
 #ifdef DAOS_PMEM_BUILD
-	memcpy(umm->umm_slabs, uma->uma_slabs,
-	       sizeof(struct pobj_alloc_class_desc) * UMM_SLABS_CNT);
+	memcpy(umm->umm_slabs, uma->uma_slabs, sizeof(struct pobj_alloc_class_desc) * UMM_SLABS_CNT);
 #endif
 
 	set_offsets(umm);
 
-	D_DEBUG(DB_MEM, "Instantiate memory class %s id=%d nospc_rc=%d pool=%p pool_uuid_lo="DF_X64
-		" base="DF_X64"\n", umc->umc_name, umm->umm_id, umm->umm_nospc_rc, umm->umm_pool,
+	D_DEBUG(DB_MEM, "Instantiate memory class %s id=%d nospc_rc=%d pool=%p pool_uuid_lo="DF_X64" base="DF_X64"\n", umc->umc_name, umm->umm_id, umm->umm_nospc_rc, umm->umm_pool,
 		umm->umm_pool_uuid_lo, umm->umm_base);
 
 	return 0;

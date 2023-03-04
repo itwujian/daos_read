@@ -193,14 +193,14 @@ pool_link(struct vos_pool *pool, struct d_uuid *ukey, daos_handle_t *poh)
 {
 	int	rc;
 
-	rc = d_uhash_link_insert(vos_pool_hhash_get(), ukey, NULL,
-				 &pool->vp_hlink);
+	rc = d_uhash_link_insert(vos_pool_hhash_get(), ukey, NULL, &pool->vp_hlink);
 	if (rc) {
 		D_ERROR("uuid hash table insert failed: "DF_RC"\n", DP_RC(rc));
 		D_GOTO(failed, rc);
 	}
 	*poh = vos_pool2hdl(pool);
 	return 0;
+	
 failed:
 	return rc;
 }
@@ -269,26 +269,26 @@ vos_blob_unmap_cb(d_sg_list_t *unmap_sgl, uint32_t blk_sz, void *data)
 static int pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df,
 		     unsigned int flags, void *metrics, daos_handle_t *poh);
 
+// poh返回给上层调用者的操作句柄
 int
 vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 		daos_size_t nvme_sz, unsigned int flags, daos_handle_t *poh)
 {
-	PMEMobjpool		*ph;
-	struct umem_attr	 uma = {0};
+	PMEMobjpool		        *ph;
+	struct umem_attr	     uma = {0};
 	struct umem_instance	 umem = {0};
-	struct vos_pool_df	*pool_df;
+	struct vos_pool_df	    *pool_df;
 	struct bio_xs_context	*xs_ctxt = vos_xsctxt_get();
-	struct bio_blob_hdr	 blob_hdr;
-	daos_handle_t		 hdl;
-	struct d_uuid		 ukey;
-	struct vos_pool		*pool = NULL;
-	int			 rc = 0, enabled = 1;
+	struct bio_blob_hdr	     blob_hdr;
+	daos_handle_t		     hdl;
+	struct d_uuid		     ukey;
+	struct vos_pool		    *pool = NULL;
+	int			             rc = 0, enabled = 1;
 
 	if (!path || uuid_is_null(uuid) || daos_file_is_dax(path))
 		return -DER_INVAL;
 
-	D_DEBUG(DB_MGMT, "Pool Path: %s, size: "DF_U64":"DF_U64", "
-		"UUID: "DF_UUID"\n", path, scm_sz, nvme_sz, DP_UUID(uuid));
+	D_DEBUG(DB_MGMT, "Pool Path: %s, size: "DF_U64":"DF_U64", UUID: "DF_UUID"\n", path, scm_sz, nvme_sz, DP_UUID(uuid));
 
 	if (flags & VOS_POF_SMALL)
 		flags |= VOS_POF_EXCL;
@@ -297,8 +297,7 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 	rc = pool_lookup(&ukey, &pool);
 	if (rc == 0) {
 		D_ASSERT(pool != NULL);
-		D_ERROR("Found already opened(%d) pool:%p dying(%d)\n",
-			pool->vp_opened, pool, pool->vp_dying);
+		D_ERROR("Found already opened(%d) pool:%p dying(%d)\n", pool->vp_opened, pool, pool->vp_dying);
 		vos_pool_decref(pool);
 		return -DER_EXIST;
 	}
@@ -309,19 +308,16 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 		return daos_errno2der(errno);
 	}
 
-	ph = vos_pmemobj_create(path, POBJ_LAYOUT_NAME(vos_pool_layout), scm_sz,
-				0600);
+	ph = vos_pmemobj_create(path, POBJ_LAYOUT_NAME(vos_pool_layout), scm_sz, 0600);
 	if (!ph) {
 		rc = errno;
-		D_ERROR("Failed to create pool %s, size="DF_U64": %s\n", path,
-			scm_sz, pmemobj_errormsg());
+		D_ERROR("Failed to create pool %s, size="DF_U64": %s\n", path, scm_sz, pmemobj_errormsg());
 		return daos_errno2der(rc);
 	}
 
 	rc = pmemobj_ctl_set(ph, "stats.enabled", &enabled);
 	if (rc) {
-		D_ERROR("Enable SCM usage statistics failed. "DF_RC"\n",
-			DP_RC(rc));
+		D_ERROR("Enable SCM usage statistics failed. "DF_RC"\n", DP_RC(rc));
 		rc = umem_tx_errno(rc);
 		goto close;
 	}
@@ -343,9 +339,12 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 	uma.uma_id = UMEM_CLASS_PMEM;
 	uma.uma_pool = ph;
 
+    // umem为出参
 	rc = umem_class_init(&uma, &umem);
 	if (rc != 0)
 		goto close;
+
+//0. BEG：内存盘上数据写入事务开始
 
 	rc = umem_tx_begin(&umem, NULL);
 	if (rc != 0)
@@ -355,14 +354,21 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 	if (rc != 0)
 		goto end;
 
+//1. BEG：内存盘上数据写入开始
+
 	memset(pool_df, 0, sizeof(*pool_df));
-	rc = dbtree_create_inplace(VOS_BTR_CONT_TABLE, 0, VOS_CONT_ORDER,
-				   &uma, &pool_df->pd_cont_root, &hdl);
+
+	// 赋值了vos_pool_df->pd_cont_root: 即cont树的根节点，hdl：container树的操作句柄
+	rc = dbtree_create_inplace(VOS_BTR_CONT_TABLE, 0, VOS_CONT_ORDER, &uma, 
+	         &pool_df->pd_cont_root, &hdl);
 	if (rc != 0)
 		goto end;
 
+    // 关掉container树的访问句柄，应该是处于安全考虑
 	dbtree_close(hdl);
 
+//  因为这个地方是直接往傲腾内存盘上写数据，所以要遵循PMDK的事务
+//  要在umem_tx_begin和umem_tx_commit/umem_tx_abort中
 	uuid_copy(pool_df->pd_id, uuid);
 	pool_df->pd_scm_sz	= scm_sz;
 	pool_df->pd_nvme_sz	= nvme_sz;
@@ -373,6 +379,8 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 		pool_df->pd_version = POOL_DF_VERSION;
 
 	gc_init_pool(&umem, pool_df);
+//1. END：内存盘上数据写入结束
+	
 end:
 	/**
 	 * The transaction can in reality be aborted
@@ -383,6 +391,7 @@ end:
 		rc = umem_tx_commit(&umem);
 	else
 		rc = umem_tx_abort(&umem, rc);
+//0. BEG：内存盘上数据写入事务结束
 
 	if (rc != 0) {
 		D_ERROR("Initialize pool root error: "DF_RC"\n", DP_RC(rc));
@@ -394,12 +403,11 @@ end:
 		goto open;
 
 	/* Create SPDK blob on NVMe device */
-	D_DEBUG(DB_MGMT, "Creating blob for xs:%p pool:"DF_UUID"\n",
-		xs_ctxt, DP_UUID(uuid));
+	D_DEBUG(DB_MGMT, "Creating blob for xs:%p pool:"DF_UUID"\n", xs_ctxt, DP_UUID(uuid));
+	
 	rc = bio_blob_create(uuid, xs_ctxt, nvme_sz);
 	if (rc != 0) {
-		D_ERROR("Error creating blob for xs:%p pool:"DF_UUID" "
-			""DF_RC"\n", xs_ctxt, DP_UUID(uuid), DP_RC(rc));
+		D_ERROR("Error creating blob for xs:%p pool:"DF_UUID" "DF_RC"\n", xs_ctxt, DP_UUID(uuid), DP_RC(rc));
 		goto close;
 	}
 
@@ -409,12 +417,9 @@ end:
 	uuid_copy(blob_hdr.bbh_pool, uuid);
 
 	/* Format SPDK blob*/
-	rc = vea_format(&umem, vos_txd_get(), &pool_df->pd_vea_df, VOS_BLK_SZ,
-			VOS_BLOB_HDR_BLKS, nvme_sz, vos_blob_format_cb,
-			&blob_hdr, false);
+	rc = vea_format(&umem, vos_txd_get(), &pool_df->pd_vea_df, VOS_BLK_SZ, VOS_BLOB_HDR_BLKS, nvme_sz, vos_blob_format_cb, &blob_hdr, false);
 	if (rc) {
-		D_ERROR("Format blob error for xs:%p pool:"DF_UUID" "DF_RC"\n",
-			xs_ctxt, DP_UUID(uuid), DP_RC(rc));
+		D_ERROR("Format blob error for xs:%p pool:"DF_UUID" "DF_RC"\n", xs_ctxt, DP_UUID(uuid), DP_RC(rc));
 		/* Destroy the SPDK blob on error */
 		rc = bio_blob_delete(uuid, xs_ctxt);
 		goto close;
@@ -426,6 +431,7 @@ open:
 		goto close;
 
 	/* Create a VOS pool handle using ph. */
+	// poh返回给上层调用者的操作句柄
 	rc = pool_open(ph, pool_df, flags, NULL, poh);
 	ph = NULL;
 
@@ -711,6 +717,8 @@ pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, unsigned int flags, void
 	}
 
 	/* Cache container table btree hdl */
+	// 打开之前创建的container树：根节点为：pd_cont_root， 
+	// 返回container树的句柄存在内存pool->vp_cont_th
 	rc = dbtree_open_inplace_ex(&pool_df->pd_cont_root, &pool->vp_uma,
 				    DAOS_HDL_INVAL, pool, &pool->vp_cont_th);
 	if (rc) {
@@ -720,34 +728,31 @@ pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, unsigned int flags, void
 
 	xs_ctxt = vos_xsctxt_get();
 
-	D_DEBUG(DB_MGMT, "Opening VOS I/O context for xs:%p pool:"DF_UUID"\n",
-		xs_ctxt, DP_UUID(pool_df->pd_id));
-	rc = bio_ioctxt_open(&pool->vp_io_ctxt, xs_ctxt, &pool->vp_umm, pool_df->pd_id,
-			     pool_df->pd_nvme_sz == 0);
+	D_DEBUG(DB_MGMT, "Opening VOS I/O context for xs:%p pool:"DF_UUID"\n", xs_ctxt, DP_UUID(pool_df->pd_id));
+	
+	rc = bio_ioctxt_open(&pool->vp_io_ctxt, xs_ctxt, &pool->vp_umm, pool_df->pd_id, pool_df->pd_nvme_sz == 0);
 	if (rc) {
-		D_ERROR("Failed to open VOS I/O context for xs:%p "
-			"pool:"DF_UUID" rc="DF_RC"\n", xs_ctxt, DP_UUID(pool_df->pd_id),
-			DP_RC(rc));
+		D_ERROR("Failed to open VOS I/O context for xs:%p pool:"DF_UUID" rc="DF_RC"\n", xs_ctxt, DP_UUID(pool_df->pd_id), DP_RC(rc));
 		goto failed;
 	}
 
 	pool->vp_metrics = metrics;
+	
 	if (bio_nvme_configured() && pool_df->pd_nvme_sz != 0) {
 		struct vea_unmap_context	 unmap_ctxt;
 		struct vos_pool_metrics		*vp_metrics = metrics;
-		void				*vea_metrics = NULL;
+		void				        *vea_metrics = NULL;
 
 		if (vp_metrics)
 			vea_metrics = vp_metrics->vp_vea_metrics;
+		
 		/* set unmap callback fp */
 		unmap_ctxt.vnc_unmap = vos_blob_unmap_cb;
 		unmap_ctxt.vnc_data = pool->vp_io_ctxt;
 		unmap_ctxt.vnc_ext_flush = flags & VOS_POF_EXTERNAL_FLUSH;
-		rc = vea_load(&pool->vp_umm, vos_txd_get(), &pool_df->pd_vea_df,
-			      &unmap_ctxt, vea_metrics, &pool->vp_vea_info);
+		rc = vea_load(&pool->vp_umm, vos_txd_get(), &pool_df->pd_vea_df, &unmap_ctxt, vea_metrics, &pool->vp_vea_info);
 		if (rc) {
-			D_ERROR("Failed to load block space info: "DF_RC"\n",
-				DP_RC(rc));
+			D_ERROR("Failed to load block space info: "DF_RC"\n", DP_RC(rc));
 			goto failed;
 		}
 	}
@@ -780,6 +785,7 @@ pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, unsigned int flags, void
 	lock_pool_memory(pool);
 	D_DEBUG(DB_MGMT, "Opened pool %p\n", pool);
 	return 0;
+	
 failed:
 	vos_pool_decref(pool); /* -1 for myself */
 	return rc;

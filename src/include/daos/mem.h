@@ -162,8 +162,7 @@ void umem_fini_txd(struct umem_tx_stage_data *txd);
 
 typedef struct {
 	/** free umoff */
-	int		 (*mo_tx_free)(struct umem_instance *umm,
-				       umem_off_t umoff);
+	int		 (*mo_tx_free)(struct umem_instance *umm, umem_off_t umoff);
 	/**
 	 * allocate umoff with the specified size & flags
 	 *

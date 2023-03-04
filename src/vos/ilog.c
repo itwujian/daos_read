@@ -37,7 +37,9 @@ struct ilog_tree {
     // 2. it_embedded为0，it_root非0，表示当前有多个ilog entry,
     //    此时的ilog树更像是set在使用
     // 3. it_embedded为非0，it_root0，表示当前只有1个ilog entry,
-	umem_off_t	it_root;
+
+	umem_off_t	it_root; // 存储着ilog_array数组的地址
+	
 	uint64_t	it_embedded;
 };
 
@@ -129,6 +131,7 @@ ilog_status_get(struct ilog_context *lctx, const struct ilog_id *id, uint32_t in
 	return rc;
 }
 
+// ilog_id *id作为入参会被修改
 static inline int
 ilog_log_add(struct ilog_context *lctx, struct ilog_id *id)
 {
@@ -962,8 +965,8 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in, const daos_epoch_ran
    
 done:
 	rc = ilog_tx_end(lctx, rc);
-	D_DEBUG(DB_TRACE, "%s in incarnation log "DF_X64" status: rc=%s tree_version: %d\n",
-		opc_str[opc], id_in->id_epoch, d_errstr(rc), ilog_mag2ver(lctx->ic_root->lr_magic));
+	
+	D_DEBUG(DB_TRACE, "%s in incarnation log "DF_X64" status: rc=%s tree_version: %d\n", opc_str[opc], id_in->id_epoch, d_errstr(rc), ilog_mag2ver(lctx->ic_root->lr_magic));
 
     // ILOG_OP_UPDATE直接就回去了
     // ILOG_OP_PERSIST和ILOG_OP_ABORT需要ilog_log_del -> vos_dtx_deregister_record
@@ -977,9 +980,9 @@ done:
 	return rc;
 }
 
+//  vos_hold_obj\dkey_update\akey_update
 int
-ilog_update(daos_handle_t loh, const daos_epoch_range_t *epr,
-	    daos_epoch_t major_eph, uint16_t minor_eph, bool punch)
+ilog_update(daos_handle_t loh, const daos_epoch_range_t *epr, daos_epoch_t major_eph, uint16_t minor_eph, bool punch)
 {
 	daos_epoch_range_t	 range = {0, DAOS_EPOCH_MAX};
 	struct ilog_id		 id = {
@@ -999,34 +1002,30 @@ ilog_update(daos_handle_t loh, const daos_epoch_range_t *epr,
 
 	if (epr)
 		range = *epr;
-
     
 	return ilog_modify(loh, &id, &range, ILOG_OP_UPDATE);
-
 }
 
-/** Makes a specific update to the incarnation log permanent and
- *  removes redundant entries
- */
+/** Makes a specific update to the incarnation log permanent and removes redundant entries */
+
+// vos_dtx_commit调用   -> dtx_ilog_rec_release
 int
 ilog_persist(daos_handle_t loh, const struct ilog_id *id)
 {
 	daos_epoch_range_t	 range = {id->id_epoch, id->id_epoch};
 	int	rc;
-
 	rc = ilog_modify(loh, id, &range, ILOG_OP_PERSIST);
-
 	return rc;
 }
 
 /** Removes a specific entry from the incarnation log if it exists */
+
+// vos_dtx_abort调用   -> dtx_ilog_rec_release
 int
 ilog_abort(daos_handle_t loh, const struct ilog_id *id)
 {
 	daos_epoch_range_t	 range = {0, DAOS_EPOCH_MAX};
-
 	D_DEBUG(DB_IO, "Aborting ilog entry %d "DF_X64"\n", id->id_tx_id, id->id_epoch);
-	
 	return ilog_modify(loh, id, &range, ILOG_OP_ABORT);
 }
 

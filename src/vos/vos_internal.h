@@ -65,12 +65,14 @@ D_CASSERT(VOS_MINOR_EPC_MAX == EVT_MINOR_EPC_MAX);
 			 __VA_ARGS__);			\
 	} while (0)
 
+
+// tc_order: B+树上存储的node节点里面最多可以存放的key的数量
 #define VOS_CONT_ORDER		20	/* Order of container tree */
 #define VOS_OBJ_ORDER		20	/* Order of object tree */
 #define VOS_KTR_ORDER		23	/* order of d/a-key tree */
 #define VOS_SVT_ORDER		5	/* order of single value tree */
 #define VOS_EVT_ORDER		23	/* evtree order */
-#define DTX_BTREE_ORDER	23	/* Order for DTX tree */
+#define DTX_BTREE_ORDER	    23	/* Order for DTX tree */
 #define VEA_TREE_ODR		20	/* Order of a VEA tree */
 
 extern struct dss_module_key vos_module_key;
@@ -186,39 +188,42 @@ struct vos_pool_metrics {
 };
 
 /**
- * VOS pool (DRAM)
+ * VOS pool (内存数据结构)
  */
 struct vos_pool {
 	/** VOS uuid hash-link with refcnt */
-	struct d_ulink		vp_hlink;
+	struct d_ulink		     vp_hlink;
 	/** number of openers */
 	uint32_t                 vp_opened : 30;
 	uint32_t                 vp_dying  : 1;
 	/** exclusive handle (see VOS_POF_EXCL) */
-	int			vp_excl:1;
+	int			    vp_excl:1;
 	/** caller specifies pool is small (for sys space reservation) */
 	bool			vp_small;
 	/** UUID of vos pool */
 	uuid_t			vp_id;
 	/** memory attribute of the @vp_umm */
-	struct umem_attr	vp_uma;
+	struct umem_attr	     vp_uma;
 	/** memory class instance of the pool */
-	struct umem_instance	vp_umm;  // PMDK上内存偏移的基地址，
-	                                 //各个节点在此地址上基于各自off进行偏移就可以访问树上各个节点
+
+	// PMDK上内存偏移的基地址，
+	// 各个节点在此地址上基于各自off进行偏移就可以访问树上各个节点
+	struct umem_instance     vp_umm;  
+	                              
 	/** Size of pool file */
-	uint64_t		vp_size;
+	uint64_t		         vp_size;
 	/** Features enabled for this pool */
-	uint64_t		vp_feats;
+	uint64_t		         vp_feats;
 	/** btr handle for the container table */
-	daos_handle_t		vp_cont_th;
+	daos_handle_t		     vp_cont_th;
 	/** GC statistics of this pool */
-	struct vos_gc_stat	vp_gc_stat;
+	struct vos_gc_stat	     vp_gc_stat;
 	/** link chain on vos_tls::vtl_gc_pools */
-	d_list_t		vp_gc_link;
+	d_list_t		         vp_gc_link;
 	/** List of open containers with objects in gc pool */
-	d_list_t		vp_gc_cont;
+	d_list_t		         vp_gc_cont;
 	/** address of durable-format pool in SCM */
-	struct vos_pool_df	*vp_pool_df;
+	struct vos_pool_df	    *vp_pool_df;
 	/** I/O context */
 	struct bio_io_context	*vp_io_ctxt;
 	/** In-memory free space tracking for NVMe device */
@@ -228,16 +233,16 @@ struct vos_pool {
 	/** Held space by inflight updates. In bytes */
 	daos_size_t		vp_space_held[DAOS_MEDIA_MAX];
 	/** Dedup hash */
-	struct d_hash_table	*vp_dedup_hash;
-	struct vos_pool_metrics	*vp_metrics;
+	struct d_hash_table	     *vp_dedup_hash;
+	struct vos_pool_metrics	 *vp_metrics;
 	/* The count of committed DTXs for the whole pool. */
-	uint32_t		 vp_dtx_committed_count;
+	uint32_t		         vp_dtx_committed_count;
 	/** Tiering policy */
-	struct policy_desc_t	vp_policy_desc;
+	struct policy_desc_t	 vp_policy_desc;
 };
 
 /**
- * VOS container (DRAM)
+ * VOS container (DRAM) 内存数据结构
  */
 struct vos_container {
 	/* VOS uuid hash with refcnt */
@@ -245,7 +250,7 @@ struct vos_container {
 	/* VOS PMEMobjpool pointer */
 	struct vos_pool		*vc_pool;
 	/* Unique UID of VOS container */
-	uuid_t			vc_id;
+	uuid_t			   vc_id;
 	/* DAOS handle for object index btree */
 	daos_handle_t		vc_btr_hdl;
 	/** Array for active DTX records */
@@ -259,15 +264,15 @@ struct vos_container {
 	/** The root of the B+ tree for committed DTXs. */
 	struct btr_root		vc_dtx_committed_btr;
 	/* The list for active DTXs, roughly ordered in time. */
-	d_list_t		vc_dtx_act_list;
+	d_list_t		    vc_dtx_act_list;
 	/* The count of committed DTXs. */
-	uint32_t		vc_dtx_committed_count;
+	uint32_t		    vc_dtx_committed_count;
 	/** Index for timestamp lookup */
-	uint32_t		*vc_ts_idx;
+	uint32_t		    *vc_ts_idx;
 	/** Direct pointer to the VOS container */
 	struct vos_cont_df	*vc_cont_df;
 	/** Set if container has objects to garbage collect */
-	d_list_t		vc_gc_link;
+	d_list_t		     vc_gc_link;
 	/**
 	 * Corresponding in-memory block allocator hints for the
 	 * durable hints in vos_cont_df
@@ -278,13 +283,13 @@ struct vos_container {
 	/* Current ongoing discard EPR */
 	daos_epoch_range_t	vc_epr_discard;
 	/* Last timestamp when VOS aggregation reporting ENOSPACE */
-	uint64_t		vc_agg_nospc_ts;
+	uint64_t		    vc_agg_nospc_ts;
 	/* Last timestamp when IO reporting ENOSPACE */
-	uint64_t		vc_io_nospc_ts;
+	uint64_t		    vc_io_nospc_ts;
 	/* Various flags */
 	unsigned int		vc_in_aggregation:1,
-				vc_in_discard:1,
-				vc_cmt_dtx_indexed:1;
+				        vc_in_discard:1,
+				        vc_cmt_dtx_indexed:1;
 	unsigned int		vc_obj_discard_count;
 	unsigned int		vc_open_count;
 };
@@ -294,7 +299,7 @@ struct vos_dtx_act_ent {
 	umem_off_t			 dae_df_off;
 	struct vos_dtx_blob_df		*dae_dbd;
 	/* More DTX records if out of the inlined buffer. */
-	umem_off_t			*dae_records;
+	umem_off_t			*dae_records;  /* 存放obj\dkey\akey的ilog根节点的内存地址 */
 	/* The capacity of dae_records, NOT including the inlined buffer. */
 	int				 dae_rec_cap;
 

@@ -108,7 +108,7 @@ enum vos_gc_type {
 #define VOS_POOL_FEAT_2_4                       (VOS_POOL_FEAT_CHK)
 
 /**
- * Durable format for VOS pool
+ *  pool的内存盘数据结构
  */
 struct vos_pool_df {
 	/** Structs stored in LE or BE representation */
@@ -137,11 +137,12 @@ struct vos_pool_df {
 	/** offset for the btree of the dedup table (placeholder) */
 	umem_off_t				pd_dedup;
 	/** Typed PMEMoid pointer for the container index table */
-	struct btr_root				pd_cont_root;
+	// container树的根节点
+	struct btr_root			pd_cont_root;
 	/** Free space tracking for NVMe device */
-	struct vea_space_df			pd_vea_df;
+	struct vea_space_df		pd_vea_df;
 	/** GC bins for container/object/dkey... */
-	struct vos_gc_bin_df			pd_gc_bins[GC_MAX];
+	struct vos_gc_bin_df	pd_gc_bins[GC_MAX];
 };
 
 /**
@@ -249,33 +250,33 @@ enum vos_io_stream {
 	VOS_IOS_CNT
 };
 
-/* VOS Container Value */
+/* VOS Container Value 内存盘的数据结构 */
 struct vos_cont_df {
-	uuid_t				cd_id;
-	uint64_t			cd_nobjs;
-	uint32_t			cd_ts_idx;
-	uint32_t			cd_pad;
-	daos_size_t			cd_used;
-	daos_epoch_t			cd_hae;
-	struct btr_root			cd_obj_root;
+	uuid_t				  cd_id;    // container的UUID
+	uint64_t			  cd_nobjs;
+	uint32_t			  cd_ts_idx;
+	uint32_t			  cd_pad;
+	daos_size_t			  cd_used;
+	daos_epoch_t		  cd_hae;
+	struct btr_root		  cd_obj_root; // obj树的树根
 	/** reserved for placement algorithm upgrade */
-	uint64_t			cd_reserv_upgrade;
+	uint64_t			  cd_reserv_upgrade;
 	/** reserved for future usage */
-	uint64_t			cd_reserv;
+	uint64_t			  cd_reserv;
 	/** The active DTXs blob head. */
-	umem_off_t			cd_dtx_active_head;
+	umem_off_t			  cd_dtx_active_head;
 	/** The active DTXs blob tail. */
-	umem_off_t			cd_dtx_active_tail;
+	umem_off_t			  cd_dtx_active_tail;
 	/** The committed DTXs blob head. */
-	umem_off_t			cd_dtx_committed_head;
+	umem_off_t			  cd_dtx_committed_head;
 	/** The committed DTXs blob tail. */
-	umem_off_t			cd_dtx_committed_tail;
+	umem_off_t			  cd_dtx_committed_tail;
 	/** Allocation hints for block allocator. */
-	struct vea_hint_df		cd_hint_df[VOS_IOS_CNT];
+	struct vea_hint_df	  cd_hint_df[VOS_IOS_CNT];
 	/** GC bins for object/dkey...Don't need GC_CONT entry */
-	struct vos_gc_bin_df		cd_gc_bins[GC_CONT];
+	struct vos_gc_bin_df  cd_gc_bins[GC_CONT];
 	/* The epoch for the most new DTX entry that is aggregated. */
-	uint64_t			cd_newest_aggregated;
+	uint64_t			  cd_newest_aggregated;
 };
 
 /* Assume cd_dtx_active_tail is just after cd_dtx_active_head. */

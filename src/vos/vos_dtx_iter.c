@@ -212,8 +212,7 @@ out:
 }
 
 static int
-dtx_iter_fetch(struct vos_iterator *iter, vos_iter_entry_t *it_entry,
-	       daos_anchor_t *anchor)
+dtx_iter_fetch(struct vos_iterator *iter, vos_iter_entry_t *it_entry, daos_anchor_t *anchor)
 {
 	struct vos_dtx_iter	    *oiter = iter2oiter(iter);
 	struct vos_dtx_act_ent	*dae;

@@ -1231,11 +1231,9 @@ obj_tree_register(void)
 	int		     rc = 0;
 
 	for (ta = &vos_btr_attrs[0]; ta->ta_class != VOS_BTR_END; ta++) {
-		rc = dbtree_class_register(ta->ta_class, ta->ta_feats,
-					   ta->ta_ops);
+		rc = dbtree_class_register(ta->ta_class, ta->ta_feats, ta->ta_ops);
 		if (rc != 0) {
-			D_ERROR("Failed to register %s: "DF_RC"\n", ta->ta_name,
-				DP_RC(rc));
+			D_ERROR("Failed to register %s: "DF_RC"\n", ta->ta_name, DP_RC(rc));
 			break;
 		}
 		D_DEBUG(DB_TRACE, "Register tree type %s\n", ta->ta_name);

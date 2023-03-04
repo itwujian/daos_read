@@ -50,13 +50,13 @@ int ds_cont_tgt_open(uuid_t pool_uuid, uuid_t cont_hdl_uuid,
  * used as a 256 bit key in tls dt_cont_cache.
  */
 struct ds_cont_child {
-	struct daos_llink	 sc_list;
-	daos_handle_t		 sc_hdl;	/* vos_container handle */
-	uuid_t			 sc_uuid;	/* container UUID */
-	uuid_t			 sc_pool_uuid;	/* pool UUID */
+	struct daos_llink	    sc_list;
+	daos_handle_t		    sc_hdl;	/* vos_container handle */
+	uuid_t			        sc_uuid;	/* container UUID */
+	uuid_t			        sc_pool_uuid;	/* pool UUID */
 	struct ds_pool_child	*sc_pool;
-	d_list_t		 sc_link;	/* link to spc_cont_list */
-	d_list_t		 sc_open_hdls;	/* the list of ds_cont_hdl. */
+	d_list_t		     sc_link;	/* link to spc_cont_list */
+	d_list_t		     sc_open_hdls;	/* the list of ds_cont_hdl. */
 	struct daos_csummer	*sc_csummer;
 	struct cont_props	 sc_props;
 

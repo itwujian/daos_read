@@ -833,21 +833,18 @@ static int
 cont_child_start(struct ds_pool_child *pool_child, const uuid_t co_uuid,
 		 struct ds_cont_child **cont_out)
 {
-	struct dsm_tls		*tls = dsm_tls_get();
+	struct dsm_tls		    *tls = dsm_tls_get();
 	struct ds_cont_child	*cont_child;
-	int			 tgt_id = dss_get_module_info()->dmi_tgt_id;
-	int			 rc;
+	int			             tgt_id = dss_get_module_info()->dmi_tgt_id;
+	int	rc;
 
-	D_DEBUG(DB_MD, DF_CONT"[%d]: Starting container\n",
-		DP_CONT(pool_child->spc_uuid, co_uuid), tgt_id);
+	D_DEBUG(DB_MD, DF_CONT"[%d]: Starting container\n", DP_CONT(pool_child->spc_uuid, co_uuid), tgt_id);
 
 	rc = cont_child_lookup(tls->dt_cont_cache, co_uuid,
 			       pool_child->spc_uuid, true /* create */,
 			       &cont_child);
 	if (rc) {
-		D_CDEBUG(rc != -DER_NONEXIST, DLOG_ERR, DB_MD,
-			 DF_CONT"[%d]: Load container error:%d\n",
-			 DP_CONT(pool_child->spc_uuid, co_uuid), tgt_id, rc);
+		D_CDEBUG(rc != -DER_NONEXIST, DLOG_ERR, DB_MD, DF_CONT"[%d]: Load container error:%d\n", DP_CONT(pool_child->spc_uuid, co_uuid), tgt_id, rc);
 		return rc;
 	}
 
@@ -858,8 +855,7 @@ cont_child_start(struct ds_pool_child *pool_child, const uuid_t co_uuid,
 	 * 3. Pool service is going to be stopped;
 	 */
 	if (cont_child->sc_stopping) {
-		D_ERROR(DF_CONT"[%d]: Container is in stopping\n",
-			DP_CONT(pool_child->spc_uuid, co_uuid), tgt_id);
+		D_ERROR(DF_CONT"[%d]: Container is in stopping\n", DP_CONT(pool_child->spc_uuid, co_uuid), tgt_id);
 		rc = -DER_SHUTDOWN;
 	} else if (!cont_child_started(cont_child)) {
 		rc = cont_start_agg(cont_child);
@@ -1295,8 +1291,7 @@ cont_child_create_start(uuid_t pool_uuid, uuid_t cont_uuid, uint32_t pm_ver,
 		return rc;
 	}
 
-	D_DEBUG(DB_MD, DF_CONT": creating new vos container\n",
-		DP_CONT(pool_uuid, cont_uuid));
+	D_DEBUG(DB_MD, DF_CONT": creating new vos container\n", DP_CONT(pool_uuid, cont_uuid));
 
 	rc = vos_cont_create(pool_child->spc_hdl, cont_uuid);
 	if (!rc) {
@@ -1432,8 +1427,7 @@ ds_cont_local_open(uuid_t pool_uuid, uuid_t cont_hdl_uuid, uuid_t cont_uuid,
 
 	/* cont_uuid is NULL when open rebuild global cont handle */
 	if (cont_uuid != NULL && !uuid_is_null(cont_uuid)) {
-		rc = cont_child_create_start(pool_uuid, cont_uuid,
-					     status_pm_ver, &cont);
+		rc = cont_child_create_start(pool_uuid, cont_uuid, status_pm_ver, &cont);
 		if (rc < 0)
 			D_GOTO(err_hdl, rc);
 

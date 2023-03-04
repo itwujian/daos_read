@@ -91,6 +91,7 @@ struct dtx_handle {
 					 /* The modification is done by others. */
 					 dth_already:1,
 					 /* Need validation on leader before commit/committable. */
+	                 // 只有leader在dtx_iter_fetch时会置为true
 					 dth_need_validation:1,
 					 /* Ignore other uncommitted DTXs. */
 					 dth_ignore_uncommitted:1;

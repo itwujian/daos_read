@@ -75,7 +75,7 @@ cont_df_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	struct d_uuid		*ukey;
 	struct vos_cont_df	*cont_df;
 	daos_handle_t		 hdl;
-	umem_off_t		 offset;
+	umem_off_t		     offset;
 	int			 rc = 0;
 
 	D_ASSERT(key_iov->iov_len == sizeof(struct d_uuid));
@@ -83,8 +83,8 @@ cont_df_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	args = (struct cont_df_args *)val_iov->iov_buf;
 	pool = args->ca_pool;
 
-	D_DEBUG(DB_DF, "Allocating container uuid=" DF_UUID "\n",
-		DP_UUID(ukey->uuid));
+	D_DEBUG(DB_DF, "Allocating container uuid=" DF_UUID "\n", DP_UUID(ukey->uuid));
+	
 	offset = umem_zalloc(&tins->ti_umm, sizeof(struct vos_cont_df));
 	if (UMOFF_IS_NULL(offset))
 		return -DER_NOSPACE;
@@ -105,6 +105,7 @@ cont_df_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	args->ca_cont_df = cont_df;
 	rec->rec_off = offset;
 	return 0;
+	
 failed:
 	/* Ignore umem_free failure. */
 	umem_free(&tins->ti_umm, offset);
