@@ -1228,8 +1228,7 @@ akey_fetch(struct vos_io_context *ioc, daos_handle_t ak_toh)
 		goto out;
 	}
 
-	rc = key_ilog_check(ioc, krec, &ioc->ic_dkey_info, &val_epr,
-			    &ioc->ic_akey_info);
+	rc = key_ilog_check(ioc, krec, &ioc->ic_dkey_info, &val_epr, &ioc->ic_akey_info);
 
 	if (stop_check(ioc, VOS_OF_COND_AKEY_FETCH, iod, &rc, false)) {
 		if (rc == 0 && !ioc->ic_read_ts_only) {
@@ -1351,8 +1350,8 @@ dkey_fetch(struct vos_io_context *ioc, daos_key_t *dkey)
 	rc = key_tree_prepare(obj, obj->obj_toh, VOS_BTR_DKEY,
 			      dkey, 0, DAOS_INTENT_DEFAULT, &krec,
 			      &toh, ioc->ic_ts_set);
-	if (stop_check(ioc, VOS_COND_FETCH_MASK | VOS_OF_COND_PER_AKEY, NULL,
-		       &rc, true)) {
+	
+	if (stop_check(ioc, VOS_COND_FETCH_MASK | VOS_OF_COND_PER_AKEY, NULL, &rc, true)) {
 		D_DEBUG(DB_IO, "Stop fetch "DF_UOID": "DF_RC"\n", DP_UOID(obj->obj_id),
 			DP_RC(rc));
 		if (rc == 0 && !ioc->ic_read_ts_only) {
@@ -1803,6 +1802,7 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh,
 		goto out;
 	}
 
+// DAOS_IOD_SINGLE
 	if (iod->iod_type == DAOS_IOD_SINGLE) {
 		
 		uint64_t	gsize = iod->iod_size;
@@ -1818,8 +1818,7 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh,
 		goto out;
 	} 
 
-	/* else: array */
-	// DAOS_IOD_ARRAY
+// DAOS_IOD_ARRAY
 	for (i = 0; i < iod->iod_nr; i++) {
 		
 		umem_off_t	umoff = iod_update_umoff(ioc);
@@ -2448,21 +2447,16 @@ vos_check_akeys(int iod_nr, daos_iod_t *iods)
 
 	for (i = 0; i < iod_nr - 1; i++) {
 		for (j = i + 1; j < iod_nr; j++) {
-			if (iods[i].iod_name.iov_len !=
-			    iods[j].iod_name.iov_len)
+			if (iods[i].iod_name.iov_len != iods[j].iod_name.iov_len)
 				continue;
 
-			if (iods[i].iod_name.iov_buf ==
-			    iods[j].iod_name.iov_buf)
+			if (iods[i].iod_name.iov_buf == iods[j].iod_name.iov_buf)
 				return -DER_NO_PERM;
 
-			if (iods[i].iod_name.iov_buf == NULL ||
-			    iods[j].iod_name.iov_buf == NULL)
+			if (iods[i].iod_name.iov_buf == NULL || iods[j].iod_name.iov_buf == NULL)
 				continue;
 
-			if (memcmp(iods[i].iod_name.iov_buf,
-				   iods[j].iod_name.iov_buf,
-				   iods[i].iod_name.iov_len) == 0)
+			if (memcmp(iods[i].iod_name.iov_buf, iods[j].iod_name.iov_buf, iods[i].iod_name.iov_len) == 0)
 				return -DER_NO_PERM;
 		}
 	}
