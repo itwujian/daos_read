@@ -68,7 +68,9 @@ cont_df_rec_free(struct btr_instance *tins, struct btr_record *rec, void *args)
 
 static int
 cont_df_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
-		  d_iov_t *val_iov, struct btr_record *rec, d_iov_t *val_out)
+		                  d_iov_t *val_iov      /*填充了部分value值*/,
+		                  struct btr_record *rec/*带下来的record*/,
+		                  d_iov_t *val_out)
 {
 	struct vos_pool		*pool;
 	struct cont_df_args	*args;
@@ -103,7 +105,7 @@ cont_df_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 
 	gc_init_cont(&tins->ti_umm, cont_df);
 	args->ca_cont_df = cont_df;
-	rec->rec_off = offset;
+	rec->rec_off = offset;  // record的offset填充的是内存盘上的vos_cont_df地址
 	return 0;
 	
 failed:

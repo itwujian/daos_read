@@ -667,7 +667,10 @@ btr_node_alloc(struct btr_context *tcx, umem_off_t *nd_off_p)
 	struct btr_node		*nd;
 	umem_off_t		 nd_off;
 
+
+    // 在内存盘上申请了btr_node的地址偏移nd_off
 	if (btr_ops(tcx)->to_node_alloc != NULL)
+		// obj index tree、dkey akey tree、svtree
 		nd_off = btr_ops(tcx)->to_node_alloc(&tcx->tc_tins, btr_node_size(tcx));
 	else
 		nd_off = umem_zalloc(btr_umm(tcx), btr_node_size(tcx));
@@ -676,8 +679,11 @@ btr_node_alloc(struct btr_context *tcx, umem_off_t *nd_off_p)
 		return btr_umm(tcx)->umm_nospc_rc;
 
 	D_DEBUG(DB_TRACE, "Allocate new node "DF_X64"\n", nd_off);
+
+	// 拿着地址偏移nd_off强转成btr_node类型
 	nd = btr_off2ptr(tcx, nd_off);
-	nd->tn_child = BTR_NODE_NULL;
+	
+	nd->tn_child = BTR_NODE_NULL;  // 这个node的第一个孩子的地址
 
 	*nd_off_p = nd_off;
 	return 0;
@@ -914,6 +920,7 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 	D_ASSERT(UMOFF_IS_NULL(root->tr_node));
 	D_ASSERT(root->tr_depth == 0);
 
+    // nd_off： 新申请的内存盘上的地址偏移
 	rc = btr_node_alloc(tcx, &nd_off);
 	if (rc != 0) {
 		D_DEBUG(DB_TRACE, "Failed to allocate new root\n");
@@ -921,13 +928,18 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 	}
 
 	/* root is also leaf, records are stored in root */
+    // 新节点设置为root并且是leaf
 	btr_node_set(tcx, nd_off, BTR_NODE_ROOT | BTR_NODE_LEAF);
-	
+
+	// 拿着盘上的偏移地址转换成可使用结构体btr_node,然后赋值
 	nd = btr_off2ptr(tcx, nd_off);
+
+	// 新生成的btr_node，里面只有1个key
 	nd->tn_keyn = 1;
 
     // 获取rec的地址，把record内容拷过去
 	rec_dst = btr_node_rec_at(tcx, nd_off, 0);
+	
 	btr_rec_copy(tcx, rec_dst, rec, 1);
 
 	if (btr_has_tx(tcx)) {
@@ -2050,9 +2062,12 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 	int rc;
 
 	rec = &rec_buf.rb_rec;
+
+	// 生成btr_record的key
 	btr_hkey_gen(tcx, key, &rec->rec_hkey[0]);
 
-    // for example: ktr_rec_alloc
+    // for example: ktr_rec_alloc\cont_df_rec_alloc
+    // 填充生成btr_record
 	rc = btr_rec_alloc(tcx, key, val, rec, val_out);
 	if (rc != 0) {
 		D_DEBUG(DB_TRACE, "Failed to create new record: "DF_RC"\n", DP_RC(rc));
@@ -2076,6 +2091,7 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 		}
 		
 	} else {
+	
         // 当前是1棵空树，需要先创建1个btr_node, 然后往里面插入record
 		D_DEBUG(DB_TRACE, "Add record %s to an empty tree\n", rec_str);
         //  root->tr_node指向新创建的这个btr_node
