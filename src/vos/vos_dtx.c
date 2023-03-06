@@ -1585,8 +1585,8 @@ vos_dtx_prepared(struct dtx_handle *dth, struct vos_dtx_cmt_ent **dce_p)
 	d_iov_t				 kiov;
 	umem_off_t			 rec_off;
 	size_t				 size;
-	int				 count;
-	int				 rc;
+	int				     count;
+	int				     rc;
 
 	if (!dth->dth_active)
 		return 0;
@@ -2857,8 +2857,10 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 	cont = vos_hdl2cont(dth->dth_coh);
 	D_ASSERT(cont != NULL);
 
+    //  大部分场景进来应该是NULL的，除非dtx_leader_begin带了DTX_PREPARED下来
 	if (dth->dth_ent != NULL) {
 		// persistent: 只有dtx_begin和dtx_leader_begin下发的false
+		//             CPD任务在处理非leader时调用ds_obj_dtx_follower置为true
 		if (!persistent || dth->dth_active)
 			return 0;
 	} 
@@ -2935,8 +2937,7 @@ out:
 			vos_dtx_cleanup_internal(dth);
 		}
 
-		D_ERROR("Failed to pin DTX entry for "DF_DTI": "DF_RC"\n",
-			DP_DTI(&dth->dth_xid), DP_RC(rc));
+		D_ERROR("Failed to pin DTX entry for "DF_DTI": "DF_RC"\n", DP_DTI(&dth->dth_xid), DP_RC(rc));
 	}
 
 	if (began) {

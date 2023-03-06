@@ -162,6 +162,8 @@ btr_umm(struct btr_context *tcx)
 	return &tcx->tc_tins.ti_umm;
 }
 
+// pmem_ops for true  :  persistent  mermory
+// vmem_ops for false :  volatile memory
 static bool
 btr_has_tx(struct btr_context *tcx)
 {
@@ -670,9 +672,11 @@ btr_node_alloc(struct btr_context *tcx, umem_off_t *nd_off_p)
 
     // 在内存盘上申请了btr_node的地址偏移nd_off
 	if (btr_ops(tcx)->to_node_alloc != NULL)
-		// obj index tree、dkey akey tree、svtree
+		// only for ev-tree\sv-tree\keybtr-tree\obj_index-tree
+		// 使用slab分配的内存，存储在umem_instance->umm_slabs中
 		nd_off = btr_ops(tcx)->to_node_alloc(&tcx->tc_tins, btr_node_size(tcx));
 	else
+		// 使用pmem_tx_alloc、vmem_alloc分配的内存
 		nd_off = umem_zalloc(btr_umm(tcx), btr_node_size(tcx));
 
 	if (UMOFF_IS_NULL(nd_off))
@@ -912,8 +916,8 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 	struct btr_root		*root;
 	struct btr_record	*rec_dst;
 	struct btr_node		*nd;
-	umem_off_t		 nd_off;
-	int			 rc;
+	umem_off_t		    nd_off;
+	int rc;
 
 	root = tcx->tc_tins.ti_root;
 
@@ -939,7 +943,6 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 
     // 获取rec的地址，把record内容拷过去
 	rec_dst = btr_node_rec_at(tcx, nd_off, 0);
-	
 	btr_rec_copy(tcx, rec_dst, rec, 1);
 
 	if (btr_has_tx(tcx)) {
@@ -952,7 +955,7 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 		}
 	}
 
-	root->tr_node = nd_off;
+	root->tr_node = nd_off; // 根节点指向当前这个新节点
 	root->tr_depth = 1;
 	
 	btr_context_set_depth(tcx, root->tr_depth);
@@ -1105,6 +1108,7 @@ btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace, struc
 	
 	btr_trace_debug(tcx, trace, "insert %s now size %d\n", btr_rec_string(tcx, rec, leaf, sbuf, BTR_PRINT_BUF), btr_rec_size(tcx));
 
+    // nd: 当前搜索路径下找到的那个btr_node
 	nd = btr_off2ptr(tcx, trace->tr_node);
 
 // 这个分支只有singv_btr_ops有用，其余树不走
@@ -1132,9 +1136,11 @@ btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace, struc
 
 
 //   场景1.   trace->tr_at == nd->tn_keyn
-//          说明当前查找访问的trace层的record就是最后最后1个key, 那么直接再后面追加写
+//          说明当前查找访问的trace层的record就是最后最后1个key, 那么直接再后面追加写(record插入结尾)
 //   场景2. trace->tr_at != nd->tn_keyn
-//          说明当前查找访问的trace层的record是中间的某个key，后面的往前搬移1个，新的record查入at后面
+//          说明当前查找访问的trace层的record是中间的某个key，后面的往前搬移1个，新的record查入at后面(record插入中间)
+
+    // 找到搜索路径下的那个record - rec_a
 	rec_a = btr_node_rec_at(tcx, trace->tr_node, trace->tr_at);
 
 	if (reuse) {
@@ -1192,17 +1198,19 @@ btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace, stru
 	struct btr_record	*rec_dst;
 	struct btr_node		*nd_left;
 	struct btr_node		*nd_right;
-	umem_off_t		 off_left;
-	umem_off_t		 off_right;
-	char			 hkey_buf[DAOS_HKEY_MAX];
-	int			     split_at;
-	int			     level;
-	int			     rc;
-	bool			 leaf;
-	bool			 right;
+	umem_off_t		     off_left;
+	umem_off_t		     off_right;
+	char			     hkey_buf[DAOS_HKEY_MAX];
+	int			         split_at;
+	int			         level;
+	int			         rc;
+	bool			     leaf;
+	bool			     right;
 
 	D_ASSERT(trace >= tcx->tc_trace);
-	level = trace - tcx->tc_trace;
+	
+	level = trace - tcx->tc_trace; // 这两个相减为啥是level啊
+	
 	off_left = trace->tr_node;
 
 	rc = btr_node_alloc(tcx, &off_right);
@@ -1333,8 +1341,7 @@ btr_root_resize(struct btr_context *tcx, struct btr_trace *trace,
 
 	new_order = MIN(root->tr_node_size * 2 + 1, tcx->tc_order);
 
-	D_DEBUG(DB_TRACE, "Root node size increase from %d to %d\n",
-		root->tr_node_size, new_order);
+	D_DEBUG(DB_TRACE, "Root node size increase from %d to %d\n", root->tr_node_size, new_order);
 
 	root->tr_node_size = new_order;
 
@@ -1362,6 +1369,7 @@ btr_node_insert_rec(struct btr_context *tcx, struct btr_trace *trace,
 	bool	node_alloc = false;
 
 	if (btr_root_resize_needed(tcx)) {
+		// 根节点root需要分裂的场景
 		rc = btr_root_resize(tcx, trace, &node_alloc);
 		if (rc != 0) {
 			D_ERROR("Failed to resize root node: %s", d_errstr(rc));
@@ -1369,6 +1377,7 @@ btr_node_insert_rec(struct btr_context *tcx, struct btr_trace *trace,
 		}
 	}
 
+    // root不需要分裂或者分裂失败
 	if (!node_alloc && btr_has_tx(tcx)) {
 		rc = btr_node_tx_add(tcx, trace->tr_node);
 		if (rc != 0) {
@@ -1377,7 +1386,7 @@ btr_node_insert_rec(struct btr_context *tcx, struct btr_trace *trace,
 		}
 	}
 
-    // node节点上存放的key的数量已经满了，需要分裂
+    // 当前找到要插入的node节点上存放的key的数量已经满了，需要分裂
 	if (btr_node_is_full(tcx, trace->tr_node))
 		rc = btr_node_split_and_insert(tcx, trace, rec);
 	else // 没满，直接在node节点插入
@@ -2061,18 +2070,22 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 	union btr_rec_buf    rec_buf = {0};
 	int rc;
 
+// record的内容构造开始
 	rec = &rec_buf.rb_rec;
 
+	// 填充record中的key
 	// 生成btr_record的key
 	btr_hkey_gen(tcx, key, &rec->rec_hkey[0]);
 
-    // for example: ktr_rec_alloc\cont_df_rec_alloc
-    // 填充生成btr_record
+    // for example: ktr_rec_alloc\cont_df_rec_alloc\
+    // 再填充生成btr_record的rec_off
+    // Allocate record body for key and val.
 	rc = btr_rec_alloc(tcx, key, val, rec, val_out);
 	if (rc != 0) {
 		D_DEBUG(DB_TRACE, "Failed to create new record: "DF_RC"\n", DP_RC(rc));
 		return rc;
 	}
+// record的内容构造完毕
 
 	if (D_LOG_ENABLED(DB_TRACE))
 		rec_str = btr_rec_string(tcx, rec, true, str, BTR_PRINT_BUF);
@@ -2081,9 +2094,11 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 		// 
 		struct btr_trace *trace;
 		/* trace for the leaf */
+	    // trace 找到搜索路径的最后1层
 		trace = &tcx->tc_trace[tcx->tc_depth - 1];
 		btr_trace_debug(tcx, trace, "try to insert\n");
 
+        // 当前不是空树，在trace找到的那个node里面对应的at位置开始插入
 		rc = btr_node_insert_rec(tcx, trace, rec);
 		if (rc != 0) {
 			D_DEBUG(DB_TRACE, "Failed to insert record to leaf: "DF_RC"\n", DP_RC(rc));
@@ -2092,9 +2107,10 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 		
 	} else {
 	
-        // 当前是1棵空树，需要先创建1个btr_node, 然后往里面插入record
 		D_DEBUG(DB_TRACE, "Add record %s to an empty tree\n", rec_str);
-        //  root->tr_node指向新创建的这个btr_node
+
+		// 当前是1棵空树，需要先创建1个btr_node, 然后把record里面的内容考进去
+        //  btr_node里面存放key的个数记为1，将record的内容拷贝至btr_node->btr_record
 		rc = btr_root_start(tcx, rec);
 		if (rc != 0) {
 			D_DEBUG(DB_TRACE, "Failed to start the tree: "DF_RC"\n", DP_RC(rc));

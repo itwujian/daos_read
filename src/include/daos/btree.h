@@ -60,6 +60,7 @@ struct btr_node {
 	/** leaf, root etc */
 	uint16_t			tn_flags;
 	/** number of keys stored in this node */
+	// key的数量，也可以看成是record的数量
 	uint16_t			tn_keyn;
 	/** padding bytes */
 	uint32_t			tn_pad_32;
@@ -68,7 +69,7 @@ struct btr_node {
 	/** the first child, it is unused on leaf node */
 	umem_off_t			tn_child;
 	/** records in this node */
-	struct btr_record		tn_recs[0];
+	struct btr_record	tn_recs[0];
 };
 
 enum {

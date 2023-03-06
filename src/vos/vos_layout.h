@@ -366,7 +366,7 @@ struct vos_irec_df {
  * NB: PMEM data structure.
  */
 struct vos_obj_df {
-	daos_unit_oid_t			vo_id;
+	daos_unit_oid_t			vo_id;  // 存放key,即：oid(object ID)
 	/** The latest sync epoch */
 	daos_epoch_t			vo_sync;
 	/** Offset of known existing dkey */
@@ -376,6 +376,7 @@ struct vos_obj_df {
 	/** Incarnation log for the object */
 	struct ilog_df			vo_ilog;
 	/** VOS dkey btree root */
+	// dkey树的树根
 	struct btr_root			vo_tree;
 };
 

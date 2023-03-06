@@ -825,6 +825,10 @@ dtx_handle_init(struct dtx_id *dti, daos_handle_t coh, struct dtx_epoch *epoch,
 			"%u > %u\n", sub_modification_cnt, DTX_SUB_MOD_MAX);
 		return -DER_OVERFLOW;
 	}
+
+	// 当前应该只有CPD流程sub_modification_cnt会大于1，
+	// count of write sub requests for the DTX on the DAOS target
+	// 其余流程进来都是1
 	dth->dth_modification_cnt = sub_modification_cnt;
 
 	dtx_shares_init(dth);

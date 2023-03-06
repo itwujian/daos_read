@@ -61,10 +61,10 @@ static int
 ktr_rec_store(struct btr_instance *tins, struct btr_record *rec,
 	      d_iov_t *key_iov, struct vos_rec_bundle *rbund)
 {
-	struct vos_krec_df	*krec = vos_rec2krec(tins, rec);
-	d_iov_t			*iov  = rbund->rb_iov;
-	struct dcs_csum_info	*csum = rbund->rb_csum;
-	char			*kbuf;
+	struct vos_krec_df	   *krec = vos_rec2krec(tins, rec);
+	d_iov_t			       *iov  = rbund->rb_iov; //  d/akey
+	struct dcs_csum_info   *csum = rbund->rb_csum;
+	char			       *kbuf;
 
 	krec->kr_cs_size = csum->cs_len;
 	if (krec->kr_cs_size != 0) {
@@ -72,6 +72,7 @@ ktr_rec_store(struct btr_instance *tins, struct btr_record *rec,
 		krec->kr_cs_type = csum->cs_type;
 		memcpy(vos_krec2csum(krec), csum->cs_csum, csum->cs_len);
 	}
+	
 	kbuf = vos_krec2key(krec);
 
 	if (iov->iov_buf != NULL) {
@@ -81,6 +82,7 @@ ktr_rec_store(struct btr_instance *tins, struct btr_record *rec,
 		/* return it for RDMA */
 		iov->iov_buf = kbuf;
 	}
+	
 	krec->kr_size = iov->iov_len;
 	return 0;
 }
@@ -238,13 +240,18 @@ ktr_key_decode(struct btr_instance *tins, d_iov_t *key,
 }
 
 /** create a new key-record, or install an externally allocated key-record */
+
+// btr_ops(tcx)->to_rec_alloc(&tcx->tc_tins, key, val, rec, val_out)
+
 static int
-ktr_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
-	      d_iov_t *val_iov, struct btr_record *rec, d_iov_t *val_out)
+ktr_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov, // dkey or akey
+	                d_iov_t *val_iov,         // riov
+	                struct btr_record *rec,   // 创建好的recoed
+	                d_iov_t *val_out)
 {
 	struct vos_rec_bundle	*rbund;
-	struct vos_krec_df	*krec;
-	int			 rc = 0;
+	struct vos_krec_df	    *krec;
+	int	rc = 0;
 
     // 取出value值，并转换成vos_rec_bundle类型
 	rbund = iov2rec_bundle(val_iov);
@@ -252,6 +259,7 @@ ktr_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
     // 为record具体内容分配地址空间，
     // 大小为：sizeof(struct vos_krec_df) + vos_size_round(rbund->rb_csum->cs_len)
     //         + key->iov_len
+    // 也就是说btr_record->rec_off保存的内存盘上的空间存储的是vos_krec_df + csum + dkey/akey
 	rec->rec_off = umem_zalloc(&tins->ti_umm, vos_krec_size(rbund));
 	
 	if (UMOFF_IS_NULL(rec->rec_off))
@@ -270,7 +278,7 @@ ktr_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	if (rbund->rb_tclass == VOS_BTR_DKEY)
 		krec->kr_bmap |= KREC_BF_DKEY;
 
-	rbund->rb_krec = krec;
+	rbund->rb_krec = krec;  //vos_krec_df 
 
 	ktr_rec_store(tins, rec, key_iov, rbund);
 
@@ -958,6 +966,7 @@ key_tree_prepare(struct vos_object *obj,
 
     // 进入条件：tclass == VOS_BTR_AKEY || (flags 不是 SUBTR_EVT)
 	tree_rec_bundle2iov(&rbund, &riov);
+	// riov->iov_len = sizeof(*rbund);
 	// riov->iov_buf = rbund;
 	rbund.rb_off	= UMOFF_NULL;
 	rbund.rb_csum	= &csum;
@@ -1007,14 +1016,16 @@ key_tree_prepare(struct vos_object *obj,
 	if (rc == -DER_NONEXIST) {
 
 	    // 在akey上查找evtree时没有找到，直接报不存在
-	    // 在dkey上查找没有找到，上报失败
+	    // 在dkey上查找没有找到, 上报失败， dkey_update和key_punch带了SUBTR_CREATE参数会创建
 		if (!(flags & SUBTR_CREATE))
 			goto out;
 
-        // 只有1种情况在不存在的情况下会插入：akey上查找svtree
+        // 有以下情况在不存在的情况下会插入：
+        // akey上查找svtree
+        // dkey_update和key_punch带了SUBTR_CREATE参数会创建
 		rbund.rb_iov	= key;
 		
-		/* use BTR_PROBE_BYPASS to avoid probe again */
+		/* use BTR_PROBE_BYPASS to avoid probe again， 不在查找直接插入 */
 		rc = dbtree_upsert(toh, BTR_PROBE_BYPASS, intent, key, &riov, NULL);
 		if (rc) {
 			D_ERROR("Failed to upsert: "DF_RC"\n", DP_RC(rc));
@@ -1166,6 +1177,10 @@ key_tree_delete(struct vos_object *obj, daos_handle_t toh, d_iov_t *key_iov)
 }
 
 /** initialize tree for an object */
+
+//  1. obj下的dkey树句柄如果有效，直接返回 
+//  2. obj下的dkey树句柄如果无效，dkey如果树根还不存在，创建dkey的根，存入obj->obj_df->vo_tree
+//  3. obj下的dkey树句柄如果无效，dkey如果树根存在，返回的dkey树的操作句柄，存入obj->obj_toh
 int
 obj_tree_init(struct vos_object *obj)
 {
@@ -1191,16 +1206,21 @@ obj_tree_init(struct vos_object *obj)
 		else if (daos_is_dkey_lexical_type(type))
 			tree_feats |= VOS_KEY_CMP_LEXICAL_SET;
 
+        // 此时树还是空树，需要创建根节点
 		rc = dbtree_create_inplace_ex(ta->ta_class, tree_feats, ta->ta_order, vos_obj2uma(obj),
-					                  &obj->obj_df->vo_tree, vos_cont2hdl(obj->obj_cont),
-					                  vos_obj2pool(obj), &obj->obj_toh);
+					                  &obj->obj_df->vo_tree, // 出参：返回的dkey树的根节点
+					                  vos_cont2hdl(obj->obj_cont),
+					                  vos_obj2pool(obj), 
+					                  &obj->obj_toh);       //  出参：返回的dkey树的操作句柄
 	} 
 
 	else {
 		D_DEBUG(DB_DF, "Open btree for object\n");
+		// 树已经创建好了，根节点已经存在，直接打开
 		rc = dbtree_open_inplace_ex(&obj->obj_df->vo_tree, vos_obj2uma(obj),
-					                vos_cont2hdl(obj->obj_cont), vos_obj2pool(obj), &obj->obj_toh);
-	}
+					                vos_cont2hdl(obj->obj_cont), vos_obj2pool(obj), 
+					                &obj->obj_toh);       //  出参：返回的dkey树的操作句柄
+	} 
 
 	if (rc)
 		D_ERROR("obj_tree_init failed, "DF_RC"\n", DP_RC(rc));

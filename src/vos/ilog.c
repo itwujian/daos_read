@@ -74,19 +74,19 @@ struct ilog_root {
 
 struct ilog_context {
 	/** Root pointer */
-	struct ilog_root		*ic_root;
+	struct ilog_root	  *ic_root;
 	/** Cache the callbacks */
-	struct ilog_desc_cbs		 ic_cbs;
+	struct ilog_desc_cbs   ic_cbs;
 	/** umem offset of root pointer */
-	umem_off_t			 ic_root_off;
+	umem_off_t			   ic_root_off;
 	/** umem instance */
-	struct umem_instance		ic_umm;
+	struct umem_instance   ic_umm;
 	/** ref count for iterator */
-	uint32_t			 ic_ref;
+	uint32_t			   ic_ref;
 	/** In pmdk transaction marker */
-	bool				 ic_in_txn;
+	bool				   ic_in_txn;
 	/** version needs incrementing */
-	bool				 ic_ver_inc;
+	bool				   ic_ver_inc;
 };
 
 D_CASSERT(sizeof(struct ilog_id) == sizeof(struct ilog_tree));
@@ -257,11 +257,9 @@ ilog_tx_end(struct ilog_context *lctx, int rc)
 		goto done;
 
 	if (lctx->ic_ver_inc) {
-		rc = umem_tx_add_ptr(&lctx->ic_umm, &lctx->ic_root->lr_magic,
-				     sizeof(lctx->ic_root->lr_magic));
+		rc = umem_tx_add_ptr(&lctx->ic_umm, &lctx->ic_root->lr_magic, sizeof(lctx->ic_root->lr_magic));
 		if (rc != 0) {
-			D_ERROR("Failed to add to undo log: "DF_RC"\n",
-				DP_RC(rc));
+			D_ERROR("Failed to add to undo log: "DF_RC"\n", DP_RC(rc));
 			goto done;
 		}
 
@@ -373,12 +371,15 @@ ilog_create(struct umem_instance *umm, struct ilog_df *root)
 		.ic_ref = 0,
 		.ic_in_txn = 0,
 	};
+	
 	struct ilog_root	tmp = {0};
 	int			rc = 0;
 
 	tmp.lr_magic = ILOG_MAGIC + ILOG_VERSION_INC;
 
-	rc = ilog_ptr_set(&lctx, root, &tmp);
+	rc = ilog_ptr_set(&lctx, root, &tmp);
+
+	// 创建流程无需需改ilog的版本号
 	lctx.ic_ver_inc = false;
 
 	rc = ilog_tx_end(&lctx, rc);

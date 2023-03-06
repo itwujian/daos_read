@@ -312,9 +312,7 @@ cancel:
 
 	if (dce != NULL) {
 		struct vos_dtx_act_ent	*dae = dth_in->dth_ent;
-
-		vos_dtx_post_handle(cont, &dae, &dce, 1, false,
-				    err != 0 ? true : false);
+		vos_dtx_post_handle(cont, &dae, &dce, 1, false, err != 0 ? true : false);
 		dth_in->dth_ent = NULL;
 	}
 

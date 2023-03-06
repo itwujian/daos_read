@@ -108,7 +108,7 @@ struct dtx_handle {
 	uint16_t			 dth_rsrvd_cnt;
 	uint16_t			 dth_deferred_cnt;
 	/** The total sub modifications count. */
-	uint16_t			 dth_modification_cnt;
+	uint16_t			 dth_modification_cnt; //除了CPD流程会大于2之外，其余均为1
 	/** Modification sequence in the distributed transaction. */
 	uint16_t			 dth_op_seq;
 

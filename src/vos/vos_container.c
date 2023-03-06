@@ -68,8 +68,8 @@ cont_df_rec_free(struct btr_instance *tins, struct btr_record *rec, void *args)
 
 static int
 cont_df_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
-		                  d_iov_t *val_iov      /*填充了部分value值*/,
-		                  struct btr_record *rec/*带下来的record*/,
+		                  d_iov_t *val_iov,        /*填充了部分value值*/
+		                  struct btr_record *rec,  /*带下来的record*/
 		                  d_iov_t *val_out)
 {
 	struct vos_pool		*pool;
@@ -85,15 +85,20 @@ cont_df_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	args = (struct cont_df_args *)val_iov->iov_buf;
 	pool = args->ca_pool;
 
-	D_DEBUG(DB_DF, "Allocating container uuid=" DF_UUID "\n", DP_UUID(ukey->uuid));
-	
+	D_DEBUG(DB_DF, "Allocating container uuid="DF_UUID"\n", DP_UUID(ukey->uuid));
+
+	//  在btr_context->btr_instance->umem_instance内存盘上申请地址存放
+	//  得到的是地址偏移offset
 	offset = umem_zalloc(&tins->ti_umm, sizeof(struct vos_cont_df));
 	if (UMOFF_IS_NULL(offset))
 		return -DER_NOSPACE;
 
+    // 拿到偏移后得到强转成本次写入需要使用的数据类型
 	cont_df = umem_off2ptr(&tins->ti_umm, offset);
+	
 	uuid_copy(cont_df->cd_id, ukey->uuid);
 
+    // cont树的每个record对应1棵obj树
 	rc = dbtree_create_inplace_ex(VOS_BTR_OBJ_TABLE, 0, VOS_OBJ_ORDER,
 				      &pool->vp_uma, &cont_df->cd_obj_root,
 				      DAOS_HDL_INVAL, pool, &hdl);
@@ -450,8 +455,7 @@ vos_cont_open(daos_handle_t poh, uuid_t co_uuid, daos_handle_t *coh)
 	}
 
 	cont->vc_open_count = 1;
-	D_DEBUG(DB_TRACE, "Inert cont "DF_UUID" into hash table.\n",
-		DP_UUID(cont->vc_id));
+	D_DEBUG(DB_TRACE, "Inert cont "DF_UUID" into hash table.\n", DP_UUID(cont->vc_id));
 
 exit:
 	if (rc != 0 && cont)

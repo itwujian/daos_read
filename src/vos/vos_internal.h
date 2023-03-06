@@ -329,10 +329,10 @@ struct vos_dtx_act_ent {
 	/* Back pointer to the DTX handle. */
 	struct dtx_handle		*dae_dth;
 
-	unsigned int			 dae_committable:1,
+	unsigned int	 dae_committable:1,
 					 dae_committed:1,
 					 dae_aborted:1,
-					 dae_maybe_shared:1,
+					 dae_maybe_shared:1,  // 只有在dtx_handler在处理dtx_refresh的时候会置为1
 					 /* Need validation on leader before commit/committable. */
 					 dae_need_validation:1,
 					 dae_prepared:1;
@@ -681,35 +681,41 @@ struct vos_svt_key {
 
 /**
  * Data structure which carries the value buffers, checksums and memory IDs
- * to the multi-nested btree.
+ * to the multi-nested(多层嵌套)btree.
  */
 struct vos_rec_bundle {
+
 	/** Optional, externally allocated buffer umoff */
-	umem_off_t		 rb_off;
+	umem_off_t		         rb_off;
+	
 	/** checksum buffer for the daos key */
 	struct dcs_csum_info	*rb_csum;
+	
 	/**
 	 * Input  : value buffer (non-rdma data)
-	 *	    TODO also support scatter/gather list input.
+	 *	        TODO also support scatter/gather list input.
 	 * Output : parameter to return value address.
 	 */
-	d_iov_t			*rb_iov;
+	d_iov_t			        *rb_iov;
+	
 	/**
 	 * Single value record IOV.
 	 */
-	struct bio_iov		*rb_biov;
+	struct bio_iov		    *rb_biov;
+	
 	/** Returned durable address of the btree record */
-	struct vos_krec_df	*rb_krec;
+	struct vos_krec_df	    *rb_krec;
+	
 	/** input record size */
-	daos_size_t		 rb_rsize;
+	daos_size_t		        rb_rsize;
 	/** global record size, needed for EC singv record */
-	daos_size_t		 rb_gsize;
+	daos_size_t		        rb_gsize;
 	/** pool map version */
-	uint32_t		 rb_ver;
+	uint32_t		        rb_ver;
 	/** tree class */
-	enum vos_tree_class	 rb_tclass;
+	enum vos_tree_class	    rb_tclass;
 	/** DTX state */
-	unsigned int		 rb_dtx_state;
+	unsigned int		    rb_dtx_state;
 };
 
 #define VOS_SIZE_ROUND		8
@@ -1318,8 +1324,7 @@ vos_slab_alloc(struct umem_instance *umm, int size, int slab_id)
 		  umem_slab_registered(umm, slab_id),
 		  slab_id, size, umem_slab_usize(umm, slab_id));
 
-	return umem_alloc_verb(umm, umem_slab_flags(umm, slab_id) |
-					POBJ_FLAG_ZERO, size);
+	return umem_alloc_verb(umm, umem_slab_flags(umm, slab_id) | POBJ_FLAG_ZERO, size);
 }
 
 /* vos_space.c */

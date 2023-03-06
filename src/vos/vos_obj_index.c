@@ -74,30 +74,32 @@ oi_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	struct dtx_handle	*dth = vos_dth_get();
 	struct vos_obj_df	*obj;
 	daos_unit_oid_t		*key;
-	umem_off_t		 obj_off;
-	int			 rc;
+	umem_off_t		     obj_off;
+	int			         rc;
 
 	/* Allocate a PMEM value of type vos_obj_df */
-	obj_off = vos_slab_alloc(&tins->ti_umm, sizeof(struct vos_obj_df),
-				 VOS_SLAB_OBJ_DF);
+	obj_off = vos_slab_alloc(&tins->ti_umm, sizeof(struct vos_obj_df), VOS_SLAB_OBJ_DF);
+	
 	if (UMOFF_IS_NULL(obj_off))
 		return -DER_NOSPACE;
 
 	obj = umem_off2ptr(&tins->ti_umm, obj_off);
 
 	D_ASSERT(key_iov->iov_len == sizeof(daos_unit_oid_t));
+	
 	key = key_iov->iov_buf;
 
 	obj->vo_sync	= 0;
 	obj->vo_id	= *key;
+	
 	rc = ilog_create(&tins->ti_umm, &obj->vo_ilog);
 	if (rc != 0) {
-		D_ERROR("Failure to create incarnation log: "DF_RC"\n",
-			DP_RC(rc));
+		D_ERROR("Failure to create incarnation log: "DF_RC"\n", DP_RC(rc));
 		return rc;
 	}
 
 	d_iov_set(val_iov, obj, sizeof(struct vos_obj_df));
+	
 	rec->rec_off = obj_off;
 
 	/* For new created object, commit it synchronously to reduce
@@ -107,8 +109,8 @@ oi_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	if (dtx_is_valid_handle(dth))
 		dth->dth_sync = 1;
 
-	D_DEBUG(DB_TRACE, "alloc "DF_UOID" rec "DF_X64"\n",
-		DP_UOID(obj->vo_id), rec->rec_off);
+	D_DEBUG(DB_TRACE, "alloc "DF_UOID" rec "DF_X64"\n", DP_UOID(obj->vo_id), rec->rec_off);
+	
 	return 0;
 }
 
@@ -240,8 +242,8 @@ vos_oi_find_alloc(struct vos_container *cont, daos_unit_oid_t oid,
 	/* Object ID not found insert it to the OI tree */
 	D_DEBUG(DB_TRACE, "Object "DF_UOID" not found adding it..\n", DP_UOID(oid));
 
-	d_iov_set(&val_iov, NULL, 0);
 	d_iov_set(&key_iov, &oid, sizeof(oid));
+	d_iov_set(&val_iov, NULL, 0);
 
 	rc = dbtree_upsert(cont->vc_btr_hdl, BTR_PROBE_EQ, DAOS_INTENT_DEFAULT, &key_iov, &val_iov, NULL);
 	if (rc) {
