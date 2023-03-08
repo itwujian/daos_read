@@ -742,8 +742,7 @@ container_scan_cb(daos_handle_t ih, vos_iter_entry_t *entry,
 	uuid_copy(scan_arg->co_uuid, entry->ie_couuid);
 	rc = dtx_resync(iter_param->ip_hdl, arg->pool_uuid, entry->ie_couuid, arg->version, true);
 	if (rc)
-		D_ERROR(DF_UUID" dtx resync failed: rc %d\n",
-			DP_UUID(arg->pool_uuid), rc);
+		D_ERROR(DF_UUID" dtx resync failed: rc %d\n", DP_UUID(arg->pool_uuid), rc);
 
 	/* Since dtx_resync might yield, let's reprobe anyway */
 	*acts |= VOS_ITER_CB_YIELD;

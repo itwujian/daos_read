@@ -353,11 +353,9 @@ lrua_array_aggregate(struct lru_array *array)
 	/** Grab the 2nd entry (may be head in which case the loop will  be a
 	 *  noop).   This leaves some free entries in the array.
 	 */
-	sub = d_list_entry(array->la_free_sub.next->next, struct lru_sub,
-			   ls_link);
+	sub = d_list_entry(array->la_free_sub.next->next, struct lru_sub, ls_link);
 
-	d_list_for_each_entry_safe_from(sub, tmp, &array->la_free_sub,
-					ls_link) {
+	d_list_for_each_entry_safe_from(sub, tmp, &array->la_free_sub, ls_link) {
 		if (sub->ls_lru != LRU_NO_IDX)
 			continue; /** Used entries */
 		d_list_del(&sub->ls_link);

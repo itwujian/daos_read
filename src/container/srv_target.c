@@ -1354,8 +1354,8 @@ ds_dtx_resync(void *arg)
 	struct ds_dtx_resync_args	*ddra = arg;
 	int				 rc;
 
-	rc = dtx_resync(ddra->pool->spc_hdl, ddra->pool->spc_uuid,
-			ddra->co_uuid, ddra->pool->spc_map_version, false);
+	rc = dtx_resync(ddra->pool->spc_hdl, ddra->pool->spc_uuid, ddra->co_uuid, ddra->pool->spc_map_version, false);
+	
 	if (rc != 0)
 		D_WARN("Fail to resync some DTX(s) for the pool/cont "
 		       DF_UUID"/"DF_UUID" that may affect subsequent "
@@ -1397,17 +1397,12 @@ ds_cont_local_open(uuid_t pool_uuid, uuid_t cont_hdl_uuid, uuid_t cont_uuid,
 	if (hdl != NULL) {
 		if (flags != 0) {
 			if (hdl->sch_flags != flags) {
-				D_ERROR(DF_CONT": conflicting container : hdl="
-					DF_UUID" capas="DF_U64"\n",
-					DP_CONT(pool_uuid, cont_uuid),
-					DP_UUID(cont_hdl_uuid), flags);
+				D_ERROR(DF_CONT": conflicting container : hdl="DF_UUID" capas="DF_U64"\n",
+					DP_CONT(pool_uuid, cont_uuid), DP_UUID(cont_hdl_uuid), flags);
 				rc = -DER_EXIST;
 			} else {
-				D_DEBUG(DB_MD, DF_CONT": found compatible"
-					" container handle: hdl="DF_UUID
-					" capas="DF_U64"\n",
-				      DP_CONT(pool_uuid, cont_uuid),
-				      DP_UUID(cont_hdl_uuid), hdl->sch_flags);
+				D_DEBUG(DB_MD, DF_CONT": found compatible container handle: hdl="DF_UUID" capas="DF_U64"\n",
+				      DP_CONT(pool_uuid, cont_uuid), DP_UUID(cont_hdl_uuid), hdl->sch_flags);
 			}
 		}
 
@@ -1503,8 +1498,8 @@ ds_cont_local_open(uuid_t pool_uuid, uuid_t cont_hdl_uuid, uuid_t cont_uuid,
 
 		ddra->pool = ds_pool_child_get(hdl->sch_cont->sc_pool);
 		uuid_copy(ddra->co_uuid, cont_uuid);
-		rc = dss_ult_create(ds_dtx_resync, ddra, DSS_XS_SELF,
-				    0, 0, NULL);
+		
+		rc = dss_ult_create(ds_dtx_resync, ddra, DSS_XS_SELF, 0, 0, NULL);
 		if (rc != 0) {
 			ds_pool_child_put(hdl->sch_cont->sc_pool);
 			D_FREE(ddra);
@@ -1608,7 +1603,7 @@ ds_cont_tgt_open(uuid_t pool_uuid, uuid_t cont_hdl_uuid,
 		DP_UUID(pool_uuid), DP_UUID(cont_uuid), DP_UUID(cont_hdl_uuid));
 
 	/* collective operations */
-	coll_ops.co_func = cont_open_one;
+	coll_ops.co_func = cont_open_one; // cont_open_one分配给各个tgt线程的ULT任务上做
 	coll_args.ca_func_args	= &arg;
 
 	/* setting aggregator args */

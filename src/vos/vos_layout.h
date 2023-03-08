@@ -319,7 +319,7 @@ struct vos_krec_df {
 	union {
 		struct {
 			/** btree root under the key */
-			struct btr_root			kr_btr;
+			struct btr_root			kr_btr; // dkey树里面存的akey树的树根
 			/** Offset of known existing akey */
 			umem_off_t			kr_known_akey;
 		};

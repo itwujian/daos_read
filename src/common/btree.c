@@ -673,7 +673,8 @@ btr_node_alloc(struct btr_context *tcx, umem_off_t *nd_off_p)
     // 在内存盘上申请了btr_node的地址偏移nd_off
 	if (btr_ops(tcx)->to_node_alloc != NULL)
 		// only for ev-tree\sv-tree\keybtr-tree\obj_index-tree
-		// 使用slab分配的内存，存储在umem_instance->umm_slabs中
+		// 如果btr_node_size(tcx)内存大小满足使用slab分配的内存，存储在umem_instance->umm_slabs中
+		// 否则也是umem_zalloc
 		nd_off = btr_ops(tcx)->to_node_alloc(&tcx->tc_tins, btr_node_size(tcx));
 	else
 		// 使用pmem_tx_alloc、vmem_alloc分配的内存
@@ -1322,12 +1323,12 @@ btr_root_resize(struct btr_context *tcx, struct btr_trace *trace,
 		bool *node_alloc)
 {
 	struct btr_root	*root = tcx->tc_tins.ti_root;
-	umem_off_t	 old_node = root->tr_node;
+	umem_off_t	     old_node = root->tr_node;
 	struct btr_node	*nd = btr_off2ptr(tcx, old_node);
 	daos_size_t	 old_size = btr_node_size(tcx);
-	int		 new_order;
+	int		     new_order;
 	umem_off_t	 nd_off;
-	int		 rc = 0;
+	int		     rc = 0;
 
 	D_ASSERT(root->tr_depth == 1);
 
@@ -1350,7 +1351,9 @@ btr_root_resize(struct btr_context *tcx, struct btr_trace *trace,
 		D_DEBUG(DB_TRACE, "Failed to allocate new root\n");
 		return rc;
 	}
+	
 	trace->tr_node = root->tr_node = nd_off;
+	
 	memcpy(btr_off2ptr(tcx, nd_off), nd, old_size);
 	/* NB: Both of the following routines can fail but neither presently
 	 * returns an error code.   For now, ignore this fact.   DAOS-2577
@@ -2098,7 +2101,7 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 		trace = &tcx->tc_trace[tcx->tc_depth - 1];
 		btr_trace_debug(tcx, trace, "try to insert\n");
 
-        // 当前不是空树，在trace找到的那个node里面对应的at位置开始插入
+        // 当前不是空树，在trace找到的那个node里面对应的at位置后开始插入
 		rc = btr_node_insert_rec(tcx, trace, rec);
 		if (rc != 0) {
 			D_DEBUG(DB_TRACE, "Failed to insert record to leaf: "DF_RC"\n", DP_RC(rc));

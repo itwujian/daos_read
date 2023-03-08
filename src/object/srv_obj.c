@@ -1832,17 +1832,14 @@ obj_ioc_init(uuid_t pool_uuid, uuid_t coh_uuid, uuid_t cont_uuid, int opc,
 		coc = coh->sch_cont;
 		if (uuid_compare(cont_uuid, coc->sc_uuid) == 0)
 			D_GOTO(out, rc = 0);
-
-		D_ERROR("Stale container handle "DF_UUID" != "DF_UUID"\n",
-			DP_UUID(cont_uuid), DP_UUID(coh->sch_uuid));
+		D_ERROR("Stale container handle "DF_UUID" != "DF_UUID"\n", DP_UUID(cont_uuid), DP_UUID(coh->sch_uuid));
 		D_GOTO(failed, rc = -DER_NONEXIST);
 	} else {
 		/**
 		 * The server handle is a dummy and never attached by
 		 * a real container
 		 */
-		D_DEBUG(DB_TRACE, DF_UUID"/%p is server cont hdl\n",
-			DP_UUID(coh_uuid), coh);
+		D_DEBUG(DB_TRACE, DF_UUID"/%p is server cont hdl\n", DP_UUID(coh_uuid), coh);
 	}
 
 	if (DAOS_FAIL_CHECK(DAOS_REBUILD_NO_HDL))
@@ -1915,8 +1912,7 @@ obj_ioc_begin_lite(uint32_t rpc_map_ver, uuid_t pool_uuid,
 	poc = ioc->ioc_coc->sc_pool;
 	D_ASSERT(poc != NULL);
 
-	if (unlikely(poc->spc_pool->sp_map == NULL ||
-		     DAOS_FAIL_CHECK(DAOS_FORCE_REFRESH_POOL_MAP))) {
+	if (unlikely(poc->spc_pool->sp_map == NULL || DAOS_FAIL_CHECK(DAOS_FORCE_REFRESH_POOL_MAP))) {
 		/* XXX: Client (or leader replica) has newer pool map than
 		 *	current replica. Two possible cases:
 		 *
@@ -2090,8 +2086,7 @@ obj_ioc_begin(daos_obj_id_t oid, uint32_t rpc_map_ver, uuid_t pool_uuid,
 {
 	int		rc;
 
-	rc = obj_ioc_begin_lite(rpc_map_ver, pool_uuid, coh_uuid, cont_uuid,
-			      opc, ioc);
+	rc = obj_ioc_begin_lite(rpc_map_ver, pool_uuid, coh_uuid, cont_uuid, opc, ioc);
 	if (rc != 0)
 		return rc;
 
@@ -2553,9 +2548,9 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 	struct dtx_leader_handle	*dlh = NULL;
 	struct ds_obj_exec_arg		exec_arg = { 0 };
 	struct obj_io_context		ioc = { 0 };
-	uint32_t			flags = 0;
-	uint32_t			dtx_flags = 0;
-	uint32_t			opc = opc_get(rpc->cr_opc);
+	uint32_t			        flags = 0;
+	uint32_t			        dtx_flags = 0;
+	uint32_t			        opc = opc_get(rpc->cr_opc);
 	struct obj_ec_split_req		*split_req = NULL;
 	struct dtx_memberships		*mbs = NULL;
 	struct daos_shard_tgt		*tgts = NULL;

@@ -1080,8 +1080,9 @@ vos_dtx_status(struct vos_dtx_act_ent *dae)
  * DAOS_INTENT_PURGE.
  */
 int
-vos_dtx_check_availability(daos_handle_t coh, uint32_t entry,
-			                         daos_epoch_t epoch, /*重点是这个epoch  , 以其为key在cont的vc_dtx_array上找dae*/
+vos_dtx_check_availability(daos_handle_t coh, 
+                                     uint32_t entry,     // ilog_id->id_tx_id, 在cont的vc_dtx_array上分配的id
+			                         daos_epoch_t epoch, /*重点是这个epoch  , 以其为key在cont的vc_dtx_array上找dae*/ // ilog_id->id_epoch
 			                         uint32_t intent, 
 			                         uint32_t type, bool retry)
 {
@@ -1388,11 +1389,11 @@ vos_dtx_validation(struct dtx_handle *dth)
 /* The caller has started PMDK transaction. */
 int
 vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
-			uint32_t type, uint32_t *tx_id)
+			                       uint32_t type, uint32_t *tx_id)
 {
-	struct dtx_handle	*dth = vos_dth_get();
+	struct dtx_handle	    *dth = vos_dth_get();
 	struct vos_dtx_act_ent	*dae;
-	int			 rc = 0;
+	int			             rc = 0;
 
 	if (!dtx_is_valid_handle(dth)) {
 		*tx_id = DTX_LID_COMMITTED;
@@ -1437,7 +1438,7 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 	dae = dth->dth_ent;
 	if (!dth->dth_active) {
 		struct vos_container	*cont;
-		struct vos_cont_df	*cont_df;
+		struct vos_cont_df	    *cont_df;
 		struct vos_dtx_blob_df	*dbd;
 
 		cont = vos_hdl2cont(dth->dth_coh);
@@ -1460,13 +1461,10 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 			rc = vos_dtx_alloc(dbd, dth);
 			if (rc != 0)
 				goto out;
-
 			dae = dth->dth_ent;
 		} else {
 			D_ASSERT(dbd->dbd_magic == DTX_ACT_BLOB_MAGIC);
-
 			dae->dae_df_off = cont_df->cd_dtx_active_tail + offsetof(struct vos_dtx_blob_df, dbd_active_data) + sizeof(struct vos_dtx_act_ent_df) * dbd->dbd_index;
-			
 			dae->dae_dbd = dbd;
 		}
 
@@ -2310,16 +2308,16 @@ out:
 int
 vos_dtx_aggregate(daos_handle_t coh)
 {
-	struct vos_tls			*tls = vos_tls_get();
+	struct vos_tls			    *tls = vos_tls_get();
 	struct vos_container		*cont;
-	struct vos_cont_df		*cont_df;
+	struct vos_cont_df		    *cont_df;
 	struct umem_instance		*umm;
 	struct vos_dtx_blob_df		*dbd;
 	struct vos_dtx_blob_df		*tmp;
 	uint64_t			 epoch;
 	umem_off_t			 dbd_off;
-	int				 rc;
-	int				 i;
+	int				     rc;
+	int				     i;
 
 	cont = vos_hdl2cont(coh);
 	D_ASSERT(cont != NULL);
@@ -2338,8 +2336,7 @@ vos_dtx_aggregate(daos_handle_t coh)
 
 	rc = umem_tx_begin(umm, NULL);
 	if (rc != 0) {
-		D_ERROR("Failed to TX begin for DTX aggregation "UMOFF_PF": "
-			DF_RC"\n", UMOFF_P(dbd_off), DP_RC(rc));
+		D_ERROR("Failed to TX begin for DTX aggregation "UMOFF_PF": "DF_RC"\n", UMOFF_P(dbd_off), DP_RC(rc));
 		return rc;
 	}
 
@@ -2350,13 +2347,11 @@ vos_dtx_aggregate(daos_handle_t coh)
 		dce_df = &dbd->dbd_committed_data[i];
 		if (epoch < dce_df->dce_epoch)
 			epoch = dce_df->dce_epoch;
+		
 		d_iov_set(&kiov, &dce_df->dce_xid, sizeof(dce_df->dce_xid));
-		rc = dbtree_delete(cont->vc_dtx_committed_hdl, BTR_PROBE_EQ,
-				   &kiov, NULL);
+		rc = dbtree_delete(cont->vc_dtx_committed_hdl, BTR_PROBE_EQ, &kiov, NULL);
 		if (rc != 0 && rc != -DER_NONEXIST) {
-			D_ERROR("Failed to remove entry for DTX aggregation "
-				UMOFF_PF": "DF_RC"\n",
-				UMOFF_P(dbd_off), DP_RC(rc));
+			D_ERROR("Failed to remove entry for DTX aggregation "UMOFF_PF": "DF_RC"\n", UMOFF_P(dbd_off), DP_RC(rc));
 			goto out;
 		}
 
@@ -2366,11 +2361,9 @@ vos_dtx_aggregate(daos_handle_t coh)
 	}
 
 	if (epoch != cont_df->cd_newest_aggregated) {
-		rc = umem_tx_add_ptr(umm, &cont_df->cd_newest_aggregated,
-				     sizeof(cont_df->cd_newest_aggregated));
+		rc = umem_tx_add_ptr(umm, &cont_df->cd_newest_aggregated, sizeof(cont_df->cd_newest_aggregated));
 		if (rc != 0) {
-			D_ERROR("Failed to refresh epoch for DTX aggregation "UMOFF_PF": "DF_RC"\n",
-				UMOFF_P(dbd_off), DP_RC(rc));
+			D_ERROR("Failed to refresh epoch for DTX aggregation "UMOFF_PF": "DF_RC"\n", UMOFF_P(dbd_off), DP_RC(rc));
 			goto out;
 		}
 
@@ -2379,39 +2372,30 @@ vos_dtx_aggregate(daos_handle_t coh)
 
 	tmp = umem_off2ptr(umm, dbd->dbd_next);
 	if (tmp == NULL) {
+		
 		/* The last blob for committed DTX blob. */
-		D_ASSERT(cont_df->cd_dtx_committed_tail ==
-			 cont_df->cd_dtx_committed_head);
+		D_ASSERT(cont_df->cd_dtx_committed_tail == cont_df->cd_dtx_committed_head);
 
-		rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_committed_tail,
-				     sizeof(cont_df->cd_dtx_committed_tail));
+		rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_committed_tail, sizeof(cont_df->cd_dtx_committed_tail));
 		if (rc != 0) {
-			D_ERROR("Failed to update tail for DTX aggregation "
-				UMOFF_PF": "DF_RC"\n",
-				UMOFF_P(dbd_off), DP_RC(rc));
+			D_ERROR("Failed to update tail for DTX aggregation "UMOFF_PF": "DF_RC"\n", UMOFF_P(dbd_off), DP_RC(rc));
 			goto out;
 		}
 
 		cont_df->cd_dtx_committed_tail = UMOFF_NULL;
 	} else {
-		rc = umem_tx_add_ptr(umm, &tmp->dbd_prev,
-				     sizeof(tmp->dbd_prev));
+		rc = umem_tx_add_ptr(umm, &tmp->dbd_prev, sizeof(tmp->dbd_prev));
 		if (rc != 0) {
-			D_ERROR("Failed to update prev for DTX aggregation "
-				UMOFF_PF": "DF_RC"\n",
-				UMOFF_P(dbd_off), DP_RC(rc));
+			D_ERROR("Failed to update prev for DTX aggregation "UMOFF_PF": "DF_RC"\n", UMOFF_P(dbd_off), DP_RC(rc));
 			goto out;
 		}
 
 		tmp->dbd_prev = UMOFF_NULL;
 	}
 
-	rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_committed_head,
-			     sizeof(cont_df->cd_dtx_committed_head));
+	rc = umem_tx_add_ptr(umm, &cont_df->cd_dtx_committed_head, sizeof(cont_df->cd_dtx_committed_head));
 	if (rc != 0) {
-		D_ERROR("Failed to update head for DTX aggregation "
-			UMOFF_PF": "DF_RC"\n",
-			UMOFF_P(dbd_off), DP_RC(rc));
+		D_ERROR("Failed to update head for DTX aggregation "UMOFF_PF": "DF_RC"\n", UMOFF_P(dbd_off), DP_RC(rc));
 		goto out;
 	}
 
@@ -2422,8 +2406,7 @@ vos_dtx_aggregate(daos_handle_t coh)
 out:
 	rc = umem_tx_end(umm, rc);
 	if (rc != 0)
-		D_ERROR("Failed to aggregate DTX blob "UMOFF_PF": "
-			DF_RC"\n", UMOFF_P(dbd_off), DP_RC(rc));
+		D_ERROR("Failed to aggregate DTX blob "UMOFF_PF": "DF_RC"\n", UMOFF_P(dbd_off), DP_RC(rc));
 
 	return rc;
 }

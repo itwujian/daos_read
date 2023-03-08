@@ -526,8 +526,7 @@ svt_rec_alloc_common(struct btr_instance *tins, struct btr_record *rec,
 	int			 rc;
 
 	D_ASSERT(!UMOFF_IS_NULL(rbund->rb_off));
-	rc = umem_tx_xadd(&tins->ti_umm, rbund->rb_off, vos_irec_msize(rbund),
-			  POBJ_XADD_NO_SNAPSHOT);
+	rc = umem_tx_xadd(&tins->ti_umm, rbund->rb_off, vos_irec_msize(rbund), POBJ_XADD_NO_SNAPSHOT);
 	if (rc != 0)
 		return rc;
 
@@ -535,6 +534,7 @@ svt_rec_alloc_common(struct btr_instance *tins, struct btr_record *rec,
 	rbund->rb_off = UMOFF_NULL; /* taken over by btree */
 
 	irec	= vos_rec2irec(tins, rec);
+	
 	rc = vos_dtx_register_record(&tins->ti_umm, rec->rec_off, DTX_RT_SVT, &irec->ir_dtx);
 	if (rc != 0)
 		/* It is unnecessary to free the PMEM that will be dropped
@@ -547,11 +547,12 @@ svt_rec_alloc_common(struct btr_instance *tins, struct btr_record *rec,
 }
 
 /** allocate a new record and fetch data */
+// btr_ops(tcx)->to_rec_alloc(&tcx->tc_tins, key, val, rec, val_out);
 static int
 svt_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	       d_iov_t *val_iov, struct btr_record *rec, d_iov_t *val_out)
 {
-	struct vos_svt_key	*skey = key_iov->iov_buf;
+	struct vos_svt_key	    *skey = key_iov->iov_buf;
 	struct vos_rec_bundle	*rbund;
 
 	rbund = iov2rec_bundle(val_iov);
@@ -814,19 +815,32 @@ vos_evt_desc_cbs_init(struct evt_desc_cbs *cbs, struct vos_pool *pool,
 
 static int
 tree_open_create(struct vos_object *obj, 
-                        enum vos_tree_class tclass, 
-                        int flags,
-		                struct vos_krec_df *krec,
-		                bool created,
-		                daos_handle_t *sub_toh)
+                 enum vos_tree_class tclass, 
+                 int flags,
+		         struct vos_krec_df *krec,
+		         bool created,
+		         daos_handle_t *sub_toh)
 {
 	struct umem_attr    *uma = vos_obj2uma(obj);
 	struct vos_pool		*pool = vos_obj2pool(obj);
 	daos_handle_t		 coh = vos_cont2hdl(obj->obj_cont);
 	struct evt_desc_cbs	 cbs;
-	int			 expected_flag;
-	int			 unexpected_flag;
-	int			 rc = 0;
+	int			         expected_flag;
+	int			         unexpected_flag;
+	int			         rc = 0;
+
+/**
+	flags:
+	
+	1. dkey_fetch(0) \	akey_fetch(array-value:SUBTR_EVT, single-value: 0)
+	
+	2. dkey_update(SUBTR_CREATE) \	akey_update(array-value:SUBTR_EVT|SUBTR_CREATE, single-value: SUBTR_CREATE) 
+	
+	3. key_punch(SUBTR_CREATE)
+	
+	4. vos_obj_key2anchor\vos_obj_del_key\key_ilog_prepare\key_iter_match(0)
+	
+**/
 
 	if (flags & SUBTR_EVT) {
 		expected_flag = KREC_BF_EVT;
@@ -850,22 +864,24 @@ tree_open_create(struct vos_object *obj,
 
 	vos_evt_desc_cbs_init(&cbs, pool, coh);
 
-	// record里面记录的树的类型时evtree或btree
+// 只是open场景
 	if (krec->kr_bmap & expected_flag) {
 		if (flags & SUBTR_EVT) {
-			rc = evt_open(&krec->kr_evt, uma, &cbs, sub_toh);                    // evtree的open
+			rc = evt_open(&krec->kr_evt, uma, &cbs, sub_toh);                    
 		} else {
-			rc = dbtree_open_inplace_ex(&krec->kr_btr, uma, coh, pool, sub_toh); // svtree的open
+			rc = dbtree_open_inplace_ex(&krec->kr_btr, uma, coh, pool, sub_toh); 
 		}
 		if (rc != 0)
 			D_ERROR("Failed to open tree: "DF_RC"\n", DP_RC(rc));
 		goto out;
 	}
 
-    // krec->kr_bmap = KREC_BF_DKEY
+
+// krec->kr_bmap & expected_flag == 0
+// 创建的场景
 	if ((flags & SUBTR_CREATE) == 0) {
 		/** This can happen if application does a punch first before any
-		 *  updates.   Simply return -DER_NONEXIST in such case.
+		 *  updates. Simply return -DER_NONEXIST in such case.
 		 */
 		rc = -DER_NONEXIST;
 		goto out;
@@ -880,19 +896,21 @@ tree_open_create(struct vos_object *obj,
 	}
 
 	if (flags & SUBTR_EVT) {
+		// 创建evtree
 		rc = evt_create(&krec->kr_evt, vos_evt_feats, VOS_EVT_ORDER, uma, &cbs, sub_toh);
 		if (rc != 0) {
 			D_ERROR("Failed to create evtree: "DF_RC"\n", DP_RC(rc));
 			goto out;
 		}
 	} else {
-		struct vos_btr_attr	*ta;
-		uint64_t		 tree_feats = 0;
+	
+	    // 创建比如在dkey树里面创建akey
+		struct vos_btr_attr	 *ta;
+		uint64_t		      tree_feats = 0;
 
 		/* Step-1: find the btree attributes and create btree */
 		if (tclass == VOS_BTR_DKEY) {
 			enum daos_otype_t type;
-
 			/* Check and setup the akey key compare bits */
 			type = daos_obj_id2type(obj->obj_df->vo_id.id_pub);
 			if (daos_is_akey_uint64_type(type))
@@ -901,6 +919,8 @@ tree_open_create(struct vos_object *obj,
 				tree_feats |= VOS_KEY_CMP_LEXICAL_SET;
 		}
 
+        // dkey下面的创建akey树的根节点
+        // akey下面的创建sv-tree(single-tree)树的根节点
 		ta = obj_tree_find_attr(tclass);
 
 		D_DEBUG(DB_TRACE, "Create dbtree %s feats 0x"DF_X64"\n", ta->ta_name, tree_feats);
@@ -920,6 +940,7 @@ tree_open_create(struct vos_object *obj,
 	 * levels, only the tree_feats version is used.
 	 */
 	krec->kr_bmap |= expected_flag;
+	
 out:
 	return rc;
 }
@@ -929,7 +950,7 @@ out:
  *
  * akey tree	: all akeys under the same dkey
  * recx tree	: all record extents under the same akey, this function will
- *		  load both btree and evtree root.
+ *		          load both btree and evtree root.
  */
 int
 key_tree_prepare(struct vos_object *obj, 
@@ -1013,8 +1034,8 @@ key_tree_prepare(struct vos_object *obj,
 			break;
 	}
 
+//BEG： 在对应的树上没有找到，表示第一次查找，需要插入到树上
 	if (rc == -DER_NONEXIST) {
-
 	    // 在akey上查找evtree时没有找到，直接报不存在
 	    // 在dkey上查找没有找到, 上报失败， dkey_update和key_punch带了SUBTR_CREATE参数会创建
 		if (!(flags & SUBTR_CREATE))
@@ -1037,7 +1058,10 @@ key_tree_prepare(struct vos_object *obj,
 		vos_ilog_ts_mark(ts_set, &krec->kr_ilog);
 		created = true;
 	}
+//END： 在对应的树上没有找到，表示第一次查找，需要插入到树上
 
+
+    // 大部分场景需要打开子树，除了上层特殊要求VOS_OF_FETCH_CHECK_EXISTENCE/VOS_OF_FETCH_SET_TS_ONLY
 	if (sub_toh) {
 		D_ASSERT(krec != NULL);
 		rc = tree_open_create(obj, tclass, flags, krec, created, sub_toh);

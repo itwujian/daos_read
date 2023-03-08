@@ -2031,8 +2031,7 @@ evt_insert_entry(struct evt_context *tcx, const struct evt_entry_in *ent,
 				nd_dst = nd_cur;
 			} else {
 				D_ASSERT(nd_dst != NULL);
-				nd_dst = evt_select_node(tcx, &ent->ei_rect,
-							 nd_dst, nd_cur);
+				nd_dst = evt_select_node(tcx, &ent->ei_rect, nd_dst, nd_cur);
 				if (nd_dst == nd_cur)
 					nm_dst = nm_cur;
 			}

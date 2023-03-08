@@ -363,14 +363,13 @@ static void
 dtx_aggregate(void *arg)
 {
 	struct dtx_batched_cont_args	*dbca = arg;
-	struct ds_cont_child		*cont = dbca->dbca_cont;
+	struct ds_cont_child		    *cont = dbca->dbca_cont;
 
 	if (dbca->dbca_agg_req == NULL)
 		goto out;
 
 	/* dbca->dbca_reg_gen != cont->sc_dtx_batched_gen means someone reopen the container. */
-	while (!dss_ult_exiting(dbca->dbca_agg_req) &&
-	       dbca->dbca_reg_gen == cont->sc_dtx_batched_gen) {
+	while (!dss_ult_exiting(dbca->dbca_agg_req) && dbca->dbca_reg_gen == cont->sc_dtx_batched_gen) {
 		struct dtx_stat		stat = { 0 };
 		int			rc;
 
@@ -612,17 +611,19 @@ out:
 void
 dtx_batched_commit(void *arg)
 {
-	struct dss_module_info		*dmi = dss_get_module_info();
-	struct dtx_tls			*tls = dtx_tls_get();
-	struct dtx_batched_cont_args	*dbca;
-	struct sched_req_attr		 attr;
-	uuid_t				 anonym_uuid;
+	struct dss_module_info		  *dmi = dss_get_module_info();
+	struct dtx_tls			      *tls = dtx_tls_get();
+	struct dtx_batched_cont_args  *dbca;
+	struct sched_req_attr		   attr;
+	uuid_t				           anonym_uuid;
 
 	uuid_clear(anonym_uuid);
 	sched_req_attr_init(&attr, SCHED_REQ_ANONYM, &anonym_uuid);
 
 	D_ASSERT(dmi->dmi_dtx_cmt_req == NULL);
+	
 	dmi->dmi_dtx_cmt_req = sched_req_get(&attr, ABT_THREAD_NULL);
+	
 	if (dmi->dmi_dtx_cmt_req == NULL) {
 		D_ERROR("Failed to get DTX batched commit sched request.\n");
 		return;
@@ -659,6 +660,7 @@ dtx_batched_commit(void *arg)
 		if (dtx_cont_opened(cont) && dbca->dbca_commit_req == NULL &&
 		    (dtx_batched_ult_max != 0 && tls->dt_batched_ult_cnt < dtx_batched_ult_max) &&
 		    ((stat.dtx_committable_count > DTX_THRESHOLD_COUNT) || (stat.dtx_oldest_committable_time != 0 && dtx_hlc_age2sec(stat.dtx_oldest_committable_time) >= DTX_COMMIT_THRESHOLD_AGE))) {
+		    
 			D_ASSERT(!dbca->dbca_commit_done);
 			sleep_time = 0;
 			dtx_get_dbca(dbca);
@@ -678,11 +680,8 @@ dtx_batched_commit(void *arg)
 			dbca->dbca_cleanup_done = 0;
 		}
 
-		if (dtx_cont_opened(cont) &&
-		    !dbca->dbca_deregister && dbca->dbca_cleanup_req == NULL &&
-		    stat.dtx_oldest_active_time != 0 &&
-		    dtx_hlc_age2sec(stat.dtx_oldest_active_time) >=
-		    DTX_CLEANUP_THD_AGE_UP) {
+		if (dtx_cont_opened(cont) && !dbca->dbca_deregister && dbca->dbca_cleanup_req == NULL && stat.dtx_oldest_active_time != 0 && dtx_hlc_age2sec(stat.dtx_oldest_active_time) >=  DTX_CLEANUP_THD_AGE_UP) {
+			
 			D_ASSERT(!dbca->dbca_cleanup_done);
 			sleep_time = 0;
 			dtx_get_dbca(dbca);
@@ -691,8 +690,7 @@ dtx_batched_commit(void *arg)
 			sched_req_attr_init(&attr, SCHED_REQ_GC, &dbca->dbca_cont->sc_pool_uuid);
 			dbca->dbca_cleanup_req = sched_create_ult(&attr, dtx_cleanup, dbca, 0);
 			if (dbca->dbca_cleanup_req == NULL) {
-				D_WARN("Fail to start DTX ULT (3) for "DF_UUID"\n",
-				       DP_UUID(cont->sc_uuid));
+				D_WARN("Fail to start DTX ULT (3) for "DF_UUID"\n", DP_UUID(cont->sc_uuid));
 				dtx_put_dbca(dbca);
 			}
 		}

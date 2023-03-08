@@ -549,8 +549,8 @@ vos_ioc_reserve_init(struct vos_io_context *ioc, struct dtx_handle *dth)
 	if (vos_ioc2umm(ioc)->umm_ops->mo_reserve == NULL)
 		return 0;
 
-	size = sizeof(*ioc->ic_rsrvd_scm) +
-		sizeof(struct pobj_action) * total_acts;
+	size = sizeof(*ioc->ic_rsrvd_scm) + sizeof(struct pobj_action) * total_acts;
+	
 	D_ALLOC(ioc->ic_rsrvd_scm, size);
 	if (ioc->ic_rsrvd_scm == NULL)
 		return -DER_NOMEM;
@@ -782,14 +782,14 @@ save_csum(struct vos_io_context *ioc, struct dcs_csum_info *csum_info,
 /** Fetch the single value within the specified epoch range of an key */
 static int
 akey_fetch_single(daos_handle_t toh, const daos_epoch_range_t *epr,
-		  daos_size_t *rsize, struct vos_io_context *ioc)
+		                  daos_size_t *rsize, struct vos_io_context *ioc)
 {
-	struct vos_svt_key	 key;
+	struct vos_svt_key	     key;
 	struct vos_rec_bundle	 rbund;
-	d_iov_t			 kiov; /* iov to carry key bundle */
-	d_iov_t			 riov; /* iov to carry record bundle */
+	d_iov_t			     kiov; /* iov to carry key bundle */
+	d_iov_t			     riov; /* iov to carry record bundle */
 	struct bio_iov		 biov; /* iov to return data buffer */
-	int			 rc;
+	int rc;
 	struct dcs_csum_info	csum_info = {0};
 
 	d_iov_set(&kiov, &key, sizeof(key));
@@ -801,8 +801,8 @@ akey_fetch_single(daos_handle_t toh, const daos_epoch_range_t *epr,
 	rbund.rb_biov	= &biov;
 	rbund.rb_csum = &csum_info;
 
-	rc = dbtree_fetch(toh, BTR_PROBE_LE, DAOS_INTENT_DEFAULT, &kiov, &kiov,
-			  &riov);
+	rc = dbtree_fetch(toh, BTR_PROBE_LE, DAOS_INTENT_DEFAULT, &kiov, &kiov, &riov);
+	
 	if (vos_dtx_hit_inprogress())
 		D_GOTO(out, rc = (rc == 0 ? -DER_INPROGRESS : rc));
 
@@ -1215,19 +1215,21 @@ akey_fetch(struct vos_io_context *ioc, daos_handle_t ak_toh)
 	}
 
 	rc = key_tree_prepare(ioc->ic_obj, ak_toh,
-			      VOS_BTR_AKEY, &iod->iod_name, flags,
-			      DAOS_INTENT_DEFAULT, &krec,
-			      (ioc->ic_check_existence || ioc->ic_read_ts_only) ? NULL : &toh,
+			      VOS_BTR_AKEY, &iod->iod_name, // 在打开的akey树的句柄ak_toh上查找key为“iod->iod_name”,这个akey name是前台IO带下来的
+			      flags,
+			      DAOS_INTENT_DEFAULT, 
+			      &krec,  // 返回的树上找到的akey的record:vos_krec_df
+			      (ioc->ic_check_existence || ioc->ic_read_ts_only) ? NULL : &toh, // 返回的akey子树的打开句柄
 			      ioc->ic_ts_set);
 
 	if (stop_check(ioc, VOS_OF_COND_AKEY_FETCH, iod, &rc, true)) {
 		if (rc == 0 && !ioc->ic_read_ts_only)
 			iod_empty_sgl(ioc, ioc->ic_sgl_at);
-		VOS_TX_LOG_FAIL(rc, "Failed to get akey "DF_KEY" "DF_RC"\n",
-				DP_KEY(&iod->iod_name), DP_RC(rc));
+		VOS_TX_LOG_FAIL(rc, "Failed to get akey "DF_KEY" "DF_RC"\n", DP_KEY(&iod->iod_name), DP_RC(rc));
 		goto out;
 	}
 
+    // 出参：val_epr
 	rc = key_ilog_check(ioc, krec, &ioc->ic_dkey_info, &val_epr, &ioc->ic_akey_info);
 
 	if (stop_check(ioc, VOS_OF_COND_AKEY_FETCH, iod, &rc, false)) {
@@ -1236,8 +1238,7 @@ akey_fetch(struct vos_io_context *ioc, daos_handle_t ak_toh)
 				goto fetch_value;
 			iod_empty_sgl(ioc, ioc->ic_sgl_at);
 		}
-		VOS_TX_LOG_FAIL(rc, "Fetch akey failed: rc="DF_RC"\n",
-				DP_RC(rc));
+		VOS_TX_LOG_FAIL(rc, "Fetch akey failed: rc="DF_RC"\n", DP_RC(rc));
 		goto out;
 	}
 
@@ -1245,11 +1246,15 @@ fetch_value:
 	if (ioc->ic_read_ts_only || ioc->ic_check_existence)
 		goto out; /* skip value fetch */
 
+// for DAOS_IOD_SINGLE
 	if (iod->iod_type == DAOS_IOD_SINGLE) {
+		// 搜索sv-tree并插入
 		rc = akey_fetch_single(toh, &val_epr, &iod->iod_size, ioc);
 		goto out;
 	}
 
+// for DAOS_IOD_ARRAY
+// 搜索sv-tree并插入
 	iod->iod_size = 0;
 	shadow = (ioc->ic_shadows == NULL) ? NULL :
 					     &ioc->ic_shadows[ioc->ic_sgl_at];
@@ -1349,7 +1354,8 @@ dkey_fetch(struct vos_io_context *ioc, daos_key_t *dkey)
 
 	rc = key_tree_prepare(obj, obj->obj_toh, VOS_BTR_DKEY,
 			      dkey, 0, DAOS_INTENT_DEFAULT, &krec,
-			      &toh, ioc->ic_ts_set);
+			      &toh,  /* 返回的akey树的句柄 */
+			      ioc->ic_ts_set);
 	
 	if (stop_check(ioc, VOS_COND_FETCH_MASK | VOS_OF_COND_PER_AKEY, NULL, &rc, true)) {
 		D_DEBUG(DB_IO, "Stop fetch "DF_UOID": "DF_RC"\n", DP_UOID(obj->obj_id),
@@ -1381,8 +1387,7 @@ dkey_fetch(struct vos_io_context *ioc, daos_key_t *dkey)
 			for (i = 0; i < ioc->ic_iod_nr; i++)
 				iod_empty_sgl(ioc, i);
 		} else {
-			VOS_TX_LOG_FAIL(rc, "Fetch dkey failed: rc="DF_RC"\n",
-					DP_RC(rc));
+			VOS_TX_LOG_FAIL(rc, "Fetch dkey failed: rc="DF_RC"\n", DP_RC(rc));
 		}
 		goto out;
 	}
@@ -1524,11 +1529,10 @@ iod_update_umoff(struct vos_io_context *ioc)
 {
 	umem_off_t umoff;
 
-	D_ASSERTF(ioc->ic_umoffs_at < ioc->ic_umoffs_cnt,
-		  "Invalid ioc_reserve at/cnt: %u/%u\n",
-		  ioc->ic_umoffs_at, ioc->ic_umoffs_cnt);
+	D_ASSERTF(ioc->ic_umoffs_at < ioc->ic_umoffs_cnt, "Invalid ioc_reserve at/cnt: %u/%u\n", ioc->ic_umoffs_at, ioc->ic_umoffs_cnt);
 
 	umoff = ioc->ic_umoffs[ioc->ic_umoffs_at];
+	
 	ioc->ic_umoffs_at++;
 
 	return umoff;
@@ -1551,9 +1555,10 @@ iod_update_biov(struct vos_io_context *ioc)
 }
 
 static int
-akey_update_single(daos_handle_t toh, uint32_t pm_ver, daos_size_t rsize,
-		   daos_size_t gsize, struct vos_io_context *ioc,
-		   uint16_t minor_epc)
+akey_update_single(daos_handle_t toh, // sv-tree的句柄
+                           uint32_t pm_ver, daos_size_t rsize,
+		                   daos_size_t gsize, struct vos_io_context *ioc,
+		                   uint16_t minor_epc)
 {
 	struct vos_svt_key	     key;
 	struct vos_rec_bundle	 rbund;
@@ -1725,10 +1730,10 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh,
 	daos_iod_t		        *iod = &ioc->ic_iods[ioc->ic_sgl_at];
 	struct dcs_csum_info	*iod_csums = vos_csum_at(ioc->ic_iod_csums, ioc->ic_sgl_at);
 	struct dcs_csum_info	*recx_csum;
-	uint32_t		        update_cond = 0;
-	bool			        is_array = (iod->iod_type == DAOS_IOD_ARRAY);
-	int			            flags = SUBTR_CREATE;
-	daos_handle_t		    toh = DAOS_HDL_INVAL;
+	uint32_t		         update_cond = 0;
+	bool			         is_array = (iod->iod_type == DAOS_IOD_ARRAY);
+	int			             flags = SUBTR_CREATE;
+	daos_handle_t		     toh = DAOS_HDL_INVAL;
 	int	i;
 	int	rc = 0;
 
@@ -1745,10 +1750,10 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh,
 	}
 
 	rc = key_tree_prepare(obj, ak_toh, VOS_BTR_AKEY,
-			              &iod->iod_name, // akey for this iod
+			              &iod->iod_name, // 在akey树的句柄ak_toh上查找akey
 			              flags, DAOS_INTENT_UPDATE,
-			              &krec, // 返回的 akey的record
-			              &toh,  // 打开的具体子树的句柄，evtree or svtree
+			              &krec, // 返回的akey的record
+			              &toh,  // 返回打开的具体子树的句柄，evtree or svtree
 			              ioc->ic_ts_set);
 	if (rc < 0) {
 		D_ERROR("akey "DF_KEY" update, key_tree_prepare failed, "DF_RC"\n", DP_KEY(&iod->iod_name), DP_RC(rc));
