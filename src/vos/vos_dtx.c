@@ -205,7 +205,6 @@ dtx_act_ent_cleanup(struct vos_container *cont, struct vos_dtx_act_ent *dae,
 		if (dth != NULL) {
 			if (dth->dth_oid_array != NULL) {
 				D_ASSERT(dth->dth_oid_cnt > 0);
-
 				count = dth->dth_oid_cnt;
 				oids = dth->dth_oid_array;
 			} else {
@@ -931,10 +930,16 @@ vos_dtx_extend_act_table(struct vos_container *cont)
 	return 0;
 }
 
+
+// 1. 在cont->vc_dtx_array找到空闲的dae内存，写入dth信息到dae
+//    在这个array数组中，idx为数组索引(后存入dae->lid)，   dth->dth_epoch为key, dae为value   
+// 2. 插入KV(dth->dth_xid, dae)到active树上，dae入链表cont->vc_dtx_act_list
+// 3. 完成dae和dth的互指
+
 static int
 vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 {
-	struct vos_dtx_act_ent		*dae = NULL;
+	struct vos_dtx_act_ent		*dae = NULL;  //dae的这块内存实际上是存储在cont->vc_dtx_array的数组中
 	struct vos_container		*cont;
 	uint32_t			 idx;
 	d_iov_t				 kiov;
@@ -945,7 +950,7 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 	D_ASSERT(cont != NULL);
 
     // 在vc_dtx_array上的某个子数组中找1个空间存放entry
-    // idx为出参，知道存在vc_dtx_array的哪个子数组中
+    // idx为出参，知道存在vc_dtx_array的哪个子数组中, 存入dae->lid
     // dth->dth_epoch为入参， 作为key存进去
     // dae为返回的数组内存，用于填写数据
 	rc = lrua_allocx(cont->vc_dtx_array, &idx, dth->dth_epoch, &dae);
@@ -955,7 +960,7 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 			return -DER_INPROGRESS;
 		return rc;
 	}
-
+    // 此时dae数据写入内存，应该是在prepared流程里面将内存数据拷贝到内存盘上dae->dae_df_off
 	D_INIT_LIST_HEAD(&dae->dae_link);
 	DAE_LID(dae) = idx + DTX_LID_RESERVED;
 	DAE_XID(dae) = dth->dth_xid;
@@ -994,7 +999,8 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 
 	d_iov_set(&kiov, &DAE_XID(dae), sizeof(DAE_XID(dae)));
 	d_iov_set(&riov, dae, sizeof(*dae));
-	
+
+	// 树的操作集: dtx_active_btr_ops
 	rc = dbtree_upsert(cont->vc_dtx_active_hdl, BTR_PROBE_EQ, DAOS_INTENT_UPDATE, &kiov, &riov, NULL);
 	if (rc == 0) {
 		dae->dae_start_time = d_hlc_get();
@@ -1009,16 +1015,17 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 
 static int
 vos_dtx_append(struct dtx_handle *dth, 
-                     umem_off_t record /* ilog的根节点作为record传入, obj、dkey、akey */,
+                     umem_off_t record, /* ilog的根节点作为record传入, obj、dkey、akey */
                      uint32_t type)
 {
 	struct vos_dtx_act_ent		*dae = dth->dth_ent;
-	umem_off_t			*rec;
+	umem_off_t			        *rec;
 
 	D_ASSERT(dae != NULL);
 
 	if (DAE_REC_CNT(dae) < DTX_INLINE_REC_CNT) {
 		rec = &DAE_REC_INLINE(dae)[DAE_REC_CNT(dae)];
+		// rec = &((dae)->dae_base.dae_rec_inline)[((dae)->dae_base.dae_rec_cnt)];
 	} else {
 		if (DAE_REC_CNT(dae) >= dae->dae_rec_cap + DTX_INLINE_REC_CNT) {
 			int	count;
@@ -1387,6 +1394,15 @@ vos_dtx_validation(struct dtx_handle *dth)
 }
 
 /* The caller has started PMDK transaction. */
+
+// - ilog for ilog:       ilog_log_add(for obj\dkey\akey)
+//                        record: ilog_context->ic_root_off(lctx->ic_root_off) 
+//                                obj\dkey\akey的ilog的树根
+//                        tx_id:  ilog_id->id_tx_id(lctx->ic_root->lr_id->id_tx_id)
+//                                ilog_root->lr_id
+
+// - ilog for sv-tree:    svt_rec_alloc/svt_rec_update
+// - ilog for ev-tree:    evt_dec_log_add->evt_common_insert
 int
 vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 			                       uint32_t type, uint32_t *tx_id)
@@ -1410,6 +1426,7 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 	}
 
     // dth_need_validation: 只有leader在dtx_iter_fetch时会置为true
+    // 如果需要校验但是还没有校验，进行一把校验
 	if (dth->dth_need_validation && !dth->dth_verified) {
 		rc = vos_dtx_validation(dth);
 		switch (rc) {
@@ -1436,6 +1453,8 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 	}
 
 	dae = dth->dth_ent;
+
+	// 添加第一个ilog的时候(vos_ilog_add/evt/svt)置为active,分配vos_dtx_blob_df在内存盘上的空间
 	if (!dth->dth_active) {
 		struct vos_container	*cont;
 		struct vos_cont_df	    *cont_df;
@@ -1452,7 +1471,6 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 			rc = vos_dtx_extend_act_table(cont);
 			if (rc != 0)
 				goto out;
-
 			dbd = umem_off2ptr(umm, cont_df->cd_dtx_active_tail);
 		}
 
@@ -2012,6 +2030,10 @@ new_blob:
 out:
 	return fatal ? rc : (committed > 0 ? committed : rc1);
 }
+
+//  如果是abort，      则删除committed树上dces数组中记录的XID
+//  如果不是abort, 则 1. 删除active树上daes数组中记录的XID
+//                    2. 删除成功后，删除container中的active_array(xid,epoch)
 
 void
 vos_dtx_post_handle(struct vos_container *cont,
@@ -2722,8 +2744,7 @@ vos_dtx_cleanup_internal(struct dtx_handle *dth)
 	d_iov_t			 riov;
 	int			 rc;
 
-	if (!dtx_is_valid_handle(dth) ||
-	    (!dth->dth_active && dth->dth_ent == NULL))
+	if (!dtx_is_valid_handle(dth) || (!dth->dth_active && dth->dth_ent == NULL))
 		return;
 
 	dth->dth_active = 0;
@@ -2737,7 +2758,9 @@ vos_dtx_cleanup_internal(struct dtx_handle *dth)
 		D_ASSERT(dae != NULL);
 
 		dtx_act_ent_cleanup(cont, dae, dth, true);
-	} else {
+	} 
+
+	else {
 		d_iov_set(&kiov, &dth->dth_xid, sizeof(dth->dth_xid));
 		d_iov_set(&riov, NULL, 0);
 		rc = dbtree_lookup(cont->vc_dtx_active_hdl, &kiov, &riov);
@@ -2750,10 +2773,7 @@ vos_dtx_cleanup_internal(struct dtx_handle *dth)
 
 		if (rc != 0) {
 			if (rc != -DER_NONEXIST) {
-				D_ERROR("Fail to remove DTX entry "DF_DTI":"
-					DF_RC"\n",
-					DP_DTI(&dth->dth_xid), DP_RC(rc));
-
+				D_ERROR("Fail to remove DTX entry "DF_DTI":"DF_RC"\n", DP_DTI(&dth->dth_xid), DP_RC(rc));
 				dae = dth->dth_ent;
 				if (dae != NULL) {
 					dae->dae_aborted = 1;
@@ -2762,7 +2782,8 @@ vos_dtx_cleanup_internal(struct dtx_handle *dth)
 			} else {
 				rc = 0;
 			}
-		} else {
+		}
+		else {
 			dae = (struct vos_dtx_act_ent *)riov.iov_buf;
 			if (dth->dth_ent != NULL)
 				D_ASSERT(dth->dth_ent == dae);
@@ -2821,6 +2842,11 @@ vos_dtx_cleanup(struct dtx_handle *dth, bool unpin)
 	vos_tx_end(cont, dth, NULL, NULL, true /* don't care */, -DER_CANCELED);
 }
 
+
+// 1. cpd的非leader在事务开始的时候执行：(true, false)
+// 2. dtx_begin在事务开始的时候执行：(false, false)
+// 3. dtx_leader_begin在事务开始的时候执行：(false, preared:true)
+
 int
 vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 {
@@ -2841,6 +2867,8 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 	D_ASSERT(cont != NULL);
 
     //  大部分场景进来应该是NULL的，除非dtx_leader_begin带了DTX_PREPARED下来
+    //  可能是重试的事务，该事务之前已经 已经attach过了，dth->dth_ent才会有被赋值
+    //  不在进行attach
 	if (dth->dth_ent != NULL) {
 		// persistent: 只有dtx_begin和dtx_leader_begin下发的false
 		//             CPD任务在处理非leader时调用ds_obj_dtx_follower置为true
@@ -2848,10 +2876,10 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 			return 0;
 	} 
 	
-	else { // dth->dth_ent == NULL
+	else { // dth->dth_ent == NULL，大部分非重试场景的事务
 		D_ASSERT(dth->dth_pinned == 0);
 
-		if (exist) { // 只有dtx_leader_begin可能会置true
+		if (exist) { // 只有dtx_leader_begin可能会置true，在上层业务带下preared标记时
 			// 处理场景： 事务重试时dth中没有dth_ent
 			// 事务本地已经prepared了， 到cont的active树上拿着dtx_id找对应的dae, 
 			// 找到后赋值到dth中
@@ -2872,7 +2900,7 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 		}
 	}
 
-	if (persistent) {  // 只有ds_obj_dtx_follower为true
+	if (persistent) {  // cpd的非leader在事务开始的时候执行
 		struct vos_cont_df	*cont_df;
 
 		umm = vos_cont2umm(cont);
@@ -2884,12 +2912,12 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 
 		began = true;
 		dbd = umem_off2ptr(umm, cont_df->cd_dtx_active_tail);
+		
 		if (dbd == NULL || dbd->dbd_index >= dbd->dbd_cap) {
 			// 需要扩充 DTXs blob 
 			rc = vos_dtx_extend_act_table(cont);
 			if (rc != 0)
 				return rc;
-
 			dbd = umem_off2ptr(umm, cont_df->cd_dtx_active_tail);
 		}
 	}
@@ -2898,6 +2926,7 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 		// 核心逻辑
 		// 在cont->vc_dtx_array上以epoch为key申请个dae，然后挂到dth->dth_ent=dae上
 		rc = vos_dtx_alloc(dbd, dth);
+		// 非cpd事务在vos_dtx_register_record才给dae->dae_dbd里面赋值内容
 	} else if (dbd != NULL) {
 		D_ASSERT(dbd->dbd_magic == DTX_ACT_BLOB_MAGIC);
 		dae = dth->dth_ent;
@@ -2907,10 +2936,10 @@ vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
 
 out:
 	if (rc == 0) {
-		if (persistent) {   // 只有ds_obj_dtx_follower为true
+		if (persistent) {   // cpd的非leader在事务开始的时候执行
 			dth->dth_active = 1;
 			rc = vos_dtx_prepared(dth, &dce);
-		} else {
+		} else {            // dtx_begin/dtx_leader_begin, 置为pinned
 			dth->dth_pinned = 1;
 		}
 	} else {
@@ -2923,7 +2952,7 @@ out:
 		D_ERROR("Failed to pin DTX entry for "DF_DTI": "DF_RC"\n", DP_DTI(&dth->dth_xid), DP_RC(rc));
 	}
 
-	if (began) {
+	if (began) {   // cpd的非leader在事务开始的时候执行
 		rc = umem_tx_end(umm, rc);
 		if (dce != NULL) {
 			dae = dth->dth_ent;
