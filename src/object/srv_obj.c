@@ -1584,8 +1584,7 @@ obj_local_rw_internal(crt_rpc_t *rpc, struct obj_io_context *ioc,
 			 * boundary}.
 			 */
 			vos_agg_epoch = ioc->ioc_coc->sc_ec_agg_eph_boundry;
-			if (ioc->ioc_fetch_snap &&
-			    orw->orw_epoch < vos_agg_epoch) {
+			if (ioc->ioc_fetch_snap && orw->orw_epoch < vos_agg_epoch) {
 				recov_epoch = orw->orw_epoch;
 				recov_snap =  true;
 			} else {
@@ -1868,6 +1867,7 @@ out:
 	ioc->ioc_coh	 = coh;
 	ioc->ioc_layout_ver = coc->sc_props.dcp_obj_version;
 	return 0;
+	
 failed:
 	if (coc != NULL)
 		ds_cont_child_put(coc);
@@ -1934,8 +1934,8 @@ obj_ioc_begin_lite(uint32_t rpc_map_ver, uuid_t pool_uuid,
 		 *	   this server during the client retry. It is
 		 *	   inefficient, but harmless.
 		 */
-		D_DEBUG(DB_IO, "stale server map_version %d req %d\n",
-			ioc->ioc_map_ver, rpc_map_ver);
+		D_DEBUG(DB_IO, "stale server map_version %d req %d\n", ioc->ioc_map_ver, rpc_map_ver);
+		
 		rc = ds_pool_child_map_refresh_async(poc);
 		if (rc == 0) {
 			ioc->ioc_map_ver = poc->spc_map_version;
@@ -1944,8 +1944,8 @@ obj_ioc_begin_lite(uint32_t rpc_map_ver, uuid_t pool_uuid,
 
 		D_GOTO(out, rc);
 	} else if (unlikely(rpc_map_ver < ioc->ioc_map_ver)) {
-		D_DEBUG(DB_IO, "stale version req %d map_version %d\n",
-			rpc_map_ver, ioc->ioc_map_ver);
+		
+		D_DEBUG(DB_IO, "stale version req %d map_version %d\n", rpc_map_ver, ioc->ioc_map_ver);
 
 		/* For distributed transaction, restart the DTX if using
 		 * stale pool map.
@@ -1965,6 +1965,7 @@ out:
 	d_tm_inc_gauge(tls->ot_op_active[opc], 1);
 	ioc->ioc_start_time = daos_get_ntime();
 	ioc->ioc_began = 1;
+	
 	return rc;
 }
 
@@ -2055,9 +2056,7 @@ obj_inflight_io_check(struct ds_cont_child *child, uint32_t opc, uint32_t flags)
 	 * vos discard to finish, which otherwise might discard these new inflight
 	 * I/O update.
 	 */
-	if ((flags & ORF_REINTEGRATING_IO) &&
-	    (child->sc_pool->spc_pool->sp_need_discard &&
-	     child->sc_pool->spc_discard_done == 0)) {
+	if ((flags & ORF_REINTEGRATING_IO) && (child->sc_pool->spc_pool->sp_need_discard && child->sc_pool->spc_discard_done == 0)) {
 		D_ERROR("reintegrating "DF_UUID" retry.\n", DP_UUID(child->sc_pool->spc_uuid));
 		return -DER_UPDATE_AGAIN;
 	}
@@ -2068,9 +2067,7 @@ obj_inflight_io_check(struct ds_cont_child *child, uint32_t opc, uint32_t flags)
 	 * which otherwise might be written duplicately, which might cause
 	 * the failure in VOS.
 	 */
-	if ((flags & ORF_REBUILDING_IO) &&
-	    (!child->sc_pool->spc_pool->sp_disable_rebuild &&
-	      child->sc_pool->spc_rebuild_fence == 0)) {
+	if ((flags & ORF_REBUILDING_IO) && (!child->sc_pool->spc_pool->sp_disable_rebuild && child->sc_pool->spc_rebuild_fence == 0)) {
 		D_ERROR("rebuilding "DF_UUID" retry.\n", DP_UUID(child->sc_pool->spc_uuid));
 		return -DER_UPDATE_AGAIN;
 	}
@@ -2090,14 +2087,15 @@ obj_ioc_begin(daos_obj_id_t oid, uint32_t rpc_map_ver, uuid_t pool_uuid,
 	if (rc != 0)
 		return rc;
 
+    // 对于update和punch类型的IO，如果此时IO是during integration或during rebuilding
+    // 需要等待pool的discard或者rebuild完成
 	rc = obj_inflight_io_check(ioc->ioc_coc, opc, flags);
 	if (rc != 0)
 		goto failed;
 
+    // 写检查
 	rc = obj_capa_check(ioc->ioc_coh, obj_is_modification_opc(opc),
-			    obj_is_ec_agg_opc(opc) ||
-			    (flags & ORF_FOR_MIGRATION) ||
-			    (flags & ORF_FOR_EC_AGG));
+			            obj_is_ec_agg_opc(opc) || (flags & ORF_FOR_MIGRATION) || (flags & ORF_FOR_EC_AGG));
 	if (rc != 0)
 		goto failed;
 
@@ -2105,6 +2103,7 @@ obj_ioc_begin(daos_obj_id_t oid, uint32_t rpc_map_ver, uuid_t pool_uuid,
 	if (rc != 0)
 		goto failed;
 	return 0;
+	
 failed:
 	obj_ioc_end(ioc, rc);
 	return rc;
@@ -2546,11 +2545,11 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 	struct obj_rw_in		    *orw = crt_req_get(rpc);
 	struct obj_rw_out		    *orwo = crt_reply_get(rpc);
 	struct dtx_leader_handle	*dlh = NULL;
-	struct ds_obj_exec_arg		exec_arg = { 0 };
-	struct obj_io_context		ioc = { 0 };
-	uint32_t			        flags = 0;
-	uint32_t			        dtx_flags = 0;
-	uint32_t			        opc = opc_get(rpc->cr_opc);
+	struct ds_obj_exec_arg		 exec_arg = { 0 };
+	struct obj_io_context		 ioc = { 0 };
+	uint32_t			         flags = 0;
+	uint32_t			         dtx_flags = 0;
+	uint32_t			         opc = opc_get(rpc->cr_opc);
 	struct obj_ec_split_req		*split_req = NULL;
 	struct dtx_memberships		*mbs = NULL;
 	struct daos_shard_tgt		*tgts = NULL;
@@ -2566,10 +2565,12 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 	D_ASSERT(orw != NULL);
 	D_ASSERT(orwo != NULL);
 
+    // 构造obj_io_context：ioc, 并做些基本的写检查
 	rc = obj_ioc_begin(orw->orw_oid.id_pub, orw->orw_map_ver,
 			   orw->orw_pool_uuid, orw->orw_co_hdl,
 			   orw->orw_co_uuid, opc_get(rpc->cr_opc),
 			   orw->orw_flags, &ioc);
+	
 	if (rc != 0) {
 		D_ASSERTF(rc < 0, "unexpected error# "DF_RC"\n", DP_RC(rc));
 		goto out;
@@ -2583,9 +2584,12 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 		dss_get_module_info()->dmi_xs_id, orw->orw_epoch,
 		orw->orw_map_ver, ioc.ioc_map_ver, DP_DTI(&orw->orw_dti), ioc.ioc_layout_ver);
 
+    // 读快照？？
 	if (obj_rpc_is_fetch(rpc) && !(orw->orw_flags & ORF_EC_RECOV) && (orw->orw_epoch != 0 && orw->orw_epoch != DAOS_EPOCH_MAX))
 		ioc.ioc_fetch_snap = 1;
 
+    // 1. 如果orw->orw_epoch是0或MAX，修改epoch为当前时间，同时如果orw->orw_epoch_first为0，修改epoch_first为当前时间， 非零不改
+    // 2. 如果orw->orw_epoch是其余合法值，二者均不动
 	rc = process_epoch(&orw->orw_epoch, &orw->orw_epoch_first, &orw->orw_flags);
 	if (rc == PE_OK_LOCAL)
 		orw->orw_flags &= ~ORF_EPOCH_UNCERTAIN;
@@ -2621,7 +2625,7 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 	}
 
     // 写流程
-	tgts = orw->orw_shard_tgts.ca_arrays;
+	tgts    = orw->orw_shard_tgts.ca_arrays;
 	tgt_cnt = orw->orw_shard_tgts.ca_count;
 
 	if (!daos_is_zero_dti(&orw->orw_dti) && tgt_cnt != 0) {

@@ -67,6 +67,7 @@ vos_ilog_is_same_tx(struct umem_instance *umm, uint32_t tx_id,
 	return 0;
 }
 
+
 static int
 vos_ilog_add(struct umem_instance *umm, umem_off_t ilog_off, uint32_t *tx_id,
 	     daos_epoch_t epoch, void *args)

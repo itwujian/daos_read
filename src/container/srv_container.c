@@ -879,14 +879,11 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	uint32_t		nsnapshots = 0;
 	int			rc;
 
-	D_DEBUG(DB_MD, DF_CONT": processing rpc %p\n",
-		DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), rpc);
+	D_DEBUG(DB_MD, DF_CONT": processing rpc %p\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), rpc);
 
 	/* Verify the pool handle capabilities. */
 	if (!ds_sec_pool_can_create_cont(pool_hdl->sph_sec_capas)) {
-		D_ERROR(DF_CONT": permission denied to create cont\n",
-			DP_CONT(pool_hdl->sph_pool->sp_uuid,
-				in->cci_op.ci_uuid));
+		D_ERROR(DF_CONT": permission denied to create cont\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid));
 		D_GOTO(out, rc = -DER_NO_PERM);
 	}
 
@@ -898,22 +895,17 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	else
 		prop_dup = daos_prop_dup(&cont_prop_default, false, false);
 	if (prop_dup == NULL) {
-		D_ERROR(DF_CONT" daos_prop_dup failed.\n",
-			DP_CONT(pool_hdl->sph_pool->sp_uuid,
-				in->cci_op.ci_uuid));
+		D_ERROR(DF_CONT" daos_prop_dup failed.\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid));
 		D_GOTO(out, rc = -DER_NOMEM);
 	}
 	rc = cont_create_prop_prepare(pool_hdl, prop_dup, in->cci_prop);
 	if (rc != 0) {
-		D_ERROR(DF_CONT" cont_create_prop_prepare failed: "DF_RC"\n",
-			DP_CONT(pool_hdl->sph_pool->sp_uuid,
-				in->cci_op.ci_uuid), DP_RC(rc));
+		D_ERROR(DF_CONT" cont_create_prop_prepare failed: "DF_RC"\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), DP_RC(rc));
 		D_GOTO(out, rc);
 	}
 
 	/* Determine if non-default label property supplied */
-	def_lbl_ent = daos_prop_entry_get(&cont_prop_default,
-					  DAOS_PROP_CO_LABEL);
+	def_lbl_ent = daos_prop_entry_get(&cont_prop_default, DAOS_PROP_CO_LABEL);
 	D_ASSERT(def_lbl_ent != NULL);
 	lbl_ent = daos_prop_entry_get(prop_dup, DAOS_PROP_CO_LABEL);
 	D_ASSERT(lbl_ent != NULL);
@@ -923,8 +915,7 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	}
 
 	/* Check if a container with this UUID and label already exists */
-	rc = cont_existence_check(tx, svc, pool_hdl->sph_pool->sp_uuid,
-				  in->cci_op.ci_uuid, lbl);
+	rc = cont_existence_check(tx, svc, pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid, lbl);
 	if (rc != -DER_NONEXIST) {
 		if (rc == 0)
 			D_DEBUG(DB_MD, DF_CONT": container already exists\n",
@@ -4568,37 +4559,38 @@ cont_op_with_svc(struct ds_pool_hdl *pool_hdl, struct cont_svc *svc,
 		ABT_rwlock_wrlock(svc->cs_lock);
 
 	switch (opc) {
-	case CONT_CREATE:
-		rc = cont_create(&tx, pool_hdl, svc, rpc);
-		if (likely(rc == 0)) {
-			metrics = pool_hdl->sph_pool->sp_metrics[DAOS_CONT_MODULE];
-			d_tm_inc_counter(metrics->create_total, 1);
-		}
-		break;
-	case CONT_OPEN_BYLABEL:
-		olbl_in = crt_req_get(rpc);
-		olbl_out = crt_reply_get(rpc);
-		rc = cont_lookup_bylabel(&tx, svc, olbl_in->coli_label, &cont);
-		if (rc != 0)
-			goto out_lock;
-		/* NB: call common cont_op_with_cont() same as CONT_OPEN case */
-		rc = cont_op_with_cont(&tx, pool_hdl, cont, rpc, &update_mtime, cont_proto_ver);
-		uuid_copy(olbl_out->colo_uuid, cont->c_uuid);
-		break;
-	case CONT_DESTROY_BYLABEL:
-		dlbl_in = crt_req_get(rpc);
-		rc = cont_lookup_bylabel(&tx, svc, dlbl_in->cdli_label, &cont);
-		if (rc != 0)
-			goto out_lock;
-		/* NB: call common cont_op_with_cont() same as CONT_DESTROY */
-		rc = cont_op_with_cont(&tx, pool_hdl, cont, rpc, &update_mtime, cont_proto_ver);
-		break;
-	default:
-		rc = cont_lookup(&tx, svc, in->ci_uuid, &cont);
-		if (rc != 0)
-			goto out_lock;
-		rc = cont_op_with_cont(&tx, pool_hdl, cont, rpc, &update_mtime, cont_proto_ver);
+		case CONT_CREATE:
+			rc = cont_create(&tx, pool_hdl, svc, rpc);
+			if (likely(rc == 0)) {
+				metrics = pool_hdl->sph_pool->sp_metrics[DAOS_CONT_MODULE];
+				d_tm_inc_counter(metrics->create_total, 1);
+			}
+			break;
+		case CONT_OPEN_BYLABEL:
+			olbl_in = crt_req_get(rpc);
+			olbl_out = crt_reply_get(rpc);
+			rc = cont_lookup_bylabel(&tx, svc, olbl_in->coli_label, &cont);
+			if (rc != 0)
+				goto out_lock;
+			/* NB: call common cont_op_with_cont() same as CONT_OPEN case */
+			rc = cont_op_with_cont(&tx, pool_hdl, cont, rpc, &update_mtime, cont_proto_ver);
+			uuid_copy(olbl_out->colo_uuid, cont->c_uuid);
+			break;
+		case CONT_DESTROY_BYLABEL:
+			dlbl_in = crt_req_get(rpc);
+			rc = cont_lookup_bylabel(&tx, svc, dlbl_in->cdli_label, &cont);
+			if (rc != 0)
+				goto out_lock;
+			/* NB: call common cont_op_with_cont() same as CONT_DESTROY */
+			rc = cont_op_with_cont(&tx, pool_hdl, cont, rpc, &update_mtime, cont_proto_ver);
+			break;
+		default:
+			rc = cont_lookup(&tx, svc, in->ci_uuid, &cont);
+			if (rc != 0)
+				goto out_lock;
+			rc = cont_op_with_cont(&tx, pool_hdl, cont, rpc, &update_mtime, cont_proto_ver);
 	}
+	
 	if (rc != 0)
 		goto out_contref;
 
@@ -4685,8 +4677,7 @@ ds_cont_op_handler(crt_rpc_t *rpc, int cont_proto_ver)
 	 * running of this storage node? (Currently, there is only one, with ID
 	 * 0, colocated with the pool service.)
 	 */
-	rc = cont_svc_lookup_leader(pool_hdl->sph_pool->sp_uuid, 0 /* id */,
-				    &svc, &out->co_hint);
+	rc = cont_svc_lookup_leader(pool_hdl->sph_pool->sp_uuid, 0 /* id */, &svc, &out->co_hint);
 	if (rc != 0) {
 		D_DEBUG(DB_MD, DF_CONT": rpc: %p hdl=" DF_UUID " opc=%u(%s) find leader\n",
 			DP_CONT(pool_hdl->sph_pool->sp_uuid, in->ci_uuid), rpc, DP_UUID(in->ci_hdl),

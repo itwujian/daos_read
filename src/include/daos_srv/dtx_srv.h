@@ -58,7 +58,7 @@ struct dtx_handle {
 	 */
 	daos_unit_oid_t			 dth_leader_oid;
 
-	uint32_t			 dth_sync:1, /* commit synchronously. */
+	uint32_t		 dth_sync:1, /* commit synchronously. */
 					 /* Pin the DTX entry in DRAM. */
 					 dth_pinned:1,
 					 /* DTXs in CoS list are committed. */

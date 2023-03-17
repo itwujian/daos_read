@@ -280,7 +280,8 @@ cache_object(struct daos_lru_cache *occ, struct vos_object **objp)
 	obj_new->obj_ih = obj_local.obj_ih;
 	obj_new->obj_sync_epoch = obj_local.obj_sync_epoch;
 	obj_new->obj_df = obj_local.obj_df;
-	obj_new->obj_zombie = obj_local.obj_zombie;
+
+
 	obj_local.obj_toh = DAOS_HDL_INVAL;
 	obj_local.obj_ih = DAOS_HDL_INVAL;
 	clean_object(&obj_local);

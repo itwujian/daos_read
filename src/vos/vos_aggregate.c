@@ -161,7 +161,7 @@ struct vos_agg_param {
 	daos_unit_oid_t		ap_oid;		/* current object ID */
 	/* Boundary for aggregatable write filter */
 	daos_epoch_t		ap_filter_epoch;
-	uint32_t		ap_flags;
+	uint32_t		    ap_flags;
 	unsigned int		ap_discard:1,
 				ap_csum_err:1,
 				ap_nospc_err:1,
@@ -2623,19 +2623,17 @@ int
 vos_aggregate(daos_handle_t coh, daos_epoch_range_t *epr,
 	      int (*yield_func)(void *arg), void *yield_arg, uint32_t flags)
 {
-	struct vos_container	*cont = vos_hdl2cont(coh);
-	struct agg_data		*ad;
-	uint64_t		 feats;
-	daos_epoch_t		 agg_write;
-	bool			 has_agg_write;
-	int			 rc;
-	bool			 run_agg = false;
+	struct vos_container *cont = vos_hdl2cont(coh);
+	struct agg_data		 *ad;
+	uint64_t		      feats;
+	daos_epoch_t		  agg_write;
+	bool			      has_agg_write;
+	int			          rc;
+	bool			      run_agg = false;
 
 	D_DEBUG(DB_TRACE, "epr: %lu -> %lu\n", epr->epr_lo, epr->epr_hi);
 	D_ASSERT(epr != NULL);
-	D_ASSERTF(epr->epr_lo < epr->epr_hi && epr->epr_hi != DAOS_EPOCH_MAX,
-		  "epr_lo:"DF_U64", epr_hi:"DF_U64"\n",
-		  epr->epr_lo, epr->epr_hi);
+	D_ASSERTF(epr->epr_lo < epr->epr_hi && epr->epr_hi != DAOS_EPOCH_MAX, "epr_lo:"DF_U64", epr_hi:"DF_U64"\n", epr->epr_lo, epr->epr_hi);
 
 	D_ALLOC_PTR(ad);
 	if (ad == NULL)
@@ -2656,6 +2654,7 @@ vos_aggregate(daos_handle_t coh, daos_epoch_range_t *epr,
 
 	feats = dbtree_feats_get(&cont->vc_cont_df->cd_obj_root);
 	has_agg_write = vos_feats_agg_time_get(feats, &agg_write);
+	
 	if (has_agg_write && agg_write <= ad->ad_agg_param.ap_filter_epoch)
 		goto update_hae;
 

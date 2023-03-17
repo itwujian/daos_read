@@ -129,7 +129,6 @@ static int
 pmem_tx_add_ptr(struct umem_instance *umm, void *ptr, size_t size)
 {
 	int	rc;
-
 	rc = pmemobj_tx_add_range_direct(ptr, size);
 	return rc ? umem_tx_errno(rc) : 0;
 }

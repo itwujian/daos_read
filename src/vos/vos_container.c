@@ -234,8 +234,7 @@ cont_insert(struct vos_container *cont, struct d_uuid *key, struct d_uuid *pkey,
 	D_ASSERT(cont != NULL && coh != NULL);
 
 	d_uhash_ulink_init(&cont->vc_uhlink, &co_hdl_uh_ops);
-	rc = d_uhash_link_insert(vos_cont_hhash_get(), key,
-				 pkey, &cont->vc_uhlink);
+	rc = d_uhash_link_insert(vos_cont_hhash_get(), key, pkey, &cont->vc_uhlink);
 	if (rc) {
 		D_ERROR("UHASH table container handle insert failed\n");
 		D_GOTO(exit, rc);
@@ -245,8 +244,6 @@ cont_insert(struct vos_container *cont, struct d_uuid *key, struct d_uuid *pkey,
 exit:
 	return rc;
 }
-
-
 
 static int
 cont_lookup(struct d_uuid *key, struct d_uuid *pkey,
@@ -396,12 +393,10 @@ vos_cont_open(daos_handle_t poh, uuid_t co_uuid, daos_handle_t *coh)
 	uma.uma_id = UMEM_CLASS_VMEM;
 
 	rc = lrua_array_alloc(&cont->vc_dtx_array, DTX_ARRAY_LEN, DTX_ARRAY_NR,
-			      sizeof(struct vos_dtx_act_ent),
-			      LRU_FLAG_REUSE_UNIQUE,
-			      NULL, NULL);
+			              sizeof(struct vos_dtx_act_ent), LRU_FLAG_REUSE_UNIQUE, 
+			              NULL, NULL);
 	if (rc != 0) {
-		D_ERROR("Failed to create DTX active array: rc = "DF_RC"\n",
-			DP_RC(rc));
+		D_ERROR("Failed to create DTX active array: rc = "DF_RC"\n", DP_RC(rc));
 		D_GOTO(exit, rc);
 	}
 

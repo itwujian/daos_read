@@ -443,8 +443,8 @@ enum {
  * \a epr::epr_hi, aggregated epochs will be discarded except the last one,
  * which is kept as aggregation result.
  *
- * \param coh	  [IN]		Container open handle
- * \param epr	  [IN]		The epoch range of aggregation
+ * \param coh	     [IN]	Container open handle
+ * \param epr	     [IN]	The epoch range of aggregation
  * \param yield_func [IN]	Pointer to customized yield function
  * \param yield_arg  [IN]	Argument of yield function
  * \param flags      [IN]	Aggregation flags

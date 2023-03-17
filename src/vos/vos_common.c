@@ -203,8 +203,7 @@ vos_tx_publish(struct dtx_handle *dth, bool publish)
 			return rc;
 
 		/** Function checks if list is empty */
-		rc = vos_publish_blocks(cont, &dru->dru_nvme,
-					publish, VOS_IOS_GENERIC);
+		rc = vos_publish_blocks(cont, &dru->dru_nvme, publish, VOS_IOS_GENERIC);
 		if (rc && publish)
 			return rc;
 	}
@@ -271,7 +270,7 @@ vos_tx_end(struct vos_container *cont, struct dtx_handle *dth_in,
 		D_INIT_LIST_HEAD(&tmp.dth_deferred_nvme);
 	}
 
-	if (rsrvd_scmp != NULL) {
+	if (rsrvd_scmp != NULL) { // only for vos_update
 		D_ASSERT(nvme_exts != NULL);
 		dru = &dth->dth_rsrvds[dth->dth_rsrvd_cnt++];
 		dru->dru_scm = *rsrvd_scmp;

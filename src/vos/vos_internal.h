@@ -256,8 +256,11 @@ struct vos_container {
 	/** Array for active DTX records */
 	struct lru_array	*vc_dtx_array;
 	/* The handle for active DTX table */
+	// 在vos_dtx_post中会删除树上节点，如果删除失败会记录dae->committed或者dae->abort
+	// 删除失败后会在vos_dtx_commit_internal触发再次删除
 	daos_handle_t		vc_dtx_active_hdl;
 	/* The handle for committed DTX table */
+	// 在dtx聚合里面会删除树上节点，树上没有认为已经提交了
 	daos_handle_t		vc_dtx_committed_hdl;
 	/** The root of the B+ tree for active DTXs. */
 	struct btr_root		vc_dtx_active_btr;
@@ -329,9 +332,9 @@ struct vos_dtx_act_ent {
 	/* Back pointer to the DTX handle. */
 	struct dtx_handle		*dae_dth;
 
-	unsigned int	 dae_committable:1,
-					 dae_committed:1,
-					 dae_aborted:1,
+	unsigned int	 dae_committable:1,  // dtx_leader_end->vos_dtx_mark_commttable
+					 dae_committed:1,    // vos_dtx_post_handle(删除active-tree失败后置)
+					 dae_aborted:1,      // vos_dtx_post_handle(删除active-tree失败后置)
 					 dae_maybe_shared:1,  // 只有在dtx_handler在处理dtx_refresh的时候会置为1
 					 /* Need validation on leader before commit/committable. */
 					 dae_need_validation:1,

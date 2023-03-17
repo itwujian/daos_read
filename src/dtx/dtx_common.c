@@ -1304,7 +1304,9 @@ dtx_leader_end(struct dtx_leader_handle *dlh, struct ds_cont_hdl *coh, int resul
 		flags = DCF_SHARED;
 	else
 		flags = 0;
+	
 	rc = dtx_add_cos(cont, dte, &dth->dth_leader_oid, dth->dth_dkey_hash, dth->dth_epoch, flags);
+	
 	dtx_entry_put(dte);
 	if (rc == 0) {
 		if (!DAOS_FAIL_CHECK(DAOS_DTX_NO_COMMITTABLE)) {

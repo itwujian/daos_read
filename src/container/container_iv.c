@@ -545,49 +545,35 @@ cont_iv_ent_update(struct ds_iv_entry *entry, struct ds_iv_key *key,
 	int			rc = 0;
 
 	D_ASSERT(dss_get_module_info()->dmi_xs_id == 0);
+	
 	if (src != NULL) {
 		struct cont_iv_entry *civ_ent;
-
 		civ_ent = src->sg_iovs[0].iov_buf;
+	
 		if (entry->iv_class->iv_class_id == IV_CONT_CAPA) {
 			/* open the container locally */
-			rc = ds_cont_tgt_open(entry->ns->iv_pool_uuid,
-					      civ_key->cont_uuid,
-					      civ_ent->cont_uuid,
-					      civ_ent->iv_capa.flags,
-					      civ_ent->iv_capa.sec_capas,
-					      civ_ent->iv_capa.status_pm_ver);
+			rc = ds_cont_tgt_open(entry->ns->iv_pool_uuid, civ_key->cont_uuid, civ_ent->cont_uuid, civ_ent->iv_capa.flags, civ_ent->iv_capa.sec_capas, civ_ent->iv_capa.status_pm_ver);
 			if (rc)
 				D_GOTO(out, rc);
 		} else if (entry->iv_class->iv_class_id == IV_CONT_PROP) {
 			daos_prop_t		*prop = NULL;
-
 			rc = cont_iv_prop_g2l(&civ_ent->iv_prop, &prop);
 			if (rc) {
 				D_ERROR("cont_iv_prop_g2l failed "DF_RC"\n",
 					DP_RC(rc));
 				D_GOTO(out, rc);
 			}
-
-			rc = ds_cont_tgt_prop_update(entry->ns->iv_pool_uuid,
-						     civ_ent->cont_uuid, prop);
+			rc = ds_cont_tgt_prop_update(entry->ns->iv_pool_uuid, civ_ent->cont_uuid, prop);
 			daos_prop_free(prop);
-		} else if (entry->iv_class->iv_class_id == IV_CONT_SNAP &&
-			   civ_ent->iv_snap.snap_cnt != (uint64_t)(-1)) {
-			rc = ds_cont_tgt_snapshots_update(
-						entry->ns->iv_pool_uuid,
-						civ_key->cont_uuid,
-						&civ_ent->iv_snap.snaps[0],
-						civ_ent->iv_snap.snap_cnt);
+		} else if (entry->iv_class->iv_class_id == IV_CONT_SNAP && civ_ent->iv_snap.snap_cnt != (uint64_t)(-1)) {
+			rc = ds_cont_tgt_snapshots_update(entry->ns->iv_pool_uuid, civ_key->cont_uuid, &civ_ent->iv_snap.snaps[0], civ_ent->iv_snap.snap_cnt);
 			if (rc)
 				D_GOTO(out, rc);
-		} else if (entry->iv_class->iv_class_id ==
-						IV_CONT_AGG_EPOCH_REPORT) {
+		} else if (entry->iv_class->iv_class_id == IV_CONT_AGG_EPOCH_REPORT) {
 			rc = cont_iv_ent_agg_eph_update(entry, key, src);
 			if (rc)
 				D_GOTO(out, rc);
-		} else if (entry->iv_class->iv_class_id ==
-						IV_CONT_AGG_EPOCH_BOUNDRY) {
+		} else if (entry->iv_class->iv_class_id == IV_CONT_AGG_EPOCH_BOUNDRY) {
 			rc = cont_iv_ent_agg_eph_refresh(entry, key, src);
 			if (rc)
 				D_GOTO(out, rc);
@@ -596,6 +582,7 @@ cont_iv_ent_update(struct ds_iv_entry *entry, struct ds_iv_key *key,
 
 	memcpy(&root_hdl, entry->iv_value.sg_iovs[0].iov_buf, sizeof(root_hdl));
 	d_iov_set(&key_iov, &civ_key->cont_uuid, sizeof(civ_key->cont_uuid));
+	
 	if (src == NULL) {
 		/* If src == NULL, it is invalidate */
 		if (uuid_is_null(civ_key->cont_uuid)) {
@@ -603,25 +590,22 @@ cont_iv_ent_update(struct ds_iv_entry *entry, struct ds_iv_key *key,
 			if (rc)
 				D_GOTO(out, rc);
 		} else {
-			rc = dbtree_delete(root_hdl, BTR_PROBE_EQ, &key_iov,
-					   NULL);
+			rc = dbtree_delete(root_hdl, BTR_PROBE_EQ, &key_iov, NULL);
 			if (rc == -DER_NONEXIST)
 				rc = 0;
 		}
-		if (entry->iv_class->iv_class_id == IV_CONT_CAPA &&
-		    !uuid_is_null(civ_key->cont_uuid)) {
+		if (entry->iv_class->iv_class_id == IV_CONT_CAPA && !uuid_is_null(civ_key->cont_uuid)) {
 			rc = ds_cont_tgt_close(civ_key->cont_uuid);
 			if (rc)
 				D_GOTO(out, rc);
 		}
 	} else {
+	
 		struct cont_iv_entry *iv_entry;
-
 		iv_entry = src->sg_iovs[0].iov_buf;
+		
 		/* Do not update master entry for -1 value */
-		if (entry->iv_class->iv_class_id == IV_CONT_SNAP &&
-		    iv_entry->iv_snap.snap_cnt == (uint64_t)(-1) &&
-		    entry->ns->iv_master_rank == dss_self_rank())
+		if (entry->iv_class->iv_class_id == IV_CONT_SNAP && iv_entry->iv_snap.snap_cnt == (uint64_t)(-1) && entry->ns->iv_master_rank == dss_self_rank())
 			goto out;
 
 		/* Put it to IV tree */
@@ -631,9 +615,7 @@ cont_iv_ent_update(struct ds_iv_entry *entry, struct ds_iv_key *key,
 
 out:
 	if (rc < 0 && rc != -DER_IVCB_FORWARD)
-		D_CDEBUG(rc == -DER_NONEXIST || rc == -DER_NOTLEADER,
-			 DB_ANY, DLOG_ERR,
-			 "failed to insert: rc "DF_RC"\n", DP_RC(rc));
+		D_CDEBUG(rc == -DER_NONEXIST || rc == -DER_NOTLEADER, DB_ANY, DLOG_ERR, "failed to insert: rc "DF_RC"\n", DP_RC(rc));
 
 	return rc;
 }
@@ -919,16 +901,14 @@ cont_iv_capa_refresh_ult(void *data)
 
 	D_ASSERT(pool != NULL);
 	if (arg->invalidate_current) {
-		rc = cont_iv_capability_invalidate(pool->sp_iv_ns,
-						   arg->cont_hdl_uuid,
-						   CRT_IV_SYNC_NONE);
+		rc = cont_iv_capability_invalidate(pool->sp_iv_ns, arg->cont_hdl_uuid, CRT_IV_SYNC_NONE);
 		if (rc)
 			D_GOTO(out, rc);
 	}
 
 	rc = cont_iv_fetch(pool->sp_iv_ns, IV_CONT_CAPA, arg->cont_hdl_uuid,
-			   &iv_entry, sizeof(iv_entry), sizeof(iv_entry),
-			   false /* retry */);
+			           &iv_entry, sizeof(iv_entry), sizeof(iv_entry),
+			           false /* retry */);
 	if (rc)
 		D_GOTO(out, rc);
 
@@ -955,14 +935,12 @@ cont_iv_hdl_fetch(uuid_t cont_hdl_uuid, uuid_t pool_uuid,
 	} else {
 		*cont_hdl = ds_cont_hdl_lookup(cont_hdl_uuid);
 		if (*cont_hdl != NULL) {
-			D_DEBUG(DB_TRACE, "get hdl "DF_UUID"\n",
-				DP_UUID(cont_hdl_uuid));
+			D_DEBUG(DB_TRACE, "get hdl "DF_UUID"\n", DP_UUID(cont_hdl_uuid));
 			return 0;
 		}
 	}
 
-	D_DEBUG(DB_TRACE, "Can not find "DF_UUID" hdl\n",
-		DP_UUID(cont_hdl_uuid));
+	D_DEBUG(DB_TRACE, "Can not find "DF_UUID" hdl\n", DP_UUID(cont_hdl_uuid));
 
 	/* Fetch the capability from the leader. To avoid extra locks,
 	 * all metadatas are maintained by xstream 0, so let's create
@@ -977,8 +955,7 @@ cont_iv_hdl_fetch(uuid_t cont_hdl_uuid, uuid_t pool_uuid,
 	uuid_copy(arg.cont_hdl_uuid, cont_hdl_uuid);
 	arg.eventual = eventual;
 	arg.invalidate_current = invalidate_current;
-	rc = dss_ult_create(cont_iv_capa_refresh_ult, &arg, DSS_XS_SYS,
-			    0, 0, NULL);
+	rc = dss_ult_create(cont_iv_capa_refresh_ult, &arg, DSS_XS_SYS, 0, 0, NULL);
 	if (rc)
 		D_GOTO(out_eventual, rc);
 
@@ -990,8 +967,7 @@ cont_iv_hdl_fetch(uuid_t cont_hdl_uuid, uuid_t pool_uuid,
 
 	*cont_hdl = ds_cont_hdl_lookup(cont_hdl_uuid);
 	if (*cont_hdl == NULL) {
-		D_DEBUG(DB_TRACE, "Can not find "DF_UUID" hdl\n",
-			DP_UUID(cont_hdl_uuid));
+		D_DEBUG(DB_TRACE, "Can not find "DF_UUID" hdl\n", DP_UUID(cont_hdl_uuid));
 		D_GOTO(out_eventual, rc = -DER_NONEXIST);
 	}
 
