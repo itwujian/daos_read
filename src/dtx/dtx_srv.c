@@ -150,8 +150,7 @@ dtx_handler(crt_rpc_t *rpc)
 
 	rc = ds_cont_child_lookup(din->di_po_uuid, din->di_co_uuid, &cont);
 	if (rc != 0) {
-		D_ERROR("Failed to locate pool="DF_UUID" cont="DF_UUID" for DTX rpc %u: rc = "DF_RC"\n",
-			DP_UUID(din->di_po_uuid), DP_UUID(din->di_co_uuid), opc, DP_RC(rc));
+		D_ERROR("Failed to locate pool="DF_UUID" cont="DF_UUID" for DTX rpc %u: rc = "DF_RC"\n", DP_UUID(din->di_po_uuid), DP_UUID(din->di_co_uuid), opc, DP_RC(rc));
 		goto out;
 	}
 
@@ -170,6 +169,7 @@ dtx_handler(crt_rpc_t *rpc)
 				D_GOTO(out, rc = -DER_IO);
 
 			while (i < din->di_dtx_array.ca_count) {
+				
 				if (i + count > din->di_dtx_array.ca_count)
 					count = din->di_dtx_array.ca_count - i;
 

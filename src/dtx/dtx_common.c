@@ -448,24 +448,20 @@ dtx_aggregation_pool(struct dss_module_info *dmi, struct dtx_batched_pool_args *
 
 		cont = dbca->dbca_cont;
 		dtx_stat(cont, &stat);
-		if (stat.dtx_cont_cmt_count == 0 ||
-		    stat.dtx_first_cmt_blob_time_lo == 0)
+		if (stat.dtx_cont_cmt_count == 0 || stat.dtx_first_cmt_blob_time_lo == 0)
 			continue;
 
 		if (dtx_hlc_age2sec(stat.dtx_first_cmt_blob_time_lo) <= DTX_AGG_AGE_PRESERVE)
 			continue;
 
 		if (stat.dtx_cont_cmt_count >= dtx_agg_thd_cnt_up ||
-		    ((stat.dtx_cont_cmt_count > dtx_agg_thd_cnt_lo ||
-		      stat.dtx_pool_cmt_count >= dtx_agg_thd_cnt_up) &&
-		     (dtx_hlc_age2sec(stat.dtx_first_cmt_blob_time_lo) >=
-		      dtx_agg_thd_age_up))) {
+		    ((stat.dtx_cont_cmt_count > dtx_agg_thd_cnt_lo || stat.dtx_pool_cmt_count >= dtx_agg_thd_cnt_up) && (dtx_hlc_age2sec(stat.dtx_first_cmt_blob_time_lo) >=  dtx_agg_thd_age_up))) {
+		    
 			D_ASSERT(!dbca->dbca_agg_done);
 			dtx_get_dbca(dbca);
 			dbca->dbca_agg_req = sched_create_ult(&attr, dtx_aggregate, dbca, 0);
 			if (dbca->dbca_agg_req == NULL) {
-				D_WARN("Fail to start DTX agg ULT (1) for "DF_UUID"\n",
-				       DP_UUID(cont->sc_uuid));
+				D_WARN("Fail to start DTX agg ULT (1) for "DF_UUID"\n", DP_UUID(cont->sc_uuid));
 				dtx_put_dbca(dbca);
 				continue;
 			}
@@ -497,8 +493,7 @@ dtx_aggregation_pool(struct dss_module_info *dmi, struct dtx_batched_pool_args *
 		dtx_get_dbca(victim_dbca);
 		victim_dbca->dbca_agg_req = sched_create_ult(&attr, dtx_aggregate, victim_dbca, 0);
 		if (victim_dbca->dbca_agg_req == NULL) {
-			D_WARN("Fail to start DTX agg ULT (2) for "DF_UUID"\n",
-				DP_UUID(victim_dbca->dbca_cont->sc_uuid));
+			D_WARN("Fail to start DTX agg ULT (2) for "DF_UUID"\n", DP_UUID(victim_dbca->dbca_cont->sc_uuid));
 			dtx_put_dbca(victim_dbca);
 		} else {
 			dbpa->dbpa_aggregating++;
@@ -561,43 +556,36 @@ dtx_batched_commit_one(void *arg)
 	tls->dt_batched_ult_cnt++;
 
 	/* dbca->dbca_reg_gen != cont->sc_dtx_batched_gen means someone reopen the container. */
-	while (!dss_ult_exiting(dbca->dbca_commit_req) &&
-		dbca->dbca_reg_gen == cont->sc_dtx_batched_gen) {
+	while (!dss_ult_exiting(dbca->dbca_commit_req) && dbca->dbca_reg_gen == cont->sc_dtx_batched_gen) {
 		struct dtx_entry	**dtes = NULL;
 		struct dtx_cos_key	 *dcks = NULL;
 		struct dtx_stat		  stat = { 0 };
 		int			  cnt;
 		int			  rc;
 
-		cnt = dtx_fetch_committable(cont, DTX_THRESHOLD_COUNT, NULL,
-					    DAOS_EPOCH_MAX, &dtes, &dcks);
+		cnt = dtx_fetch_committable(cont, DTX_THRESHOLD_COUNT, NULL, DAOS_EPOCH_MAX, &dtes, &dcks);
 		if (cnt == 0)
 			break;
 
 		if (cnt < 0) {
-			D_WARN("Fail to fetch committable for "DF_UUID": "DF_RC"\n",
-			       DP_UUID(cont->sc_uuid), DP_RC(cnt));
+			D_WARN("Fail to fetch committable for "DF_UUID": "DF_RC"\n", DP_UUID(cont->sc_uuid), DP_RC(cnt));
 			break;
 		}
 
 		rc = dtx_commit(cont, dtes, dcks, cnt);
+		
 		dtx_free_committable(dtes, dcks, cnt);
 		if (rc != 0) {
-			D_WARN("Fail to batched commit %d entries for "DF_UUID": "DF_RC"\n",
-			       cnt, DP_UUID(cont->sc_uuid), DP_RC(rc));
+			D_WARN("Fail to batched commit %d entries for "DF_UUID": "DF_RC"\n", cnt, DP_UUID(cont->sc_uuid), DP_RC(rc));
 			break;
 		}
 
 		dtx_stat(cont, &stat);
 
-		if (stat.dtx_pool_cmt_count >= dtx_agg_thd_cnt_up &&
-		    dbca->dbca_pool->dbpa_aggregating == 0)
+		if (stat.dtx_pool_cmt_count >= dtx_agg_thd_cnt_up && dbca->dbca_pool->dbpa_aggregating == 0)
 			sched_req_wakeup(dmi->dmi_dtx_agg_req);
 
-		if ((stat.dtx_committable_count <= DTX_THRESHOLD_COUNT) &&
-		    (stat.dtx_oldest_committable_time == 0 ||
-		     dtx_hlc_age2sec(stat.dtx_oldest_committable_time) <
-		     DTX_COMMIT_THRESHOLD_AGE))
+		if ((stat.dtx_committable_count <= DTX_THRESHOLD_COUNT) && (stat.dtx_oldest_committable_time == 0 || dtx_hlc_age2sec(stat.dtx_oldest_committable_time) < DTX_COMMIT_THRESHOLD_AGE))
 			break;
 	}
 
@@ -639,8 +627,7 @@ dtx_batched_commit(void *arg)
 		if (d_list_empty(&dmi->dmi_dtx_batched_cont_open_list))
 			goto check;
 
-		if (DAOS_FAIL_CHECK(DAOS_DTX_NO_BATCHED_CMT) ||
-		    DAOS_FAIL_CHECK(DAOS_DTX_NO_COMMITTABLE))
+		if (DAOS_FAIL_CHECK(DAOS_DTX_NO_BATCHED_CMT) || DAOS_FAIL_CHECK(DAOS_DTX_NO_COMMITTABLE))
 			goto check;
 
 		dbca = d_list_entry(dmi->dmi_dtx_batched_cont_open_list.next, struct dtx_batched_cont_args, dbca_sys_link);
@@ -1474,11 +1461,9 @@ dtx_end(struct dtx_handle *dth, struct ds_cont_child *cont, int result)
 			 *	the CoS DTXs, because they are still in
 			 *	CoS cache, and can be committed next time.
 			 */
-			rc = vos_dtx_commit(cont->sc_hdl, dth->dth_dti_cos,
-					    dth->dth_dti_cos_count, NULL);
+			rc = vos_dtx_commit(cont->sc_hdl, dth->dth_dti_cos, dth->dth_dti_cos_count, NULL);
 			if (rc < 0)
-				D_ERROR(DF_UUID": Fail to DTX CoS commit: %d\n",
-					DP_UUID(cont->sc_uuid), rc);
+				D_ERROR(DF_UUID": Fail to DTX CoS commit: %d\n", DP_UUID(cont->sc_uuid), rc);
 			else
 				dth->dth_cos_done = 1;
 		}
@@ -1489,10 +1474,7 @@ dtx_end(struct dtx_handle *dth, struct ds_cont_child *cont, int result)
 		vos_dtx_cleanup(dth, true);
 	}
 
-	D_DEBUG(DB_IO,
-		"Stop the DTX "DF_DTI" ver %u, dkey %lu: "DF_RC"\n",
-		DP_DTI(&dth->dth_xid), dth->dth_ver,
-		(unsigned long)dth->dth_dkey_hash, DP_RC(result));
+	D_DEBUG(DB_IO,"Stop the DTX "DF_DTI" ver %u, dkey %lu: "DF_RC"\n", DP_DTI(&dth->dth_xid), dth->dth_ver, (unsigned long)dth->dth_dkey_hash, DP_RC(result));
 
 	D_ASSERTF(result <= 0, "unexpected return value %d\n", result);
 

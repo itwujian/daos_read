@@ -588,8 +588,7 @@ vos_ilog_aggregate(daos_handle_t coh, struct ilog_df *ilog, const daos_epoch_ran
 	if (rc != 0)
 		return rc;
 
-	return vos_ilog_fetch(umm, coh, DAOS_INTENT_PURGE, ilog, epr->epr_hi, 0,
-			      &punch_rec, NULL, info);
+	return vos_ilog_fetch(umm, coh, DAOS_INTENT_PURGE, ilog, epr->epr_hi, 0, &punch_rec, NULL, info);
 }
 
 bool

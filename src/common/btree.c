@@ -3806,6 +3806,7 @@ dbtree_iter_probe(daos_handle_t ih, dbtree_probe_opc_t opc, uint32_t intent,
 
 	if (opc == BTR_PROBE_FIRST || opc == BTR_PROBE_LAST)
 		rc = btr_probe(tcx, opc, intent, NULL, NULL);
+	
 	else if (btr_is_direct_key(tcx)) {
 		D_ASSERT(key != NULL || anchor != NULL);
 		if (key)
@@ -3816,7 +3817,9 @@ dbtree_iter_probe(daos_handle_t ih, dbtree_probe_opc_t opc, uint32_t intent,
 			btr_key_decode(tcx, &direct_key, anchor);
 			rc = btr_probe(tcx, opc, intent, &direct_key, NULL);
 		}
-	} else {
+	} 
+
+	else {
 		D_ASSERT(key != NULL || anchor != NULL);
 		char hkey[DAOS_HKEY_MAX];
 
@@ -3828,18 +3831,18 @@ dbtree_iter_probe(daos_handle_t ih, dbtree_probe_opc_t opc, uint32_t intent,
 	}
 
 	switch (rc) {
-	case PROBE_RC_INPROGRESS:
-		itr->it_state = BTR_ITR_FINI;
-		return -DER_INPROGRESS;
-	case PROBE_RC_DATA_LOSS:
-		itr->it_state = BTR_ITR_FINI;
-		return -DER_DATA_LOSS;
-	case PROBE_RC_NONE:
-	case PROBE_RC_ERR:
-		itr->it_state = BTR_ITR_FINI;
-		return -DER_NONEXIST;
-	default:
-		break;
+		case PROBE_RC_INPROGRESS:
+			itr->it_state = BTR_ITR_FINI;
+			return -DER_INPROGRESS;
+		case PROBE_RC_DATA_LOSS:
+			itr->it_state = BTR_ITR_FINI;
+			return -DER_DATA_LOSS;
+		case PROBE_RC_NONE:
+		case PROBE_RC_ERR:
+			itr->it_state = BTR_ITR_FINI;
+			return -DER_NONEXIST;
+		default:
+			break;
 	}
 
 	itr->it_state = BTR_ITR_READY;

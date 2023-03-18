@@ -1562,26 +1562,26 @@ ilog_aggregate(struct umem_instance *umm, struct ilog_df *ilog,
 		rc = check_agg_entry(entries, &entry, &agg_arg);
 
 		switch (rc) {
-		case AGG_RC_DONE:
-			goto collapse;
-		case AGG_RC_NEXT:
-			agg_arg.aa_prev = entry.ie_idx;
-			break;
-		case AGG_RC_REMOVE_PREV:
-			entries->ie_info[agg_arg.aa_prev].ii_removed = 1;
-			removed++;
-			agg_arg.aa_prev = agg_arg.aa_prior_punch;
-			/* Fall through */
-		case AGG_RC_REMOVE:
-			entries->ie_info[entry.ie_idx].ii_removed = 1;
-			removed++;
-			break;
-		case AGG_RC_ABORT:
-			rc = -DER_TX_BUSY;
-			goto done;
-		default:
-			/* Unknown return code */
-			D_ASSERT(0);
+			case AGG_RC_DONE:
+				goto collapse;
+			case AGG_RC_NEXT:
+				agg_arg.aa_prev = entry.ie_idx;
+				break;
+			case AGG_RC_REMOVE_PREV:
+				entries->ie_info[agg_arg.aa_prev].ii_removed = 1;
+				removed++;
+				agg_arg.aa_prev = agg_arg.aa_prior_punch;
+				/* Fall through */
+			case AGG_RC_REMOVE:
+				entries->ie_info[entry.ie_idx].ii_removed = 1;
+				removed++;
+				break;
+			case AGG_RC_ABORT:
+				rc = -DER_TX_BUSY;
+				goto done;
+			default:
+				/* Unknown return code */
+				D_ASSERT(0);
 		}
 	}
 

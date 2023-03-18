@@ -25,6 +25,7 @@ struct vos_oi_iter {
 	/** embedded VOS common iterator */
 	struct vos_iterator	oit_iter;
 	/** Handle of iterator */
+	// clone了1棵objindex树，这个是克隆的obj-index树的句柄
 	daos_handle_t		oit_hdl;
 	/** condition of the iterator: epoch range */
 	daos_epoch_range_t	oit_epr;
@@ -375,6 +376,7 @@ oi_iter_ilog_check(struct vos_obj_df *obj, struct vos_oi_iter *oiter,
 	int			 rc;
 
 	umm = vos_cont2umm(oiter->oit_cont);
+	
 	rc = vos_ilog_fetch(umm, vos_cont2hdl(oiter->oit_cont),
 			    vos_iter_intent(&oiter->oit_iter), &obj->vo_ilog,
 			    oiter->oit_epr.epr_hi, oiter->oit_iter.it_bound,
@@ -444,8 +446,7 @@ oi_iter_prep(vos_iter_type_t type, vos_iter_param_t *param,
 	int			rc = 0;
 
 	if (type != VOS_ITER_OBJ) {
-		D_ERROR("Expected Type: %d, got %d\n",
-			VOS_ITER_OBJ, type);
+		D_ERROR("Expected Type: %d, got %d\n", VOS_ITER_OBJ, type);
 		return -DER_INVAL;
 	}
 
@@ -464,16 +465,18 @@ oi_iter_prep(vos_iter_type_t type, vos_iter_param_t *param,
 	oiter->oit_iter.it_type = type;
 	oiter->oit_epr  = param->ip_epr;
 	oiter->oit_cont = cont;
+	
 	if (dtx_is_valid_handle(dth))
-		oiter->oit_iter.it_bound = MAX(dth->dth_epoch,
-					       dth->dth_epoch_bound);
+		oiter->oit_iter.it_bound = MAX(dth->dth_epoch, dth->dth_epoch_bound);
 	else
 		oiter->oit_iter.it_bound = param->ip_epr.epr_hi;
+	
 	vos_cont_addref(cont);
 
 	oiter->oit_iter.it_filter_cb = param->ip_filter_cb;
 	oiter->oit_iter.it_filter_arg = param->ip_filter_arg;
 	oiter->oit_flags = param->ip_flags;
+	
 	if (param->ip_flags & VOS_IT_FOR_PURGE)
 		oiter->oit_iter.it_for_purge = 1;
 	if (param->ip_flags & VOS_IT_FOR_DISCARD)
@@ -481,12 +484,15 @@ oi_iter_prep(vos_iter_type_t type, vos_iter_param_t *param,
 	if (param->ip_flags & VOS_IT_FOR_MIGRATION)
 		oiter->oit_iter.it_for_migration = 1;
 
+    // 主要是赋值给oiter->oit_hdl
+    // clone了一颗objindex树，句柄放在oit_hdl
 	rc = dbtree_iter_prepare(cont->vc_btr_hdl, 0, &oiter->oit_hdl);
 	if (rc)
 		D_GOTO(exit, rc);
 
 	*iter_pp = &oiter->oit_iter;
 	return 0;
+	
 exit:
 	oi_iter_fini(&oiter->oit_iter);
 	return rc;
@@ -500,14 +506,14 @@ exit:
 static int
 oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t flags)
 {
-	uint64_t		 start_seq;
+	uint64_t		     start_seq;
 	struct vos_oi_iter	*oiter	= iter2oiter(iter);
 	struct dtx_handle	*dth;
-	char			*str	= NULL;
+	char			    *str	= NULL;
 	vos_iter_desc_t		 desc;
-	uint64_t		 feats;
+	uint64_t		     feats;
 	unsigned int		 acts;
-	int			 rc;
+	int	rc;
 
 	while (1) {
 		struct vos_obj_df *obj;
@@ -522,6 +528,7 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 		D_ASSERT(iov.iov_len == sizeof(struct vos_obj_df));
 		obj = (struct vos_obj_df *)iov.iov_buf;
 
+        
 		if (iter->it_filter_cb != NULL && (flags & VOS_ITER_PROBE_AGAIN) == 0) {
 			desc.id_type = VOS_ITER_OBJ;
 			desc.id_oid = obj->vo_id;
@@ -532,27 +539,33 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 			if (!vos_feats_agg_time_get(feats, &desc.id_agg_write)) {
 				/* Upgrading case, set it to latest known epoch */
 				if (obj->vo_max_write == 0)
-					vos_ilog_last_update(&obj->vo_ilog, VOS_TS_TYPE_OBJ,
-							     &desc.id_agg_write);
+					vos_ilog_last_update(&obj->vo_ilog, VOS_TS_TYPE_OBJ, &desc.id_agg_write);
 				else
 					desc.id_agg_write = obj->vo_max_write;
 			}
+			
 			acts = 0;
 			start_seq = vos_sched_seq();
 			dth = vos_dth_get();
 			if (dth != NULL)
 				vos_dth_set(NULL);
-			rc = iter->it_filter_cb(vos_iter2hdl(iter), &desc, iter->it_filter_arg,
-						&acts);
+
+			// it_filter_cb：  vos_agg_filter
+			rc = iter->it_filter_cb(vos_iter2hdl(iter), &desc, iter->it_filter_arg, &acts);
+			
 			if (dth != NULL)
 				vos_dth_set(dth);
+			
 			if (rc != 0)
 				goto failed;
+
+			// check if an ULT was yielding between these two calls.
 			if (start_seq != vos_sched_seq())
 				acts |= VOS_ITER_CB_YIELD;
-			if (acts & (VOS_ITER_CB_EXIT | VOS_ITER_CB_ABORT | VOS_ITER_CB_RESTART |
-				    VOS_ITER_CB_DELETE | VOS_ITER_CB_YIELD))
+			
+			if (acts & (VOS_ITER_CB_EXIT | VOS_ITER_CB_ABORT | VOS_ITER_CB_RESTART | VOS_ITER_CB_DELETE | VOS_ITER_CB_YIELD))
 				return acts;
+			
 			if (acts & VOS_ITER_CB_SKIP)
 				goto next;
 		}
@@ -560,6 +573,7 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 		rc = oi_iter_ilog_check(obj, oiter, NULL, true);
 		if (rc == 0)
 			break;
+		
 		if (rc != -DER_NONEXIST) {
 			str = "ilog check";
 			goto failed;
@@ -572,7 +586,9 @@ next:
 			goto failed;
 		}
 	}
+	
 	return 0;
+
  failed:
 	if (rc == -DER_NONEXIST) /* Non-existence isn't a failure */
 		return rc;
@@ -593,9 +609,11 @@ oi_iter_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t flags)
 	D_ASSERT(iter->it_type == VOS_ITER_OBJ);
 
 	next_opc = (flags & VOS_ITER_PROBE_NEXT) ? BTR_PROBE_GT : BTR_PROBE_GE;
+	
 	opc = vos_anchor_is_zero(anchor) ? BTR_PROBE_FIRST : next_opc;
-	rc = dbtree_iter_probe(oiter->oit_hdl, opc, vos_iter_intent(iter), NULL,
-			       anchor);
+
+	// 最终是给itr->it_state赋值 
+	rc = dbtree_iter_probe(oiter->oit_hdl, opc, vos_iter_intent(iter), NULL, anchor);
 	if (rc)
 		D_GOTO(out, rc);
 
@@ -603,6 +621,7 @@ oi_iter_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t flags)
 	 * the condition epoch range.
 	 */
 	rc = oi_iter_match_probe(iter, anchor, flags);
+	
  out:
 	return rc;
 }
@@ -624,8 +643,7 @@ oi_iter_next(struct vos_iterator *iter, daos_anchor_t *anchor)
 }
 
 static int
-oi_iter_fill(struct vos_obj_df *obj, struct vos_oi_iter *oiter, bool check_existence,
-	     vos_iter_entry_t *ent)
+oi_iter_fill(struct vos_obj_df *obj, struct vos_oi_iter *oiter, bool check_existence, vos_iter_entry_t *ent)
 {
 	daos_epoch_range_t	epr = {0, DAOS_EPOCH_MAX};
 	int			rc;
@@ -639,6 +657,7 @@ oi_iter_fill(struct vos_obj_df *obj, struct vos_oi_iter *oiter, bool check_exist
 	ent->ie_obj_punch = ent->ie_punch;
 	ent->ie_epoch = epr.epr_hi;
 	ent->ie_vis_flags = VOS_VIS_FLAG_VISIBLE;
+	
 	if (oiter->oit_ilog_info.ii_create == 0) {
 		/** Object isn't visible so mark covered */
 		ent->ie_vis_flags = VOS_VIS_FLAG_COVERED;
@@ -647,8 +666,7 @@ oi_iter_fill(struct vos_obj_df *obj, struct vos_oi_iter *oiter, bool check_exist
 
 	/* Upgrading case, set it to latest known epoch */
 	if (obj->vo_max_write == 0)
-		vos_ilog_last_update(&obj->vo_ilog, VOS_TS_TYPE_OBJ,
-				     &ent->ie_last_update);
+		vos_ilog_last_update(&obj->vo_ilog, VOS_TS_TYPE_OBJ, &ent->ie_last_update);
 	else
 		ent->ie_last_update = obj->vo_max_write;
 
@@ -666,14 +684,13 @@ oi_iter_fetch(struct vos_iterator *iter, vos_iter_entry_t *it_entry,
 	D_ASSERT(iter->it_type == VOS_ITER_OBJ);
 
 	d_iov_set(&rec_iov, NULL, 0);
+	
 	rc = dbtree_iter_fetch(oiter->oit_hdl, NULL, &rec_iov, anchor);
 	if (rc != 0) {
 		if (rc == -DER_INPROGRESS)
-			D_DEBUG(DB_TRACE, "Cannot fetch oid info because of "
-				"conflict modification: "DF_RC"\n", DP_RC(rc));
+			D_DEBUG(DB_TRACE, "Cannot fetch oid info because of conflict modification: "DF_RC"\n", DP_RC(rc));
 		else
-			D_ERROR("Error while fetching oid info: "DF_RC"\n",
-				DP_RC(rc));
+			D_ERROR("Error while fetching oid info: "DF_RC"\n", DP_RC(rc));
 		return rc;
 	}
 
@@ -720,16 +737,17 @@ oi_iter_check_punch(daos_handle_t ih)
 
 	d_iov_set(&rec_iov, NULL, 0);
 	rc = dbtree_iter_fetch(oiter->oit_hdl, NULL, &rec_iov, NULL);
-	D_ASSERTF(rc != -DER_NONEXIST,
-		  "Probe should be done before aggregation\n");
+	
+	D_ASSERTF(rc != -DER_NONEXIST, "Probe should be done before aggregation\n");
 	if (rc != 0)
 		return rc;
+	
 	D_ASSERT(rec_iov.iov_len == sizeof(struct vos_obj_df));
+	
 	obj = (struct vos_obj_df *)rec_iov.iov_buf;
 	oid = obj->vo_id;
 
-	if (!vos_ilog_is_punched(vos_cont2hdl(oiter->oit_cont), &obj->vo_ilog, &oiter->oit_epr,
-				 NULL, &oiter->oit_ilog_info))
+	if (!vos_ilog_is_punched(vos_cont2hdl(oiter->oit_cont), &obj->vo_ilog, &oiter->oit_epr, NULL, &oiter->oit_ilog_info))
 		return 0;
 
 	/** Ok, ilog is fully punched, so we can move it to gc heap */
@@ -738,18 +756,18 @@ oi_iter_check_punch(daos_handle_t ih)
 		goto exit;
 
 	/* Incarnation log is empty, delete the object */
-	D_DEBUG(DB_IO, "Moving object "DF_UOID" to gc heap\n",
-		DP_UOID(oid));
+	D_DEBUG(DB_IO, "Moving object "DF_UOID" to gc heap\n", DP_UOID(oid));
+	
 	/* Evict the object from cache */
-	rc = vos_obj_evict_by_oid(vos_obj_cache_current(),
-				  oiter->oit_cont, oid);
+	rc = vos_obj_evict_by_oid(vos_obj_cache_current(), oiter->oit_cont, oid);
 	if (rc != 0)
-		D_ERROR("Could not evict object "DF_UOID" "DF_RC"\n",
-			DP_UOID(oid), DP_RC(rc));
+		D_ERROR("Could not evict object "DF_UOID" "DF_RC"\n", DP_UOID(oid), DP_RC(rc));
+	
 	rc = dbtree_iter_delete(oiter->oit_hdl, oiter->oit_cont);
 	D_ASSERT(rc != -DER_NONEXIST);
 
 	rc = umem_tx_end(vos_cont2umm(oiter->oit_cont), rc);
+	
 exit:
 	if (rc == 0)
 		return 1;
@@ -772,10 +790,11 @@ oi_iter_aggregate(daos_handle_t ih, bool range_discard)
 
 	d_iov_set(&rec_iov, NULL, 0);
 	rc = dbtree_iter_fetch(oiter->oit_hdl, NULL, &rec_iov, NULL);
-	D_ASSERTF(rc != -DER_NONEXIST,
-		  "Probe should be done before aggregation\n");
+	
+	D_ASSERTF(rc != -DER_NONEXIST, "Probe should be done before aggregation\n");
 	if (rc != 0)
 		return rc;
+	
 	D_ASSERT(rec_iov.iov_len == sizeof(struct vos_obj_df));
 	obj = (struct vos_obj_df *)rec_iov.iov_buf;
 	oid = obj->vo_id;

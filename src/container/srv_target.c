@@ -287,36 +287,33 @@ static int
 cont_child_aggregate(struct ds_cont_child *cont, cont_aggregate_cb_t agg_cb,
 		     struct agg_param *param)
 {
-	daos_epoch_t		epoch_max, epoch_min;
-	daos_epoch_range_t	epoch_range;
+	daos_epoch_t		     epoch_max, epoch_min;
+	daos_epoch_range_t	     epoch_range;
 	struct sched_request	*req = cont2req(cont, param->ap_vos_agg);
 	uint64_t		hlc = d_hlc_get();
 	uint64_t		change_hlc;
 	uint64_t		interval;
 	uint64_t		snapshots_local[MAX_SNAPSHOT_LOCAL] = { 0 };
 	uint64_t		*snapshots = NULL;
-	int			snapshots_nr;
-	int			tgt_id = dss_get_module_info()->dmi_tgt_id;
+	int			    snapshots_nr;
+	int			    tgt_id = dss_get_module_info()->dmi_tgt_id;
 	uint32_t		flags = 0;
-	int			i, rc = 0;
+	int			    i, rc = 0;
 
-	change_hlc = max(cont->sc_snapshot_delete_hlc,
-			 cont->sc_pool->spc_rebuild_end_hlc);
+	change_hlc = max(cont->sc_snapshot_delete_hlc, cont->sc_pool->spc_rebuild_end_hlc);
+	
 	if (param->ap_full_scan_hlc < change_hlc) {
 		/* Snapshot has been deleted or rebuild happens since the last
 		 * aggregation, let's restart from 0.
 		 */
 		epoch_min = 0;
 		flags |= VOS_AGG_FL_FORCE_SCAN;
-		D_DEBUG(DB_EPC, "change hlc "DF_X64" > full "DF_X64"\n",
-			change_hlc, param->ap_full_scan_hlc);
+		D_DEBUG(DB_EPC, "change hlc "DF_X64" > full "DF_X64"\n", change_hlc, param->ap_full_scan_hlc);
 	} else {
 		epoch_min = get_hae(cont, param->ap_vos_agg);
 	}
 
-	if (unlikely(DAOS_FAIL_CHECK(DAOS_FORCE_EC_AGG) ||
-		     DAOS_FAIL_CHECK(DAOS_FORCE_EC_AGG_FAIL) ||
-		     DAOS_FAIL_CHECK(DAOS_FORCE_EC_AGG_PEER_FAIL)))
+	if (unlikely(DAOS_FAIL_CHECK(DAOS_FORCE_EC_AGG) || DAOS_FAIL_CHECK(DAOS_FORCE_EC_AGG_FAIL) || DAOS_FAIL_CHECK(DAOS_FORCE_EC_AGG_PEER_FAIL)))
 		interval = 0;
 	else
 		interval = d_sec2hlc(DAOS_AGG_THRESHOLD);
@@ -447,9 +444,7 @@ cont_aggregate_interval(struct ds_cont_child *cont, cont_aggregate_cb_t cb,
 	struct sched_request	*req = cont2req(cont, param->ap_vos_agg);
 	int			 rc = 0;
 
-	D_DEBUG(DB_EPC, DF_CONT"[%d]: Aggregation ULT started\n",
-		DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid),
-		dmi->dmi_tgt_id);
+	D_DEBUG(DB_EPC, DF_CONT"[%d]: Aggregation ULT started\n", DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid), dmi->dmi_tgt_id);
 
 	if (req == NULL)
 		goto out;
@@ -470,9 +465,7 @@ cont_aggregate_interval(struct ds_cont_child *cont, cont_aggregate_cb_t cb,
 		if (rc == -DER_SHUTDOWN) {
 			break;	/* pool destroyed */
 		} else if (rc < 0) {
-			D_ERROR(DF_CONT": VOS aggregate failed. "DF_RC"\n",
-				DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid),
-				DP_RC(rc));
+			D_ERROR(DF_CONT": VOS aggregate failed. "DF_RC"\n", DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid), DP_RC(rc));
 		} else if (sched_req_space_check(req) != SCHED_SPACE_PRESS_NONE) {
 			/* Don't sleep too long when there is space pressure */
 			msecs = 2ULL * 100;
@@ -484,9 +477,7 @@ next:
 		sched_req_sleep(req, msecs);
 	}
 out:
-	D_DEBUG(DB_EPC, DF_CONT"[%d]: Aggregation ULT stopped\n",
-		DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid),
-		dmi->dmi_tgt_id);
+	D_DEBUG(DB_EPC, DF_CONT"[%d]: Aggregation ULT stopped\n", DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid), dmi->dmi_tgt_id);
 }
 
 static int
@@ -512,8 +503,8 @@ cont_agg_ult(void *arg)
 	struct ds_cont_child	*cont = arg;
 	struct agg_param	param = { 0 };
 
-	D_DEBUG(DB_EPC, "start VOS aggregation "DF_UUID"\n",
-		DP_UUID(cont->sc_uuid));
+	D_DEBUG(DB_EPC, "start VOS aggregation "DF_UUID"\n", DP_UUID(cont->sc_uuid));
+	
 	param.ap_cont = cont;
 	param.ap_vos_agg = true;
 
@@ -563,13 +554,12 @@ cont_start_agg(struct ds_cont_child *cont)
 
 	sched_req_attr_init(&attr, SCHED_REQ_GC, &cont->sc_pool->spc_uuid);
 
+    // EC的聚合
 	if (likely(!ec_agg_disabled)) {
 		D_ASSERT(cont->sc_ec_agg_req == NULL);
-		cont->sc_ec_agg_req = sched_create_ult(&attr, cont_ec_agg_ult, cont,
-						       DSS_DEEP_STACK_SZ);
+		cont->sc_ec_agg_req = sched_create_ult(&attr, cont_ec_agg_ult, cont, DSS_DEEP_STACK_SZ);
 		if (cont->sc_ec_agg_req == NULL) {
-			D_ERROR(DF_CONT"[%d]: Failed to create EC aggregation ULT.\n",
-				DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid), dmi->dmi_tgt_id);
+			D_ERROR(DF_CONT"[%d]: Failed to create EC aggregation ULT.\n", DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid), dmi->dmi_tgt_id);
 			return -DER_NOMEM;
 		}
 	}
@@ -577,9 +567,7 @@ cont_start_agg(struct ds_cont_child *cont)
 	D_ASSERT(cont->sc_agg_req == NULL);
 	cont->sc_agg_req = sched_create_ult(&attr, cont_agg_ult, cont, DSS_DEEP_STACK_SZ);
 	if (cont->sc_agg_req == NULL) {
-		D_ERROR(DF_CONT"[%d]: Failed to create VOS aggregation ULT.\n",
-			DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid), dmi->dmi_tgt_id);
-
+		D_ERROR(DF_CONT"[%d]: Failed to create VOS aggregation ULT.\n", DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid), dmi->dmi_tgt_id);
 		cont_stop_agg(cont);
 		return -DER_NOMEM;
 	}
@@ -1357,11 +1345,8 @@ ds_dtx_resync(void *arg)
 	rc = dtx_resync(ddra->pool->spc_hdl, ddra->pool->spc_uuid, ddra->co_uuid, ddra->pool->spc_map_version, false);
 	
 	if (rc != 0)
-		D_WARN("Fail to resync some DTX(s) for the pool/cont "
-		       DF_UUID"/"DF_UUID" that may affect subsequent "
-		       "operations: rc = "DF_RC".\n",
-		       DP_UUID(ddra->pool->spc_uuid),
-		       DP_UUID(ddra->co_uuid), DP_RC(rc));
+		D_WARN("Fail to resync some DTX(s) for the pool/cont "DF_UUID"/"DF_UUID" that may affect subsequent "
+		       "operations: rc = "DF_RC".\n", DP_UUID(ddra->pool->spc_uuid), DP_UUID(ddra->co_uuid), DP_RC(rc));
 
 	ds_pool_child_put(ddra->pool);
 	D_FREE(ddra);
@@ -1383,8 +1368,8 @@ ds_cont_child_open_create(uuid_t pool_uuid, uuid_t cont_uuid,
 
 static int
 ds_cont_local_open(uuid_t pool_uuid, uuid_t cont_hdl_uuid, uuid_t cont_uuid,
-		   uint64_t flags, uint64_t sec_capas, uint32_t status_pm_ver,
-		   struct ds_cont_hdl **cont_hdl)
+		                  uint64_t flags, uint64_t sec_capas, uint32_t status_pm_ver,
+		                  struct ds_cont_hdl **cont_hdl)
 {
 	struct dsm_tls		*tls = dsm_tls_get();
 	struct ds_cont_child	*cont = NULL;
@@ -1397,12 +1382,10 @@ ds_cont_local_open(uuid_t pool_uuid, uuid_t cont_hdl_uuid, uuid_t cont_uuid,
 	if (hdl != NULL) {
 		if (flags != 0) {
 			if (hdl->sch_flags != flags) {
-				D_ERROR(DF_CONT": conflicting container : hdl="DF_UUID" capas="DF_U64"\n",
-					DP_CONT(pool_uuid, cont_uuid), DP_UUID(cont_hdl_uuid), flags);
+				D_ERROR(DF_CONT": conflicting container : hdl="DF_UUID" capas="DF_U64"\n", DP_CONT(pool_uuid, cont_uuid), DP_UUID(cont_hdl_uuid), flags);
 				rc = -DER_EXIST;
 			} else {
-				D_DEBUG(DB_MD, DF_CONT": found compatible container handle: hdl="DF_UUID" capas="DF_U64"\n",
-				      DP_CONT(pool_uuid, cont_uuid), DP_UUID(cont_hdl_uuid), hdl->sch_flags);
+				D_DEBUG(DB_MD, DF_CONT": found compatible container handle: hdl="DF_UUID" capas="DF_U64"\n", DP_CONT(pool_uuid, cont_uuid), DP_UUID(cont_hdl_uuid), hdl->sch_flags);
 			}
 		}
 
@@ -1485,9 +1468,7 @@ ds_cont_local_open(uuid_t pool_uuid, uuid_t cont_hdl_uuid, uuid_t cont_uuid,
 
 		rc = dtx_cont_open(hdl->sch_cont);
 		if (rc != 0) {
-			D_ASSERTF(hdl->sch_cont->sc_open == 1, "Unexpected open count for cont "
-				  DF_UUID": %d\n", DP_UUID(cont_uuid), hdl->sch_cont->sc_open);
-
+			D_ASSERTF(hdl->sch_cont->sc_open == 1, "Unexpected open count for cont "DF_UUID": %d\n", DP_UUID(cont_uuid), hdl->sch_cont->sc_open);
 			hdl->sch_cont->sc_open--;
 			D_GOTO(err_cont, rc);
 		}
@@ -1522,8 +1503,7 @@ opened:
 	return 0;
 
 err_dtx:
-	D_ASSERTF(hdl->sch_cont->sc_open == 1, "Unexpected open count for cont "
-		  DF_UUID": %d\n", DP_UUID(cont_uuid), hdl->sch_cont->sc_open);
+	D_ASSERTF(hdl->sch_cont->sc_open == 1, "Unexpected open count for cont "DF_UUID": %d\n", DP_UUID(cont_uuid), hdl->sch_cont->sc_open);
 
 	hdl->sch_cont->sc_open--;
 	dtx_cont_close(hdl->sch_cont);
@@ -1532,8 +1512,7 @@ err_cont:
 	if (daos_handle_is_valid(poh)) {
 		int rc_tmp;
 
-		D_DEBUG(DB_MD, DF_CONT": destroying new vos container\n",
-			DP_CONT(pool_uuid, cont_uuid));
+		D_DEBUG(DB_MD, DF_CONT": destroying new vos container\n", DP_CONT(pool_uuid, cont_uuid));
 
 		D_ASSERT(hdl != NULL);
 		cont_hdl_delete(&tls->dt_cont_hdl_hash, hdl);
@@ -1544,8 +1523,7 @@ err_cont:
 
 		rc_tmp = vos_cont_destroy(poh, cont_uuid);
 		if (rc_tmp != 0)
-			D_ERROR("failed to destroy "DF_UUID": %d\n",
-				DP_UUID(cont_uuid), rc_tmp);
+			D_ERROR("failed to destroy "DF_UUID": %d\n", DP_UUID(cont_uuid), rc_tmp);
 	}
 err_hdl:
 	if (hdl != NULL) {

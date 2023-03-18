@@ -348,13 +348,11 @@ vos_agg_filter(daos_handle_t ih, vos_iter_desc_t *desc, void *cb_arg, unsigned i
 	rc = need_aggregate(ih, agg_param, desc);
 	if (rc == 0) {
 		if (desc->id_type == VOS_ITER_OBJ) {
-			D_DEBUG(DB_EPC, "Skip untouched oid:"DF_UOID"\n",
-				DP_UOID(desc->id_oid));
+			D_DEBUG(DB_EPC, "Skip untouched oid:"DF_UOID"\n", DP_UOID(desc->id_oid));
 		} else {
-			D_DEBUG(DB_EPC, "Skip untouched %s:"DF_KEY"\n",
-				desc->id_type == VOS_ITER_DKEY ? "dkey" : "akey",
-				DP_KEY(&desc->id_key));
+			D_DEBUG(DB_EPC, "Skip untouched %s:"DF_KEY"\n", desc->id_type == VOS_ITER_DKEY ? "dkey" : "akey", DP_KEY(&desc->id_key));
 		}
+		
 		*acts |= VOS_ITER_CB_SKIP;
 		inc_agg_counter(agg_param, desc->id_type, AGG_OP_SKIP);
 
@@ -2300,6 +2298,7 @@ vos_aggregate_pre_cb(daos_handle_t ih, vos_iter_entry_t *entry,
 	int			 rc = 0;
 
 	cont = vos_hdl2cont(param->ip_hdl);
+	
 	D_DEBUG(DB_EPC, DF_CONT": Aggregate pre, type:%d, is_discard:%d\n",
 		DP_CONT(cont->vc_pool->vp_id, cont->vc_id), type,
 		agg_param->ap_discard);
@@ -2395,34 +2394,34 @@ vos_aggregate_post_cb(daos_handle_t ih, vos_iter_entry_t *entry,
 		agg_param->ap_discard);
 
 	switch (type) {
-	case VOS_ITER_OBJ:
-		if (agg_param->ap_skip_obj) {
-			agg_param->ap_skip_obj = false;
+		case VOS_ITER_OBJ:
+			if (agg_param->ap_skip_obj) {
+				agg_param->ap_skip_obj = false;
+				break;
+			}
+			rc = oi_iter_aggregate(ih, agg_param->ap_discard_obj);
 			break;
-		}
-		rc = oi_iter_aggregate(ih, agg_param->ap_discard_obj);
-		break;
-	case VOS_ITER_DKEY:
-		if (agg_param->ap_skip_dkey) {
-			agg_param->ap_skip_dkey = false;
+		case VOS_ITER_DKEY:
+			if (agg_param->ap_skip_dkey) {
+				agg_param->ap_skip_dkey = false;
+				break;
+			}
+		case VOS_ITER_AKEY:
+			if (agg_param->ap_skip_akey) {
+				agg_param->ap_skip_akey = false;
+				break;
+			}
+			agg_param->ap_trace_start = 0;
+			agg_param->ap_trace_count = 0;
+			rc = vos_obj_iter_aggregate(ih, agg_param->ap_discard_obj);
 			break;
-		}
-	case VOS_ITER_AKEY:
-		if (agg_param->ap_skip_akey) {
-			agg_param->ap_skip_akey = false;
-			break;
-		}
-		agg_param->ap_trace_start = 0;
-		agg_param->ap_trace_count = 0;
-		rc = vos_obj_iter_aggregate(ih, agg_param->ap_discard_obj);
-		break;
-	case VOS_ITER_SINGLE:
-		return 0;
-	case VOS_ITER_RECX:
-		return 0;
-	default:
-		D_ASSERTF(false, "Invalid iter type\n");
-		return -DER_INVAL;
+		case VOS_ITER_SINGLE:
+			return 0;
+		case VOS_ITER_RECX:
+			return 0;
+		default:
+			D_ASSERTF(false, "Invalid iter type\n");
+			return -DER_INVAL;
 	}
 
 	if (rc > 0) {
@@ -2488,26 +2487,20 @@ aggregate_enter(struct vos_container *cont, int agg_mode, daos_epoch_range_t *ep
 		break;
 	case AGG_MODE_DISCARD:
 		if (cont->vc_in_discard) {
-			D_ERROR(DF_CONT": Already in discard epr["DF_U64", "DF_U64"]\n",
-				DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
+			D_ERROR(DF_CONT": Already in discard epr["DF_U64", "DF_U64"]\n", DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
 				cont->vc_epr_discard.epr_lo, cont->vc_epr_discard.epr_hi);
 			return -DER_BUSY;
 		}
 
 		if (cont->vc_obj_discard_count != 0) {
-			D_ERROR(DF_CONT": In object discard epr["DF_U64", "DF_U64"]\n",
-				DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
+			D_ERROR(DF_CONT": In object discard epr["DF_U64", "DF_U64"]\n", DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
 				cont->vc_epr_discard.epr_lo, cont->vc_epr_discard.epr_hi);
 			return -DER_BUSY;
 		}
 
 		if (cont->vc_in_aggregation && cont->vc_epr_aggregation.epr_hi >= epr->epr_lo) {
-			D_ERROR(DF_CONT": Aggregate epr["DF_U64", "DF_U64"], "
-				"discard epr["DF_U64", "DF_U64"]\n",
-				DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
-				cont->vc_epr_aggregation.epr_lo,
-				cont->vc_epr_aggregation.epr_hi,
-				epr->epr_lo, epr->epr_hi);
+			D_ERROR(DF_CONT": Aggregate epr["DF_U64", "DF_U64"], discard epr["DF_U64", "DF_U64"]\n", DP_CONT(cont->vc_pool->vp_id, cont->vc_id), 
+				cont->vc_epr_aggregation.epr_lo, cont->vc_epr_aggregation.epr_hi, epr->epr_lo, epr->epr_hi);
 			return -DER_BUSY;
 		}
 
@@ -2516,27 +2509,20 @@ aggregate_enter(struct vos_container *cont, int agg_mode, daos_epoch_range_t *ep
 		break;
 	case AGG_MODE_AGGREGATE:
 		if (cont->vc_in_aggregation) {
-			D_ERROR(DF_CONT": Already in aggregation epr["DF_U64", "DF_U64"]\n",
-				DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
+			D_ERROR(DF_CONT": Already in aggregation epr["DF_U64", "DF_U64"]\n", DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
 				cont->vc_epr_aggregation.epr_lo, cont->vc_epr_aggregation.epr_hi);
 			return -DER_BUSY;
 		}
 
 		if (cont->vc_obj_discard_count != 0) {
-			D_ERROR(DF_CONT": In object discard epr["DF_U64", "DF_U64"]\n",
-				DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
+			D_ERROR(DF_CONT": In object discard epr["DF_U64", "DF_U64"]\n", DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
 				cont->vc_epr_discard.epr_lo, cont->vc_epr_discard.epr_hi);
 			return -DER_BUSY;
 		}
 
-		if (cont->vc_in_discard &&
-		    cont->vc_epr_discard.epr_lo <= epr->epr_hi) {
-			D_ERROR(DF_CONT": Discard epr["DF_U64", "DF_U64"], "
-				"aggregation epr["DF_U64", "DF_U64"]\n",
-				DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
-				cont->vc_epr_discard.epr_lo,
-				cont->vc_epr_discard.epr_hi,
-				epr->epr_lo, epr->epr_hi);
+		if (cont->vc_in_discard && cont->vc_epr_discard.epr_lo <= epr->epr_hi) {
+			D_ERROR(DF_CONT": Discard epr["DF_U64", "DF_U64"], aggregation epr["DF_U64", "DF_U64"]\n",
+				DP_CONT(cont->vc_pool->vp_id, cont->vc_id), cont->vc_epr_discard.epr_lo, cont->vc_epr_discard.epr_hi, epr->epr_lo, epr->epr_hi);
 			return -DER_BUSY;
 		}
 
@@ -2547,18 +2533,15 @@ aggregate_enter(struct vos_container *cont, int agg_mode, daos_epoch_range_t *ep
 			d_tm_mark_duration_start(vam->vam_epr_dur, D_TM_CLOCK_THREAD_CPUTIME);
 
 		break;
+		
 	case AGG_MODE_OBJ_DISCARD:
 		if (cont->vc_in_discard) {
-			D_ERROR(DF_CONT": In discard epr["DF_U64", "DF_U64"]\n",
-				DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
-				cont->vc_epr_discard.epr_lo, cont->vc_epr_discard.epr_hi);
+			D_ERROR(DF_CONT": In discard epr["DF_U64", "DF_U64"]\n", DP_CONT(cont->vc_pool->vp_id, cont->vc_id), cont->vc_epr_discard.epr_lo, cont->vc_epr_discard.epr_hi);
 			return -DER_BUSY;
 		}
 
 		if (cont->vc_in_aggregation) {
-			D_ERROR(DF_CONT": In aggregation epr["DF_U64", "DF_U64"]\n",
-				DP_CONT(cont->vc_pool->vp_id, cont->vc_id),
-				cont->vc_epr_aggregation.epr_lo, cont->vc_epr_aggregation.epr_hi);
+			D_ERROR(DF_CONT": In aggregation epr["DF_U64", "DF_U64"]\n", DP_CONT(cont->vc_pool->vp_id, cont->vc_id), cont->vc_epr_aggregation.epr_lo, cont->vc_epr_aggregation.epr_hi);
 			return -DER_BUSY;
 		}
 
@@ -2621,7 +2604,8 @@ struct agg_data {
 
 int
 vos_aggregate(daos_handle_t coh, daos_epoch_range_t *epr,
-	      int (*yield_func)(void *arg), void *yield_arg, uint32_t flags)
+	               int (*yield_func)(void *arg), void *yield_arg, 
+	               uint32_t flags)
 {
 	struct vos_container *cont = vos_hdl2cont(coh);
 	struct agg_data		 *ad;
@@ -2639,6 +2623,7 @@ vos_aggregate(daos_handle_t coh, daos_epoch_range_t *epr,
 	if (ad == NULL)
 		return -DER_NOMEM;
 
+    // 前期检查确保cont内聚合、discard、objdiscard不能同时执行
 	rc = aggregate_enter(cont, AGG_MODE_AGGREGATE, epr);
 	if (rc)
 		goto free_agg_data;
@@ -2653,8 +2638,10 @@ vos_aggregate(daos_handle_t coh, daos_epoch_range_t *epr,
 		ad->ad_agg_param.ap_filter_epoch = cont->vc_cont_df->cd_hae;
 
 	feats = dbtree_feats_get(&cont->vc_cont_df->cd_obj_root);
-	has_agg_write = vos_feats_agg_time_get(feats, &agg_write);
 	
+	has_agg_write = vos_feats_agg_time_get(feats, &agg_write);
+
+	// 只更新hae没有走遍历流程，？？？？
 	if (has_agg_write && agg_write <= ad->ad_agg_param.ap_filter_epoch)
 		goto update_hae;
 
@@ -2684,9 +2671,11 @@ vos_aggregate(daos_handle_t coh, daos_epoch_range_t *epr,
 	ad->ad_agg_param.ap_flags = flags;
 
 	ad->ad_iter_param.ip_flags |= VOS_IT_FOR_PURGE;
+	
 	rc = vos_iterate(&ad->ad_iter_param, VOS_ITER_OBJ, true, &ad->ad_anchors,
-			 vos_aggregate_pre_cb, vos_aggregate_post_cb,
-			 &ad->ad_agg_param, NULL);
+			         vos_aggregate_pre_cb, vos_aggregate_post_cb,
+			         &ad->ad_agg_param, NULL);
+	
 	if (rc != 0 || ad->ad_agg_param.ap_nospc_err) {
 		close_merge_window(&ad->ad_agg_param.ap_window, rc);
 		goto exit;

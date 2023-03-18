@@ -147,12 +147,13 @@ out:
 
 int
 vos_iter_prepare(vos_iter_type_t type, vos_iter_param_t *param,
-		 daos_handle_t *ih, struct dtx_handle *dth)
+		 daos_handle_t *ih, // 返回的vos_iterator的操作句柄，即vos_iterator的内存地址
+		 struct dtx_handle *dth)
 {
 	struct vos_iter_dict	*dict;
-	struct vos_iterator	*iter;
-	struct dtx_handle	*old;
-	struct vos_ts_set	*ts_set = NULL;
+	struct vos_iterator	    *iter;
+	struct dtx_handle	    *old;
+	struct vos_ts_set	    *ts_set = NULL;
 	int			 rc;
 	int			 rlevel;
 
@@ -219,6 +220,8 @@ vos_iter_prepare(vos_iter_type_t type, vos_iter_param_t *param,
 
 	old = vos_dth_get();
 	vos_dth_set(dth);
+
+	//准备迭代器oi_iter_prep
 	rc = dict->id_ops->iop_prepare(type, param, &iter, ts_set);
 	vos_dth_set(old);
 	if (rc != 0) {
@@ -229,7 +232,7 @@ vos_iter_prepare(vos_iter_type_t type, vos_iter_param_t *param,
 	D_ASSERT(iter->it_type == type);
 
 	iter->it_dth		= dth;
-	iter->it_ops		= dict->id_ops;
+	iter->it_ops		= dict->id_ops;  //操作集
 	iter->it_state		= VOS_ITS_NONE;
 	iter->it_ref_cnt	= 1;
 	iter->it_parent		= NULL;
@@ -318,6 +321,8 @@ vos_iter_probe_ex(daos_handle_t ih, daos_anchor_t *anchor, uint32_t flags)
 
 	old = vos_dth_get();
 	vos_dth_set(iter->it_dth);
+
+	//obj:oi_iter_probe
 	rc = iter->it_ops->iop_probe(iter, anchor, flags);
 	vos_dth_set(old);
 
@@ -394,6 +399,8 @@ vos_iter_fetch(daos_handle_t ih, vos_iter_entry_t *it_entry,
 
 	old = vos_dth_get();
 	vos_dth_set(iter->it_dth);
+
+	//obj:
 	rc = iter->it_ops->iop_fetch(iter, it_entry, anchor);
 	vos_dth_set(old);
 
@@ -693,15 +700,15 @@ vos_iterate_internal(vos_iter_param_t *param, vos_iter_type_t type,
 		     vos_iter_cb_t pre_cb, vos_iter_cb_t post_cb, void *arg,
 		     struct dtx_handle *dth)
 {
-	daos_anchor_t		*anchor = NULL;
-	struct vos_iterator	*iter;
-	vos_iter_entry_t	iter_ent = {0};
-	daos_epoch_t		read_time = 0;
-	daos_handle_t		ih;
-	unsigned int		acts;
-	uint32_t		probe_flags = 0;
-	int			stage = VOS_ITER_STAGE_FILTER;
-	int			rc;
+	daos_anchor_t		 *anchor = NULL;
+	struct vos_iterator	 *iter;
+	vos_iter_entry_t	 iter_ent = {0};
+	daos_epoch_t		 read_time = 0;
+	daos_handle_t		 ih;
+	unsigned int		 acts;
+	uint32_t		     probe_flags = 0;
+	int			         stage = VOS_ITER_STAGE_FILTER;
+	int			         rc;
 
 	D_ASSERT(type >= VOS_ITER_COUUID && type <= VOS_ITER_RECX);
 	D_ASSERT(anchors != NULL);
@@ -721,14 +728,13 @@ vos_iterate_internal(vos_iter_param_t *param, vos_iter_type_t type,
 			daos_anchor_set_eof(anchor);
 			rc = 0;
 		} else {
-			VOS_TX_LOG_FAIL(rc, "failed to prepare iterator "
-					"(type=%d): "DF_RC"\n", type,
-					DP_RC(rc));
+			VOS_TX_LOG_FAIL(rc, "failed to prepare iterator (type=%d): "DF_RC"\n", type, DP_RC(rc));
 		}
 		return rc;
 	}
 
 	iter = vos_hdl2iter(ih);
+	
 	iter->it_show_uncommitted = 0;
 	if (show_uncommitted) {
 		iter->it_show_uncommitted = 1;
@@ -738,7 +744,9 @@ vos_iterate_internal(vos_iter_param_t *param, vos_iter_type_t type,
 	} else {
 		iter->it_ignore_uncommitted = 0;
 	}
+	
 	read_time = dtx_is_valid_handle(dth) ? dth->dth_epoch : 0 /* unused */;
+	
 probe:
 	rc = vos_iter_probe_ex(ih, anchor, probe_flags);
 	if (rc < 0) {
@@ -746,9 +754,7 @@ probe:
 			daos_anchor_set_eof(anchor);
 			rc = 0;
 		} else {
-			VOS_TX_TRACE_FAIL(rc, "Failed to probe iterator "
-					  "(type=%d anchor=%p): "DF_RC"\n",
-					  type, anchor, DP_RC(rc));
+			VOS_TX_TRACE_FAIL(rc, "Failed to probe iterator (type=%d anchor=%p): "DF_RC"\n", type, anchor, DP_RC(rc));
 		}
 		D_GOTO(out, rc);
 	} else {
@@ -757,11 +763,11 @@ probe:
 	}
 
 	while (1) {
+
+	    //obj： oi_iter_fetch， 查询并填充iter_ent
 		rc = vos_iter_fetch(ih, &iter_ent, anchor);
 		if (rc != 0) {
-			VOS_TX_TRACE_FAIL(rc, "Failed to fetch iterator "
-					  "(type=%d): "DF_RC"\n", type,
-					  DP_RC(rc));
+			VOS_TX_TRACE_FAIL(rc, "Failed to fetch iterator (type=%d): "DF_RC"\n", type, DP_RC(rc));
 			break;
 		}
 
@@ -774,49 +780,42 @@ probe:
 			if (rc != 0)
 				break;
 
-			rc = advance_stage(type, acts, param, anchors, anchor, &stage,
-					   VOS_ITER_STAGE_RECURSE, &probe_flags);
+			rc = advance_stage(type, acts, param, anchors, anchor, &stage, VOS_ITER_STAGE_RECURSE, &probe_flags);
 			JUMP_TO_STAGE(rc, next, probe, out);
 		}
 
 		if (stage == VOS_ITER_STAGE_PRE)
 			stage = VOS_ITER_STAGE_RECURSE;
 
-		if (recursive && !is_last_level(type) &&
-		    iter_ent.ie_child_type != VOS_ITER_NONE &&
-		    stage == VOS_ITER_STAGE_RECURSE) {
+		if (recursive && !is_last_level(type) && iter_ent.ie_child_type != VOS_ITER_NONE && stage == VOS_ITER_STAGE_RECURSE) {
 			vos_iter_param_t	child_param = *param;
 
 			child_param.ip_ih = ih;
 
 			switch (type) {
-			case VOS_ITER_OBJ:
-				child_param.ip_oid = iter_ent.ie_oid;
-				break;
-			case VOS_ITER_DKEY:
-				child_param.ip_dkey = iter_ent.ie_key;
-				break;
-			case VOS_ITER_AKEY:
-				child_param.ip_akey = iter_ent.ie_key;
-				break;
-			default:
-				D_ASSERTF(false, "invalid iter type:%d\n",
-					  type);
-				rc = -DER_INVAL;
-				goto out;
+				case VOS_ITER_OBJ:
+					child_param.ip_oid = iter_ent.ie_oid;
+					break;
+				case VOS_ITER_DKEY:
+					child_param.ip_dkey = iter_ent.ie_key;
+					break;
+				case VOS_ITER_AKEY:
+					child_param.ip_akey = iter_ent.ie_key;
+					break;
+				default:
+					D_ASSERTF(false, "invalid iter type:%d\n", type);
+					rc = -DER_INVAL;
+					goto out;
 			}
 
 
-			rc = vos_iterate(&child_param, iter_ent.ie_child_type,
-					 recursive, anchors, pre_cb, post_cb,
-					 arg, dth);
+			rc = vos_iterate(&child_param, iter_ent.ie_child_type, recursive, anchors, pre_cb, post_cb, arg, dth);
 			if (rc != 0)
 				D_GOTO(out, rc);
 
 			reset_anchors(iter_ent.ie_child_type, anchors);
 
-			rc = advance_stage(type, 0, param, anchors, anchor, &stage,
-					   VOS_ITER_STAGE_POST, &probe_flags);
+			rc = advance_stage(type, 0, param, anchors, anchor, &stage, VOS_ITER_STAGE_POST, &probe_flags);
 			JUMP_TO_STAGE(rc, next, probe, out);
 		}
 
@@ -835,34 +834,30 @@ probe:
 			if ((acts & (VOS_ITER_CB_SKIP | VOS_ITER_CB_DELETE)) == 0)
 				acts |= VOS_ITER_CB_SKIP;
 
-			rc = advance_stage(type, acts, param, anchors, anchor,
-					   &stage, VOS_ITER_STAGE_FILTER, &probe_flags);
+			rc = advance_stage(type, acts, param, anchors, anchor, &stage, VOS_ITER_STAGE_FILTER, &probe_flags);
 			JUMP_TO_STAGE(rc, next, probe, out);
 		}
 next:
 		stage = VOS_ITER_STAGE_FILTER;
 		rc = vos_iter_next(ih, anchor);
 		if (rc < 0) {
-			VOS_TX_TRACE_FAIL(rc,
-					  "failed to iterate next (type=%d): "
-					  DF_RC"\n", type, DP_RC(rc));
+			VOS_TX_TRACE_FAIL(rc, "failed to iterate next (type=%d): "DF_RC"\n", type, DP_RC(rc));
 			if (rc == -DER_NONEXIST) {
 				daos_anchor_set_eof(anchor);
 				rc = 0;
 			}
 			break;
 		} else {
-			rc = advance_stage(type, rc, param, anchors, anchor,
-					   &stage, VOS_ITER_STAGE_FILTER, &probe_flags);
+			rc = advance_stage(type, rc, param, anchors, anchor, &stage, VOS_ITER_STAGE_FILTER, &probe_flags);
 			JUMP_TO_STAGE(rc, next, probe, out);
 		}
 	}
+	
 out:
 	if (rc >= 0)
 		rc = vos_iter_ts_set_update(ih, read_time, rc);
 
-	VOS_TX_LOG_FAIL(rc, "abort iteration type:%d, "DF_RC"\n", type,
-			DP_RC(rc));
+	VOS_TX_LOG_FAIL(rc, "abort iteration type:%d, "DF_RC"\n", type, DP_RC(rc));
 
 	vos_iter_finish(ih);
 

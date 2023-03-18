@@ -2346,8 +2346,8 @@ vos_dtx_aggregate(daos_handle_t coh)
 
 	cont_df = cont->vc_cont_df;
 	dbd_off = cont_df->cd_dtx_committed_head;
-	umm = vos_cont2umm(cont);
-	epoch = cont_df->cd_newest_aggregated;
+	umm     = vos_cont2umm(cont);
+	epoch   = cont_df->cd_newest_aggregated;
 
 	dbd = umem_off2ptr(umm, dbd_off);
 	if (dbd == NULL || dbd->dbd_count == 0)
@@ -2363,6 +2363,7 @@ vos_dtx_aggregate(daos_handle_t coh)
 	}
 
 	for (i = 0; i < dbd->dbd_count; i++) {
+		
 		struct vos_dtx_cmt_ent_df	*dce_df;
 		d_iov_t				 kiov;
 
@@ -2393,6 +2394,7 @@ vos_dtx_aggregate(daos_handle_t coh)
 	}
 
 	tmp = umem_off2ptr(umm, dbd->dbd_next);
+	
 	if (tmp == NULL) {
 		
 		/* The last blob for committed DTX blob. */
@@ -2527,23 +2529,16 @@ vos_dtx_mark_sync(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch)
 
 	cont = vos_hdl2cont(coh);
 	occ = vos_obj_cache_current();
-	rc = vos_obj_hold(occ, cont, oid, &epr, 0, VOS_OBJ_VISIBLE,
-			  DAOS_INTENT_DEFAULT, &obj, 0);
+	rc = vos_obj_hold(occ, cont, oid, &epr, 0, VOS_OBJ_VISIBLE, DAOS_INTENT_DEFAULT, &obj, 0);
 	if (rc != 0) {
-		D_ERROR(DF_UOID" fail to mark sync: rc = "DF_RC"\n",
-			DP_UOID(oid), DP_RC(rc));
+		D_ERROR(DF_UOID" fail to mark sync: rc = "DF_RC"\n", DP_UOID(oid), DP_RC(rc));
 		return rc;
 	}
 
 	if (obj->obj_df != NULL && obj->obj_df->vo_sync < epoch) {
-		D_INFO("Update sync epoch "DF_U64" => "DF_U64
-		       " for the obj "DF_UOID"\n",
-		       obj->obj_sync_epoch, epoch, DP_UOID(oid));
-
+		D_INFO("Update sync epoch "DF_U64" => "DF_U64" for the obj "DF_UOID"\n", obj->obj_sync_epoch, epoch, DP_UOID(oid));
 		obj->obj_sync_epoch = epoch;
-		pmemobj_memcpy_persist(vos_cont2umm(cont)->umm_pool,
-				       &obj->obj_df->vo_sync, &epoch,
-				       sizeof(obj->obj_df->vo_sync));
+		pmemobj_memcpy_persist(vos_cont2umm(cont)->umm_pool, &obj->obj_df->vo_sync, &epoch, sizeof(obj->obj_df->vo_sync));
 	}
 
 	vos_obj_release(occ, obj, false);
@@ -2583,31 +2578,24 @@ vos_dtx_act_reindex(struct vos_container *cont)
 			}
 
 			if (dae_df->dae_lid < DTX_LID_RESERVED) {
-				D_ERROR("Corruption in DTX table found, lid=%d"
-					" is invalid\n", dae_df->dae_lid);
+				D_ERROR("Corruption in DTX table found, lid=%d is invalid\n", dae_df->dae_lid);
 				D_GOTO(out, rc = -DER_IO);
 			}
-			rc = lrua_allocx_inplace(cont->vc_dtx_array,
-					 dae_df->dae_lid - DTX_LID_RESERVED,
-					 dae_df->dae_epoch, &dae);
+			
+			rc = lrua_allocx_inplace(cont->vc_dtx_array, dae_df->dae_lid - DTX_LID_RESERVED, dae_df->dae_epoch, &dae);
 			if (rc != 0) {
 				if (rc == -DER_NOMEM) {
-					D_ERROR("Not enough memory for DTX "
-						"table\n");
+					D_ERROR("Not enough memory for DTX table\n");
 				} else {
-					D_ERROR("Corruption in DTX table found,"
-						" lid=%d is invalid rc="DF_RC
-						"\n", dae_df->dae_lid,
-						DP_RC(rc));
+					D_ERROR("Corruption in DTX table found, lid=%d is invalid rc="DF_RC"\n", dae_df->dae_lid, DP_RC(rc));
 					rc = -DER_IO;
 				}
 				D_GOTO(out, rc);
 			}
+			
 			D_ASSERT(dae != NULL);
 
-			D_DEBUG(DB_TRACE, "Re-indexed lid DTX: "DF_DTI
-				" lid=%d\n", DP_DTI(&DAE_XID(dae)),
-				DAE_LID(dae));
+			D_DEBUG(DB_TRACE, "Re-indexed lid DTX: "DF_DTI" lid=%d\n", DP_DTI(&DAE_XID(dae)), DAE_LID(dae));
 
 			memcpy(&dae->dae_base, dae_df, sizeof(dae->dae_base));
 			dae->dae_df_off = umem_ptr2off(umm, dae_df);
@@ -2628,17 +2616,13 @@ vos_dtx_act_reindex(struct vos_container *cont)
 					D_GOTO(out, rc = -DER_NOMEM);
 				}
 
-				memcpy(dae->dae_records,
-				       umem_off2ptr(umm, dae_df->dae_rec_off),
-				       size);
+				memcpy(dae->dae_records, umem_off2ptr(umm, dae_df->dae_rec_off), size);
 				dae->dae_rec_cap = count;
 			}
 
 			d_iov_set(&kiov, &DAE_XID(dae), sizeof(DAE_XID(dae)));
 			d_iov_set(&riov, dae, sizeof(*dae));
-			rc = dbtree_upsert(cont->vc_dtx_active_hdl,
-					   BTR_PROBE_EQ, DAOS_INTENT_UPDATE,
-					   &kiov, &riov, NULL);
+			rc = dbtree_upsert(cont->vc_dtx_active_hdl, BTR_PROBE_EQ, DAOS_INTENT_UPDATE, &kiov, &riov, NULL);
 			if (rc != 0) {
 				D_FREE(dae->dae_records);
 				dtx_evict_lid(cont, dae);
