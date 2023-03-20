@@ -1366,8 +1366,7 @@ singv_iter_fetch(struct vos_obj_iter *oiter, vos_iter_entry_t *it_entry,
 	it_entry->ie_vis_flags = VOS_VIS_FLAG_VISIBLE;
 	it_entry->ie_epoch	 = key.sk_epoch;
 	it_entry->ie_minor_epc	 = key.sk_minor_epc;
-	if (vos_epc_punched(it_entry->ie_epoch, it_entry->ie_minor_epc,
-			    &oiter->it_punched)) {
+	if (vos_epc_punched(it_entry->ie_epoch, it_entry->ie_minor_epc, &oiter->it_punched)) {
 		/* entry is covered by a key/object punch */
 		it_entry->ie_vis_flags = VOS_VIS_FLAG_COVERED;
 	}
@@ -1539,6 +1538,7 @@ recx_iter_fetch(struct vos_obj_iter *oiter, vos_iter_entry_t *it_entry,
 	it_entry->ie_recx.rx_idx = ext->ex_lo;
 	it_entry->ie_recx.rx_nr	 = evt_extent_width(ext);
 	ext = &entry.en_ext;
+	
 	/* Also export the original extent and the visibility flags */
 	it_entry->ie_orig_recx.rx_idx = ext->ex_lo;
 	it_entry->ie_orig_recx.rx_nr	 = evt_extent_width(ext);
@@ -1547,8 +1547,7 @@ recx_iter_fetch(struct vos_obj_iter *oiter, vos_iter_entry_t *it_entry,
 	it_entry->ie_ver	= entry.en_ver;
 	it_entry->ie_csum	= entry.en_csum;
 	it_entry->ie_dtx_state	= dtx_alb2state(entry.en_avail_rc);
-	bio_iov_set(&it_entry->ie_biov, entry.en_addr,
-		    it_entry->ie_recx.rx_nr * it_entry->ie_rsize);
+	bio_iov_set(&it_entry->ie_biov, entry.en_addr, it_entry->ie_recx.rx_nr * it_entry->ie_rsize);
  out:
 	return rc;
 }

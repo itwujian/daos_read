@@ -644,8 +644,7 @@ advance_stage(vos_iter_type_t type, unsigned int acts, vos_iter_param_t *param,
 	}
 
 	if (need_reprobe(type, anchors)) {
-		D_ASSERT(!daos_anchor_is_zero(anchor) &&
-			 !daos_anchor_is_eof(anchor));
+		D_ASSERT(!daos_anchor_is_zero(anchor) && !daos_anchor_is_eof(anchor));
 		rc = ITER_PROBE;
 	}
 out:
@@ -733,6 +732,7 @@ vos_iterate_internal(vos_iter_param_t *param, vos_iter_type_t type,
 		return rc;
 	}
 
+    // 迭代器句柄转换为迭代器
 	iter = vos_hdl2iter(ih);
 	
 	iter->it_show_uncommitted = 0;
@@ -758,10 +758,18 @@ probe:
 		}
 		D_GOTO(out, rc);
 	} else {
+
+	    // 根据rc的返回值(VOS_ITER_CB_SKIP/...)来赋值stage以及返回不同的rc
 		rc = advance_stage(type, rc, param, anchors, anchor, &stage, stage, &probe_flags);
+
+		// 根据rc的返回值(ITER_EXIT/...)来判断走哪个goto标签
+		// ITER_ABORT/ITER_NEXT : next
+		// ITER_PROBE :           probe
+		// ITER_EXIT:             out
 		JUMP_TO_STAGE(rc, next, probe, out);
 	}
 
+//	rc = ITER_CONTINUE
 	while (1) {
 
 	    //obj： oi_iter_fetch， 查询并填充iter_ent
@@ -915,6 +923,6 @@ vos_iterate(vos_iter_param_t *param, vos_iter_type_t type, bool recursive,
 {
 	D_ASSERT((param->ip_flags & VOS_IT_KEY_TREE) == 0);
 
-	return vos_iterate_internal(param, type, recursive, false, anchors,
-				    pre_cb, post_cb, arg, dth);
+	return vos_iterate_internal(param, type, recursive, false, /*show_uncommitted*/
+		                        anchors, pre_cb, post_cb, arg, dth);
 }

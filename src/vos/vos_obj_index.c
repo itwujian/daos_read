@@ -387,11 +387,10 @@ oi_iter_ilog_check(struct vos_obj_df *obj, struct vos_oi_iter *oiter,
 	if (oiter->oit_ilog_info.ii_uncertain_create)
 		D_GOTO(out, rc = -DER_TX_RESTART);
 
-	rc = vos_ilog_check(&oiter->oit_ilog_info, &oiter->oit_epr, epr,
-			    (oiter->oit_flags & VOS_IT_PUNCHED) == 0);
+	rc = vos_ilog_check(&oiter->oit_ilog_info, &oiter->oit_epr, epr, (oiter->oit_flags & VOS_IT_PUNCHED) == 0);
+	
 out:
-	D_ASSERTF(check_existence || rc != -DER_NONEXIST,
-		  "Probe is required before fetch\n");
+	D_ASSERTF(check_existence || rc != -DER_NONEXIST, "Probe is required before fetch\n");
 	return rc;
 }
 
@@ -485,7 +484,7 @@ oi_iter_prep(vos_iter_type_t type, vos_iter_param_t *param,
 		oiter->oit_iter.it_for_migration = 1;
 
     // 主要是赋值给oiter->oit_hdl
-    // clone了一颗objindex树，句柄放在oit_hdl
+    // clone了一颗obj-index树，句柄放在oit_hdl
 	rc = dbtree_iter_prepare(cont->vc_btr_hdl, 0, &oiter->oit_hdl);
 	if (rc)
 		D_GOTO(exit, rc);
@@ -519,6 +518,8 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 		struct vos_obj_df *obj;
 		d_iov_t	   iov;
 
+        // vos_cont_open的时候这棵树对应的btr_context已经建立
+        // 找到这个搜索路径上的record,并将值取出
 		rc = dbtree_iter_fetch(oiter->oit_hdl, NULL, &iov, anchor);
 		if (rc != 0) {
 			str = "fetch";
@@ -578,6 +579,7 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 			str = "ilog check";
 			goto failed;
 		}
+		
 next:
 		flags = 0;
 		rc = dbtree_iter_next(oiter->oit_hdl);
@@ -612,7 +614,7 @@ oi_iter_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t flags)
 	
 	opc = vos_anchor_is_zero(anchor) ? BTR_PROBE_FIRST : next_opc;
 
-	// 最终是给itr->it_state赋值 
+    // opc: 首次找第一个BTR_PROBE_FIRST，后续如果时往后找(VOS_ITER_PROBE_NEXT:BTR_PROBE_GT)
 	rc = dbtree_iter_probe(oiter->oit_hdl, opc, vos_iter_intent(iter), NULL, anchor);
 	if (rc)
 		D_GOTO(out, rc);
@@ -839,13 +841,13 @@ exit:
 }
 
 struct vos_iter_ops vos_oi_iter_ops = {
-	.iop_prepare		= oi_iter_prep,
+	.iop_prepare		    = oi_iter_prep,
 	.iop_nested_tree_fetch	= oi_iter_nested_tree_fetch,
-	.iop_finish		= oi_iter_fini,
-	.iop_probe		= oi_iter_probe,
-	.iop_next		= oi_iter_next,
-	.iop_fetch		= oi_iter_fetch,
-	.iop_process		= oi_iter_process,
+	.iop_finish		        = oi_iter_fini,
+	.iop_probe		        = oi_iter_probe,
+	.iop_next		        = oi_iter_next,
+	.iop_fetch		        = oi_iter_fetch,
+	.iop_process		    = oi_iter_process,
 };
 
 /**

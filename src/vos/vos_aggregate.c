@@ -366,17 +366,20 @@ vos_agg_filter(daos_handle_t ih, vos_iter_desc_t *desc, void *cb_arg, unsigned i
 		rc = oi_iter_check_punch(ih);
 	else
 		rc = vos_obj_iter_check_punch(ih);
+	
 	if (rc < 0)
 		goto out;
+	
 	if (rc == 1) {
 		*acts |= VOS_ITER_CB_DELETE;
 		inc_agg_counter(agg_param, desc->id_type, AGG_OP_DEL);
 		D_GOTO(out, rc = 0);
 	}
+	
 out:
 
-	if (credits_exhausted(&agg_param->ap_credits) ||
-	    (DAOS_FAIL_CHECK(DAOS_VOS_AGG_RANDOM_YIELD) && (rand() % 2))) {
+	if (credits_exhausted(&agg_param->ap_credits) || (DAOS_FAIL_CHECK(DAOS_VOS_AGG_RANDOM_YIELD) && (rand() % 2))) {
+		
 		D_DEBUG(DB_EPC, "Credits exhausted, type:%u, acts:%u\n", desc->id_type, *acts);
 
 		if (vos_aggregate_yield(agg_param)) {
@@ -2605,7 +2608,7 @@ struct agg_data {
 int
 vos_aggregate(daos_handle_t coh, daos_epoch_range_t *epr,
 	               int (*yield_func)(void *arg), void *yield_arg, 
-	               uint32_t flags)
+	               uint32_t flags) // VOS_AGG_FL_FORCE_SCAN for agg
 {
 	struct vos_container *cont = vos_hdl2cont(coh);
 	struct agg_data		 *ad;
@@ -2672,8 +2675,11 @@ vos_aggregate(daos_handle_t coh, daos_epoch_range_t *epr,
 
 	ad->ad_iter_param.ip_flags |= VOS_IT_FOR_PURGE;
 	
-	rc = vos_iterate(&ad->ad_iter_param, VOS_ITER_OBJ, true, &ad->ad_anchors,
-			         vos_aggregate_pre_cb, vos_aggregate_post_cb,
+	rc = vos_iterate(&ad->ad_iter_param, VOS_ITER_OBJ, 
+		             true, /*recursive*/ 
+		             &ad->ad_anchors,
+			         vos_aggregate_pre_cb, 
+			         vos_aggregate_post_cb,
 			         &ad->ad_agg_param, NULL);
 	
 	if (rc != 0 || ad->ad_agg_param.ap_nospc_err) {
@@ -2692,7 +2698,9 @@ update_hae:
 	 */
 	if (cont->vc_cont_df->cd_hae < epr->epr_hi)
 		cont->vc_cont_df->cd_hae = epr->epr_hi;
+	
 exit:
+    // 退出时，清理标记
 	aggregate_exit(cont, AGG_MODE_AGGREGATE);
 
 	if (run_agg && merge_window_status(&ad->ad_agg_param.ap_window) != MW_CLOSED)
