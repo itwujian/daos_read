@@ -297,13 +297,14 @@ inc_agg_counter(struct vos_agg_param *agg_param, vos_iter_type_t type, unsigned 
 static inline bool
 need_aggregate(daos_handle_t ih, struct vos_agg_param *agg_param, vos_iter_desc_t *desc)
 {
-	bool			 agg_needed = true;
-	struct vos_container	*cont = vos_hdl2cont(agg_param->ap_coh);
+	bool			         agg_needed = true;
+	struct vos_container	*cont       = vos_hdl2cont(agg_param->ap_coh);
 
 	/** Skip this check for discard */
 	if (agg_param->ap_discard_obj || agg_param->ap_discard)
 		return true;
 
+    // 当前下发的聚合的时间窗口的最小值内没有可聚合的
 	if (desc->id_agg_write <= agg_param->ap_filter_epoch &&
 	    desc->id_parent_punch <= agg_param->ap_filter_epoch)
 		agg_needed = false;
@@ -353,9 +354,9 @@ vos_agg_filter(daos_handle_t ih, vos_iter_desc_t *desc, void *cb_arg, unsigned i
 			D_DEBUG(DB_EPC, "Skip untouched %s:"DF_KEY"\n", desc->id_type == VOS_ITER_DKEY ? "dkey" : "akey", DP_KEY(&desc->id_key));
 		}
 		
-		*acts |= VOS_ITER_CB_SKIP;
+		*acts |= VOS_ITER_CB_SKIP; // 无需聚合，直接跳过
 		inc_agg_counter(agg_param, desc->id_type, AGG_OP_SKIP);
-
+        // 无需聚合，直接跳过VOS_ITER_CB_SKIP
 		D_GOTO(out, rc = 0);
 	}
 
@@ -363,15 +364,17 @@ vos_agg_filter(daos_handle_t ih, vos_iter_desc_t *desc, void *cb_arg, unsigned i
 		D_GOTO(out, rc = 0);
 
 	if (desc->id_type == VOS_ITER_OBJ)
+		// If the object is fully punched, bypass normal aggregation and move it to container discard pool.
 		rc = oi_iter_check_punch(ih);
 	else
+		// dkey\akey
 		rc = vos_obj_iter_check_punch(ih);
 	
 	if (rc < 0)
 		goto out;
 	
 	if (rc == 1) {
-		*acts |= VOS_ITER_CB_DELETE;
+		*acts |= VOS_ITER_CB_DELETE;   //有删除 
 		inc_agg_counter(agg_param, desc->id_type, AGG_OP_DEL);
 		D_GOTO(out, rc = 0);
 	}
@@ -2307,61 +2310,61 @@ vos_aggregate_pre_cb(daos_handle_t ih, vos_iter_entry_t *entry,
 		agg_param->ap_discard);
 
 	switch (type) {
-	case VOS_ITER_OBJ:
-		rc = vos_agg_obj(ih, entry, agg_param, acts);
-		break;
-	case VOS_ITER_DKEY:
-		rc = vos_agg_dkey(ih, entry, agg_param, acts);
-		break;
-	case VOS_ITER_AKEY:
-		rc = vos_agg_akey(ih, entry, agg_param, acts);
-		agg_param->ap_trace_start = 0;
-		agg_param->ap_trace_count = 0;
-		break;
-	case VOS_ITER_RECX:
-		rc = vos_agg_ev(ih, entry, agg_param, acts);
-		if (rc == -DER_TX_RESTART) {
-			D_DEBUG(DB_EPC, "Restarting evtree aggregation\n");
-			*acts |= VOS_ITER_CB_RESTART;
-			rc = 0;
+		case VOS_ITER_OBJ:
+			rc = vos_agg_obj(ih, entry, agg_param, acts);
 			break;
-		}
-		/* fall through to check for abort */
-	case VOS_ITER_SINGLE:
-		if (type == VOS_ITER_SINGLE)
-			rc = vos_agg_sv(ih, entry, agg_param, acts);
-		if (rc == -DER_CSUM || rc == -DER_TX_BUSY || rc == -DER_NOSPACE) {
-			struct vos_agg_metrics	*vam = agg_cont2metrics(cont);
-
-			D_DEBUG(DB_EPC, "Abort value aggregation "DF_RC"\n",
-				DP_RC(rc));
-
-			*acts |= VOS_ITER_CB_ABORT;
-			if (rc == -DER_CSUM) {
-				agg_param->ap_csum_err = true;
-				if (vam && vam->vam_csum_errs)
-					d_tm_inc_counter(vam->vam_csum_errs, 1);
-			} else if (rc == -DER_NOSPACE) {
-				agg_param->ap_nospc_err = true;
-			} else if (rc == -DER_TX_BUSY) {
-				/** Must not aggregate anything above
-				 *  this entry to avoid orphaned tree
-				 *  assertion
-				 */
-				agg_param->ap_skip_akey = true;
-				agg_param->ap_skip_dkey = true;
-				agg_param->ap_skip_obj = true;
-
-				if (vam && vam->vam_uncommitted)
-					d_tm_inc_counter(vam->vam_uncommitted, 1);
+		case VOS_ITER_DKEY:
+			rc = vos_agg_dkey(ih, entry, agg_param, acts);
+			break;
+		case VOS_ITER_AKEY:
+			rc = vos_agg_akey(ih, entry, agg_param, acts);
+			agg_param->ap_trace_start = 0;
+			agg_param->ap_trace_count = 0;
+			break;
+		case VOS_ITER_RECX:
+			rc = vos_agg_ev(ih, entry, agg_param, acts);
+			if (rc == -DER_TX_RESTART) {
+				D_DEBUG(DB_EPC, "Restarting evtree aggregation\n");
+				*acts |= VOS_ITER_CB_RESTART;
+				rc = 0;
+				break;
 			}
-			rc = 0;
-		}
-		break;
-	default:
-		D_ASSERTF(false, "Invalid iter type\n");
-		rc = -DER_INVAL;
-		break;
+			/* fall through to check for abort */
+		case VOS_ITER_SINGLE:
+			if (type == VOS_ITER_SINGLE)
+				rc = vos_agg_sv(ih, entry, agg_param, acts);
+			if (rc == -DER_CSUM || rc == -DER_TX_BUSY || rc == -DER_NOSPACE) {
+				struct vos_agg_metrics	*vam = agg_cont2metrics(cont);
+
+				D_DEBUG(DB_EPC, "Abort value aggregation "DF_RC"\n",
+					DP_RC(rc));
+
+				*acts |= VOS_ITER_CB_ABORT;
+				if (rc == -DER_CSUM) {
+					agg_param->ap_csum_err = true;
+					if (vam && vam->vam_csum_errs)
+						d_tm_inc_counter(vam->vam_csum_errs, 1);
+				} else if (rc == -DER_NOSPACE) {
+					agg_param->ap_nospc_err = true;
+				} else if (rc == -DER_TX_BUSY) {
+					/** Must not aggregate anything above
+					 *  this entry to avoid orphaned tree
+					 *  assertion
+					 */
+					agg_param->ap_skip_akey = true;
+					agg_param->ap_skip_dkey = true;
+					agg_param->ap_skip_obj = true;
+
+					if (vam && vam->vam_uncommitted)
+						d_tm_inc_counter(vam->vam_uncommitted, 1);
+				}
+				rc = 0;
+			}
+			break;
+		default:
+			D_ASSERTF(false, "Invalid iter type\n");
+			rc = -DER_INVAL;
+			break;
 	}
 
 	if (rc < 0) {
@@ -2369,10 +2372,8 @@ vos_aggregate_pre_cb(daos_handle_t ih, vos_iter_entry_t *entry,
 		return rc;
 	}
 
-	if (credits_exhausted(&agg_param->ap_credits) ||
-	    (DAOS_FAIL_CHECK(DAOS_VOS_AGG_RANDOM_YIELD) && (rand() % 2))) {
+	if (credits_exhausted(&agg_param->ap_credits) || (DAOS_FAIL_CHECK(DAOS_VOS_AGG_RANDOM_YIELD) && (rand() % 2))) {
 		D_DEBUG(DB_EPC, "Credits exhausted, type:%u, acts:%u\n", type, *acts);
-
 		if (vos_aggregate_yield(agg_param)) {
 			D_DEBUG(DB_EPC, "VOS discard/aggregation aborted\n");
 			*acts |= VOS_ITER_CB_EXIT;
@@ -2402,6 +2403,7 @@ vos_aggregate_post_cb(daos_handle_t ih, vos_iter_entry_t *entry,
 				agg_param->ap_skip_obj = false;
 				break;
 			}
+			//  Aggregate the creation/punch records in the current entry of the object iterator.
 			rc = oi_iter_aggregate(ih, agg_param->ap_discard_obj);
 			break;
 		case VOS_ITER_DKEY:
@@ -2416,6 +2418,7 @@ vos_aggregate_post_cb(daos_handle_t ih, vos_iter_entry_t *entry,
 			}
 			agg_param->ap_trace_start = 0;
 			agg_param->ap_trace_count = 0;
+			//  Aggregate the creation/punch records in the current entry of the key iterator. 
 			rc = vos_obj_iter_aggregate(ih, agg_param->ap_discard_obj);
 			break;
 		case VOS_ITER_SINGLE:
@@ -2453,16 +2456,16 @@ vos_aggregate_post_cb(daos_handle_t ih, vos_iter_entry_t *entry,
 
 			rc = 0;
 			switch (type) {
-			default:
-				D_ASSERTF(type == VOS_ITER_OBJ,
-					  "Invalid iter type\n");
-				break;
-			case VOS_ITER_AKEY:
-				agg_param->ap_skip_dkey = true;
-				/* fall through */
-			case VOS_ITER_DKEY:
-				agg_param->ap_skip_obj = true;
-				/* fall through */
+				default:
+					D_ASSERTF(type == VOS_ITER_OBJ,
+						  "Invalid iter type\n");
+					break;
+				case VOS_ITER_AKEY:
+					agg_param->ap_skip_dkey = true;
+					/* fall through */
+				case VOS_ITER_DKEY:
+					agg_param->ap_skip_obj = true;
+					/* fall through */
 			}
 
 			if (vam && vam->vam_uncommitted)

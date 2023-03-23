@@ -1013,6 +1013,9 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 	return rc;
 }
 
+// key-ilog: 将obj、dkey、akey的ilog的根节点作为record写入dae->dae_records或dae->dae_base.dae_rec_inline
+
+
 static int
 vos_dtx_append(struct dtx_handle *dth, 
                      umem_off_t record, /* ilog的根节点作为record传入, obj、dkey、akey */
@@ -1141,7 +1144,7 @@ vos_dtx_check_availability(daos_handle_t coh,
     // 然后找到key为epoch的dae
 	found = lrua_lookupx(cont->vc_dtx_array, entry - DTX_LID_RESERVED, epoch, &dae);
 	if (!found) {
-		// 数组中没有，表示是干净的
+		// 数组中没有，表示是干净的， 说明已经从cont的active-tree上删除了
 		D_DEBUG(DB_TRACE, "Entry %d "DF_U64" not in lru array, it must be committed\n", entry, epoch);
 		return ALB_AVAILABLE_CLEAN;
 	}
@@ -1200,6 +1203,7 @@ vos_dtx_check_availability(daos_handle_t coh,
 	if (DAOS_FAIL_CHECK(DAOS_DTX_MISS_COMMIT) || DAOS_FAIL_CHECK(DAOS_DTX_MISS_ABORT))
 		return ALB_UNAVAILABLE;
 
+    // 当前节点不是dae的leader
 	if (dth != NULL && !(DAE_FLAGS(dae) & DTE_LEADER)) {
 		struct dtx_share_peer	*dsp;
 
@@ -1213,6 +1217,7 @@ vos_dtx_check_availability(daos_handle_t coh,
 				return ALB_UNAVAILABLE;
 		}
 
+        // 非dtx_leader发送dtx_refresh消息后在本地存储的还未提交的事务
 		d_list_for_each_entry(dsp, &dth->dth_share_act_list, dsp_link) {
 			if (memcmp(&dsp->dsp_xid, &DAE_XID(dae), sizeof(struct dtx_id)) == 0) {
 				if (!dtx_is_valid_handle(dth) || intent == DAOS_INTENT_IGNORE_NONCOMMITTED)
@@ -1292,6 +1297,7 @@ vos_dtx_check_availability(daos_handle_t coh,
 			 */
 			return ALB_UNAVAILABLE;
 
+        // intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH用
 		return dtx_inprogress(dae, dth, false, retry, 3);
 	}
 

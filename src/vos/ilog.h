@@ -23,6 +23,8 @@ struct ilog_id {
 			// idx: lrua_allocx(cont->vc_dtx_array, &idx, dth->dth_epoch, &dae)
 			// 通常应该是在ilog_log_add->vos_dtx_register_record中vos_dtx_append成功后赋值的
 			// 还有3个保留字段：commit,abort,reserve
+			// DAE_LID(dae)是在事务开始的时候在vos_dtx_attach中分配的
+			// vos_dtx_append成功后将DAE_LID(dae)赋值给id->id_tx_id
 			uint32_t	 id_tx_id;
 			
 			uint16_t	 id_punch_minor_eph;
@@ -127,14 +129,17 @@ ilog_destroy(struct umem_instance *umm, struct ilog_desc_cbs *cbs,
  *  and the currently executing transaction.  If a visible creation entry
  *  exists, nothing will be logged and the function will succeed.
  *
- *  \param	loh[in]		Open log handle
- *  \param	epr[in]		Limiting range
- *  \param	major_eph[in]	Major epoch of update
- *  \param	minor_eph[in]	Minor epoch of update
- *  \param	punch[in]	Punch if true, update otherwise
+ *  记录和更新(由epoch和当前正在执行的事务)ilog中的1个entry
+ *
+ *  \param	loh[in]		    Open log handle
+ *  \param	epr[in]		    Limiting range
+ *  \param	major_eph[in]	Major epoch(主要的) of update
+ *  \param	minor_eph[in]	Minor epoch(次要的) of update
+ *  \param	punch[in]	    Punch if true, update otherwise
  *
  *  \return 0 on success, error code on failure
  */
+
 int
 ilog_update(daos_handle_t loh, const daos_epoch_range_t *epr,
 	    daos_epoch_t major_eph, uint16_t minor_eph, bool punch);

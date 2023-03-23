@@ -125,6 +125,7 @@ tree_is_empty(struct vos_object *obj, umem_off_t *known_key, daos_handle_t toh,
 	kinfo.ki_obj = obj;
 	kinfo.ki_known_key = known_key;
 
+ 
 	if (*known_key == UMOFF_NULL)
 		goto tail;
 
@@ -240,13 +241,13 @@ key_punch(struct vos_object *obj, daos_epoch_t epoch, daos_epoch_t bound,
 	  uint32_t pm_ver, daos_key_t *dkey, unsigned int akey_nr,
 	  daos_key_t *akeys, uint64_t flags, struct vos_ts_set *ts_set)
 {
-	struct vos_krec_df	*krec;
+	struct vos_krec_df	    *krec;
 	struct vos_rec_bundle	 rbund;
 	struct dcs_csum_info	 csum;
 	struct key_ilog_info	*info;
-	daos_epoch_range_t	 epr = {0, epoch};
-	d_iov_t			 riov;
-	daos_handle_t		 toh = DAOS_HDL_INVAL;
+	daos_epoch_range_t	     epr = {0, epoch};
+	d_iov_t			         riov;
+	daos_handle_t		     toh = DAOS_HDL_INVAL;
 	int			 i;
 	int			 rc;
 
@@ -262,7 +263,7 @@ key_punch(struct vos_object *obj, daos_epoch_t epoch, daos_epoch_t bound,
 		D_GOTO(out, rc);
 
 	rc = vos_ilog_punch(obj->obj_cont, &obj->obj_df->vo_ilog, &epr, bound,
-			    NULL, &info->ki_obj, ts_set, false, false);
+			    NULL, &info->ki_obj, ts_set, false /*not leaf*/, false);
 	if (rc)
 		D_GOTO(out, rc);
 
@@ -279,8 +280,7 @@ key_punch(struct vos_object *obj, daos_epoch_t epoch, daos_epoch_t bound,
 			      dkey, SUBTR_CREATE, DAOS_INTENT_PUNCH,
 			      &krec, &toh, ts_set);
 	if (rc) {
-		D_ERROR("Error preparing dkey: rc="DF_RC"\n",
-			DP_RC(rc));
+		D_ERROR("Error preparing dkey: rc="DF_RC"\n", DP_RC(rc));
 		D_GOTO(out, rc);
 	}
 
@@ -299,19 +299,17 @@ key_punch(struct vos_object *obj, daos_epoch_t epoch, daos_epoch_t bound,
 	for (i = 0; i < akey_nr; i++) {
 		rbund.rb_iov = &akeys[i];
 		rc = key_tree_punch(obj, toh, epoch, bound, &akeys[i], &riov,
-				    flags, ts_set, &krec->kr_known_akey, &info->ki_dkey,
-				    &info->ki_akey);
+				            flags, ts_set, &krec->kr_known_akey, 
+				            &info->ki_dkey, &info->ki_akey);
 		if (rc != 0) {
-			VOS_TX_LOG_FAIL(rc, "Failed to punch akey: rc="
-					DF_RC"\n", DP_RC(rc));
+			VOS_TX_LOG_FAIL(rc, "Failed to punch akey: rc="DF_RC"\n", DP_RC(rc));
 			break;
 		}
 	}
 
 	if (rc == 0 && (flags & VOS_OF_REPLAY_PC) == 0) {
 		/** Check if we need to propagate the punch */
-		rc = vos_propagate_check(obj, &krec->kr_known_akey, toh, ts_set, &epr,
-					 VOS_ITER_AKEY);
+		rc = vos_propagate_check(obj, &krec->kr_known_akey, toh, ts_set, &epr, VOS_ITER_AKEY);
 	}
 
 	if (rc != 1) {
@@ -2164,6 +2162,7 @@ vos_obj_iter_aggregate(daos_handle_t ih, bool range_discard)
 	if (rc != 0)
 		goto exit;
 
+   // Aggregate (or discard) the incarnation log in the specified range
 	rc = vos_ilog_aggregate(vos_cont2hdl(obj->obj_cont), &krec->kr_ilog,
 				&oiter->it_epr, iter->it_for_discard, false,
 				&oiter->it_punched, &oiter->it_ilog_info);

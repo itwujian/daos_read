@@ -926,8 +926,7 @@ akey_fetch_recx(daos_handle_t toh, const daos_epoch_range_t *epr,
 	filter.fr_epr.epr_lo = epr->epr_lo;
 	filter.fr_epr.epr_hi = ioc->ic_bound;
 	filter.fr_punch_epc = ioc->ic_akey_info.ii_prior_punch.pr_epc;
-	filter.fr_punch_minor_epc =
-		ioc->ic_akey_info.ii_prior_punch.pr_minor_epc;
+	filter.fr_punch_minor_epc = ioc->ic_akey_info.ii_prior_punch.pr_minor_epc;
 	evt_ent_array_init(ioc->ic_ent_array, 0);
 
 	rc = evt_find(toh, &filter, ioc->ic_ent_array);
@@ -1788,9 +1787,12 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh,
 	}
 
     // 更新akey中的ilog信息，并且带回ioc->ic_akey_info
-	rc = vos_ilog_update(ioc->ic_cont, &krec->kr_ilog, &ioc->ic_epr,
-			             ioc->ic_bound, &ioc->ic_dkey_info,
-			             &ioc->ic_akey_info, 
+	rc = vos_ilog_update(ioc->ic_cont, 
+	                     &krec->kr_ilog,       // 在akey树上找到的akey的record里面对应的ilog树的树根
+	                     &ioc->ic_epr,
+			             ioc->ic_bound, 
+			             &ioc->ic_dkey_info,   //  dkey ilog info作为parent传给akey
+			             &ioc->ic_akey_info,   //  带出的akey ilog info
 			             update_cond, ioc->ic_ts_set);
 	
 	if (update_cond == VOS_ILOG_COND_UPDATE && rc == -DER_NONEXIST) {
@@ -1878,7 +1880,7 @@ dkey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_key_t *dkey,
 	
     // 在obj上挂的dkey树上查找这个dkey, 找到里面的record(vos_krec_df), 
     // 并且同时打开里面的akey树，返回akey句柄
-	rc = key_tree_prepare(obj, obj->obj_toh, VOS_BTR_DKEY, dkey, SUBTR_CREATE, 
+	rc = key_tree_prepare(obj, obj->obj_toh/*dkey树的句柄*/, VOS_BTR_DKEY, dkey, SUBTR_CREATE, 
 	                      DAOS_INTENT_UPDATE, &krec/*out*/, &ak_toh/*out*/, 
 	                      ioc->ic_ts_set);
 	if (rc != 0) {
@@ -1896,12 +1898,13 @@ dkey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_key_t *dkey,
 	}
 
     // 更新dkey中记录的ilog信息后填充到ic_dkey_info中，
-	rc = vos_ilog_update(ioc->ic_cont, &krec->kr_ilog, // ilog root
-	                    &ioc->ic_epr,                  // Range of update
-			            ioc->ic_bound,                 // Epoch uncertainty bound
-			            &obj->obj_ilog_info,           // parent ilog info 
-			            &ioc->ic_dkey_info,            // OUT：ilog info
-			            update_cond, ioc->ic_ts_set);
+	rc = vos_ilog_update(ioc->ic_cont, 
+	                     &krec->kr_ilog,                // 在dkey树上找到的dkey的那个record里面存放的ilog树的树根 
+	                     &ioc->ic_epr,                  
+			             ioc->ic_bound,                 
+			             &obj->obj_ilog_info,           // parent ilog info 
+			             &ioc->ic_dkey_info,            // 带出的dkey的ilog_info, 作为parent传给akey update使用
+			             update_cond, ioc->ic_ts_set);
 	
 	if (update_cond == VOS_ILOG_COND_UPDATE && rc == -DER_NONEXIST) {
 		D_DEBUG(DB_IO, "Conditional update on non-existent akey\n");

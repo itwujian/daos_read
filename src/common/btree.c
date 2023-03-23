@@ -659,8 +659,7 @@ btr_rec_copy_hkey(struct btr_context *tcx, struct btr_record *dst_rec,
 static inline uint32_t
 btr_node_size(struct btr_context *tcx)
 {
-	return sizeof(struct btr_node) +
-		tcx->tc_tins.ti_root->tr_node_size * btr_rec_size(tcx);
+	return sizeof(struct btr_node) + tcx->tc_tins.ti_root->tr_node_size * btr_rec_size(tcx);
 }
 
 static int
@@ -1544,6 +1543,7 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc, uint32_t intent
 		next_level = true;
 		level++;
 	}
+	
 	/* leaf node */
 	D_ASSERT(cmp != BTR_CMP_UNKNOWN);
 	D_ASSERT(level == tcx->tc_depth - 1);
@@ -1731,6 +1731,7 @@ btr_probe_next(struct btr_context *tcx)
 	trace = &tcx->tc_trace[tcx->tc_depth - 1];
 
 	btr_trace_debug(tcx, trace, "Probe the next\n");
+	
 	while (1) {
 		bool leaf;
 
@@ -3774,11 +3775,11 @@ dbtree_iter_finish(daos_handle_t ih)
  * \param opc	[IN]	Probe opcode, see dbtree_probe_opc_t for the details.
  * \param intent [IN]	The operation intent.
  * \param key	[IN]	The key to probe, it will be ignored if opc is
- *			BTR_PROBE_FIRST or BTR_PROBE_LAST.
+ *			            BTR_PROBE_FIRST or BTR_PROBE_LAST.
  * \param anchor [IN]	the anchor point to probe, it will be ignored if
- *			\a key is provided.
+ *			            \a key is provided.
  * \note		If opc is not BTR_PROBE_FIRST or BTR_PROBE_LAST,
- *			key or anchor is required.
+ *			    key or anchor is required.
  */
 int
 dbtree_iter_probe(daos_handle_t ih, dbtree_probe_opc_t opc, uint32_t intent,
@@ -3950,10 +3951,8 @@ dbtree_iter_fetch(daos_handle_t ih, d_iov_t *key,
 	if (btr_is_direct_key(tcx)) {
 		btr_key_encode(tcx, key, anchor);
 		anchor->da_type = DAOS_ANCHOR_TYPE_KEY;
-
 	} else {
-		btr_hkey_copy(tcx, (char *)&anchor->da_buf[0],
-			      &rec->rec_hkey[0]);
+		btr_hkey_copy(tcx, (char *)&anchor->da_buf[0], &rec->rec_hkey[0]);
 		anchor->da_type = DAOS_ANCHOR_TYPE_HKEY;
 	}
 
@@ -4080,8 +4079,7 @@ dbtree_iterate(daos_handle_t toh, uint32_t intent, bool backward,
 		D_GOTO(out, rc);
 	}
 
-	rc = dbtree_iter_probe(ih, backward ? BTR_PROBE_LAST : BTR_PROBE_FIRST,
-			       intent, NULL /* key */, NULL /* anchor */);
+	rc = dbtree_iter_probe(ih, backward ? BTR_PROBE_LAST : BTR_PROBE_FIRST, intent, NULL /* key */, NULL /* anchor */);
 	if (rc == -DER_NONEXIST) {
 		D_GOTO(out_iter, rc = 0);
 	} else if (rc != 0) {

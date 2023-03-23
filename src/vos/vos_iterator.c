@@ -400,7 +400,7 @@ vos_iter_fetch(daos_handle_t ih, vos_iter_entry_t *it_entry,
 	old = vos_dth_get();
 	vos_dth_set(iter->it_dth);
 
-	//obj:
+	//obj: oi_iter_fetch
 	rc = iter->it_ops->iop_fetch(iter, it_entry, anchor);
 	vos_dth_set(old);
 
@@ -634,6 +634,7 @@ advance_stage(vos_iter_type_t type, unsigned int acts, vos_iter_param_t *param,
 		D_GOTO(out, rc = ITER_PROBE);
 	}
 
+    // 大部分场景：无需聚合或则有聚合触发了删除
 	if (acts & (VOS_ITER_CB_SKIP | VOS_ITER_CB_DELETE)) {
 		*probe_flags = VOS_ITER_PROBE_NEXT;
 		*stage = VOS_ITER_STAGE_FILTER;
@@ -784,6 +785,7 @@ probe:
 
 		if (pre_cb && stage == VOS_ITER_STAGE_PRE) {
 			acts = 0;
+			// vos_aggregate_pre_cb
 			rc = vos_iter_cb(pre_cb, ih, &iter_ent, type, param, arg, &acts);
 			if (rc != 0)
 				break;
@@ -816,7 +818,7 @@ probe:
 					goto out;
 			}
 
-
+            // 开始迭代obj下面的dkey, dkey下面的akey, akey下面的sv/ev-tree
 			rc = vos_iterate(&child_param, iter_ent.ie_child_type, recursive, anchors, pre_cb, post_cb, arg, dth);
 			if (rc != 0)
 				D_GOTO(out, rc);
@@ -832,6 +834,7 @@ probe:
 
 		D_ASSERT(stage == VOS_ITER_STAGE_POST);
 
+        // vos_aggregate_post_cb
 		if (post_cb) {
 			acts = 0;
 			rc = vos_iter_cb(post_cb, ih, &iter_ent, type, param, arg, &acts);
@@ -845,6 +848,7 @@ probe:
 			rc = advance_stage(type, acts, param, anchors, anchor, &stage, VOS_ITER_STAGE_FILTER, &probe_flags);
 			JUMP_TO_STAGE(rc, next, probe, out);
 		}
+		
 next:
 		stage = VOS_ITER_STAGE_FILTER;
 		rc = vos_iter_next(ih, anchor);

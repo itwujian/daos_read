@@ -64,9 +64,14 @@ struct ilog_array_cache {
 };
 
 struct ilog_root {
+	// 注意这个联合体
+	// ilog_id->id_epoch赋了非0值，即相当于ilog_tree->it_embedded值为非0
+	// ilog_id->id_tx_id赋了非0值，即相当于ilog_tree->it_root值为非0
 	union {
 		struct ilog_id		lr_id;
-		struct ilog_tree	lr_tree;
+		struct ilog_tree	lr_tree; // 这个鸟东西的作用就只是来判断当前ilog里面entry的类型
+		                             // ilog_tree->it_embedded = 1,  表示ilog中就只有1个entry
+		                             // ilog_tree->it_embedded = 0,  表示ilog中有多个entry,但同时ilog_tree->it_root !=0
 	};
 	uint32_t			lr_ts_idx; // 作用是啥和timeset有关
 	uint32_t			lr_magic;
@@ -141,6 +146,8 @@ ilog_log_add(struct ilog_context *lctx, struct ilog_id *id)
 	if (!cbs->dc_log_add_cb)
 		return 0;
 
+    //  vos_ilog_add
+    // vos_dtx_append成功后将DAE_LID(dae)赋值给id->id_tx_id
 	rc = cbs->dc_log_add_cb(&lctx->ic_umm, lctx->ic_root_off, &id->id_tx_id,
 				id->id_epoch, cbs->dc_log_add_args);
 	if (rc != 0) {
@@ -440,12 +447,14 @@ ilog_log2cache(struct ilog_context *lctx, struct ilog_array_cache *cache)
 		cache->ac_array = NULL;
 		cache->ac_nr = 0;
 	} else if (!lctx->ic_root->lr_tree.it_embedded) {
+		// ilog树根上挂着的ilog_entries数组信息
 		array = umem_off2ptr(&lctx->ic_umm, lctx->ic_root->lr_tree.it_root);
 		cache->ac_array = array;
-		cache->ac_entries = &array->ia_id[0];
+		cache->ac_entries = &array->ia_id[0];       // log_id_array
 		cache->ac_nr = array->ia_len;
 	} else {
-		cache->ac_entries = &lctx->ic_root->lr_id;
+		// ilog树根上只挂着1个ilog_entrie的信息
+		cache->ac_entries = &lctx->ic_root->lr_id;  // log_id
 		cache->ac_nr = 1;
 		cache->ac_array = NULL;
 	}
@@ -527,6 +536,8 @@ ilog_root_migrate(struct ilog_context *lctx, const struct ilog_id *id_in)
 		return rc;
 	}
 
+    // 当添加第二个的时候，就要在内存盘上为ilog_root->ilog_tree->it_root分配地址
+    // 分配的地址用来存放ilog中的entry数组
 	tree_root = umem_zalloc(&lctx->ic_umm, ILOG_ARRAY_CHUNK_SIZE);
 
 	if (tree_root == UMOFF_NULL)
@@ -743,11 +754,11 @@ ilog_tree_modify(struct ilog_context *lctx, const struct ilog_id *id_in,
 	daos_epoch_t		 epoch = id_in->id_epoch;
 	struct ilog_id		 id = *id_in;
 	struct ilog_id		*id_out;
-	bool			 is_equal;
-	int			     visibility = ILOG_COMMITTED;
-	uint32_t		 new_len;
-	size_t			 new_size;
-	umem_off_t		 new_array;
+	bool			     is_equal;
+	int			         visibility = ILOG_COMMITTED;
+	uint32_t		     new_len;
+	size_t			     new_size;
+	umem_off_t		     new_array;
 	struct ilog_array	*array;
 	struct ilog_array_cache	 cache;
 	int			 rc = 0;
@@ -757,6 +768,7 @@ ilog_tree_modify(struct ilog_context *lctx, const struct ilog_id *id_in,
 
 	ilog_log2cache(lctx, &cache);
 
+    // ilog中的entry数组是按照id_epoch由小到大排列的，这个地方倒着比较，找到最大的小于epoch的entry
 	for (i = cache.ac_nr - 1; i >= 0; i--) {
 		if (cache.ac_entries[i].id_epoch <= epoch)
 			break;
@@ -782,6 +794,7 @@ ilog_tree_modify(struct ilog_context *lctx, const struct ilog_id *id_in,
 			return visibility;
 	}
 
+    // id_out和id_in的epoch不相同， rc返回0
 	rc = update_inplace(lctx, id_out, id_in, opc, &is_equal);
 	if (rc != 0)
 		return rc;
@@ -797,17 +810,17 @@ ilog_tree_modify(struct ilog_context *lctx, const struct ilog_id *id_in,
 		return 0;
 	}
 
-	if (id_in->id_punch_minor_eph == 0 && visibility != ILOG_UNCOMMITTED &&
-	    id_out->id_update_minor_eph > id_out->id_punch_minor_eph)
+	if (id_in->id_punch_minor_eph == 0 && visibility != ILOG_UNCOMMITTED && id_out->id_update_minor_eph > id_out->id_punch_minor_eph)
 		return 0;
 	
-insert:
+insert:  // 插入1条新的ilog
 	rc = ilog_tx_begin(lctx);
 	if (rc != 0)
 		return rc;
 
 	id.id_value = id_in->id_value;
 	id.id_epoch = id_in->id_epoch;
+	// vos_ilog_add
 	rc = ilog_log_add(lctx, &id);
 	if (rc != 0)
 		return rc;
@@ -830,14 +843,12 @@ insert:
 		array->ia_max_len = new_len;
 		if (i != 0) {
 			/* Copy the entries before i */
-			memcpy(&array->ia_id[0], &cache.ac_array->ia_id[0],
-			       sizeof(array->ia_id[0]) * i);
+			memcpy(&array->ia_id[0], &cache.ac_array->ia_id[0], sizeof(array->ia_id[0]) * i);
 		}
 
 		if (i != cache.ac_nr) {
 			/* Copy the entries after i */
-			memcpy(&array->ia_id[i + 1], &cache.ac_array->ia_id[i],
-			       sizeof(array->ia_id[0]) * (cache.ac_nr - i));
+			memcpy(&array->ia_id[i + 1], &cache.ac_array->ia_id[i], sizeof(array->ia_id[0]) * (cache.ac_nr - i));
 		}
 
 		array->ia_id[i].id_value = id.id_value;
@@ -905,6 +916,9 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in, const daos_epoch_ran
 		}
 	}
 
+// 这个函数进来之后id_in->id_epoch一定是赋了非0值的
+
+
 	if (ilog_empty(root)) {
 		// ilog树为空树，一定是插入/更新UPDATE操作
 		if (opc != ILOG_OP_UPDATE) {
@@ -916,16 +930,22 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in, const daos_epoch_ran
 		
 		tmp.lr_magic = ilog_ver_inc(lctx);
 		tmp.lr_ts_idx = root->lr_ts_idx; 
+		// 这个地方赋值之后ilog_tree->it_embedded就会改为非0
 		tmp.lr_id = *id_in;
 		D_ASSERTF(id_in->id_epoch != 0, "epoch "DF_U64" opc %d\n", id_in->id_epoch, opc);
 		// 会增加ilog的版本号，将tmp中的信息拷贝置rooot中
+		// 将tmp的值赋值给root后，那么root->ilog_tree->it_embedded就会!=0
+		// 那么这个root再次添加的时候就会走下面的分支
 		rc = ilog_ptr_set(lctx, root, &tmp);
 		if (rc == 0)
 			// 拷贝成功调用：vos_ilog_add和事务关联
+			// 将ilog的根节点拷贝至dae->record中
+			// 返回的这个ilog根节点中存储着DAE_LID(dae)(ilog_root->ilog_id->id_tx_id)
+			// 这是ilog中添加第一个entry
 			rc = ilog_log_add(lctx, &root->lr_id);
 	}
 	
-	else if (root->lr_tree.it_embedded) {
+	else if (root->lr_tree.it_embedded) { //添加第二个的时候一定会走进这个分支
 		bool	is_equal;
 
 		rc = update_inplace(lctx, &root->lr_id, id_in, opc, &is_equal);
@@ -956,6 +976,8 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in, const daos_epoch_ran
 		/* Either this entry is earlier or prior entry is uncommitted
 		 * or either entry is a punch
 		 */
+		// 如果确定要添加这个entry,在ilog_root_migrate函数里面root->ilog_tree->it_embedded就会重置为0
+		// 这样当添加第三个entry时就不会进入这个if分支，而是走下面的else分支
 		rc = ilog_root_migrate(lctx, id_in);
 	} 
 
@@ -981,11 +1003,12 @@ done:
 	return rc;
 }
 
-//  vos_hold_obj\dkey_update\akey_update
+//  vos_hold_obj\dkey_update\akey_update\vos_ilog_punch
 int
 ilog_update(daos_handle_t loh, const daos_epoch_range_t *epr, daos_epoch_t major_eph, uint16_t minor_eph, bool punch)
 {
 	daos_epoch_range_t	 range = {0, DAOS_EPOCH_MAX};
+	
 	struct ilog_id		 id = {
 		.id_tx_id = 0,
 		.id_epoch = major_eph,
@@ -1003,7 +1026,8 @@ ilog_update(daos_handle_t loh, const daos_epoch_range_t *epr, daos_epoch_t major
 
 	if (epr)
 		range = *epr;
-    
+
+	// 里面会调用ilog_log_add
 	return ilog_modify(loh, &id, &range, ILOG_OP_UPDATE);
 }
 
@@ -1231,6 +1255,11 @@ ilog_fetch(struct umem_instance *umm, struct ilog_df *root_df,
 
 // 没有缓存命中，前后两次ilog的根节点发生变化或者ilog的根节点记录的ilog版本号发生变化(ilog_root_migrate或者ilog_tx_begin均会触发变化)
 
+
+// 1. 从obj/dkey/akey挂着的ilog的根节点ilog_root->lr_tree.it_root(非embed场景)找到里面的ilog_array数组信息
+// 2. 数组信息挂到entries->ie_ids上面，分配entries->ie_info空间
+// 3. 遍历ilog_array中的每个log_entry,调用vos_ilog_status_get，填入entries->ie_info
+
 	// ilog_fetch_cached返回false, ip_lctx为新填的初始化的
 	lctx = &priv->ip_lctx;
 	if (ilog_empty(root))
@@ -1242,14 +1271,15 @@ ilog_fetch(struct umem_instance *umm, struct ilog_df *root_df,
 	if (rc != 0)
 		goto fail;
 
-    // 遍历每个log entry, 通过事务的状态，获取ilog entry的状态，更新到vos_ilog_info中的ilog_entries
+    // 遍历ilog中的每个entry, 通过事务的状态，获取ilog entry的状态，更新到vos_ilog_info中的ilog_entries
 	for (i = 0; i < cache.ac_nr; i++) {
 		id = &cache.ac_entries[i];
 		// 拿着log entry中的ilog_id, 以id_tx_id为索引在cont的dtx_array中找到对应的array
 		// 然后以ilog_id中的id_epoch为key，找到对应的dae(事务)
 		// 在tls的线程变量中获取当前线程的事务，vos_dtx_check_availability函数计算出
 		// 这个log entry的ilog状态(ILOG_COMMITTED,ILOG_UNCOMMITTED,ILOG_ABORT)
-		status = ilog_status_get(lctx, id, intent, (intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH) ? false : true);
+		// vos_ilog_status_get
+		status = ilog_status_get(lctx, id/*log_id*/, intent, (intent == DAOS_INTENT_UPDATE || intent == DAOS_INTENT_PUNCH) ? false : true);
 		if (status < 0 && status != -DER_INPROGRESS)
 			D_GOTO(fail, rc = status);
 		entries->ie_info[entries->ie_num_entries].ii_removed = 0;
@@ -1482,8 +1512,7 @@ collapse_tree(struct ilog_context *lctx, struct ilog_array_cache *cache,
 		D_ASSERT(0);
 	}
 
-	rc = umem_tx_add_ptr(&lctx->ic_umm, array,
-			     sizeof(*array) + sizeof(array->ia_id[0]) * (cache->ac_nr - removed));
+	rc = umem_tx_add_ptr(&lctx->ic_umm, array, sizeof(*array) + sizeof(array->ia_id[0]) * (cache->ac_nr - removed));
 	if (rc != 0)
 		return rc;
 

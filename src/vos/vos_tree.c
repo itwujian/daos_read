@@ -981,7 +981,7 @@ key_tree_prepare(struct vos_object *obj,
 
 	D_DEBUG(DB_TRACE, "prepare tree, flags=%x, tclass=%d\n", flags, tclass);
 
-	// dkey只能带着flag为0下发，否则报错
+	// dkey不能带着flag为SUBTR_EVT下发，报错
 	if (tclass != VOS_BTR_AKEY && (flags & SUBTR_EVT))
 		D_GOTO(out, rc = -DER_INVAL);
 
@@ -1172,12 +1172,14 @@ key_tree_punch(struct vos_object *obj, daos_handle_t toh, daos_epoch_t epoch,
 	}
 
 	rc = vos_ilog_punch(obj->obj_cont, ilog, &epr, bound, parent,
-			    info, ts_set, true,
+			    info, ts_set, true /* is leaf */,
 			    (flags & VOS_OF_REPLAY_PC) != 0);
 
 	if (rc != 0)
 		goto done;
 
+    // 在tree_is_empty函数执行之前该分支不会进入
+    // known_key是在第一次迭代判断树是否为空的时候赋值的
 	if (*known_key == umem_ptr2off(vos_obj2umm(obj), krec)) {
 		/** Set the value to UMOFF_NULL so punch propagation will run full check */
 		rc = umem_tx_add_ptr(vos_obj2umm(obj), known_key, sizeof(*known_key));

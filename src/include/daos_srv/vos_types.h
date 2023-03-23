@@ -363,9 +363,9 @@ typedef struct {
 		/** The key for the entry */
 		d_iov_t		 id_key;
 	};
-	/** Conservative approximation of last aggregatable write for object or key. */
+	/** Conservative approximation(保守的近似) of last aggregatable write(最后1次聚合写) for object or key. */
 	daos_epoch_t		 id_agg_write;
-	/** Timestamp of latest parent punch, if applicable.  Zero if there is no punch */
+	/** Timestamp of latest parent punch(最近1次父亲节点punch的时间戳), if applicable.  Zero if there is no punch */
 	daos_epoch_t		 id_parent_punch;
 	/** Type of entry */
 	vos_iter_type_t		 id_type;
@@ -554,7 +554,7 @@ struct vos_iter_anchors {
 	daos_anchor_t	ia_ev;
 	/** Triggers for re-probe */
 	unsigned int	ia_reprobe_co:1,
-			ia_reprobe_obj:1,
+			ia_reprobe_obj:1,  // 有过切出或者聚合触发的删除obj
 			ia_reprobe_dkey:1,
 			ia_reprobe_akey:1,
 			ia_reprobe_sv:1,

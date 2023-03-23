@@ -294,14 +294,13 @@ vos_oi_punch(struct vos_container *cont, daos_unit_oid_t oid,
 		DP_UOID(oid), epoch);
 
 	rc = vos_ilog_punch(cont, &obj->vo_ilog, &epr, bound, NULL,
-			    info, ts_set, true,
+			    info, ts_set, true /* is leaf */,
 			    (flags & VOS_OF_REPLAY_PC) != 0);
 
 	if (rc == 0 && vos_ts_set_check_conflict(ts_set, epoch))
 		rc = -DER_TX_RESTART;
 
-	VOS_TX_LOG_FAIL(rc, "Failed to update incarnation log entry: "DF_RC"\n",
-			DP_RC(rc));
+	VOS_TX_LOG_FAIL(rc, "Failed to update incarnation log entry: "DF_RC"\n", DP_RC(rc));
 
 	return rc;
 }
@@ -473,7 +472,7 @@ oi_iter_prep(vos_iter_type_t type, vos_iter_param_t *param,
 	vos_cont_addref(cont);
 
 	oiter->oit_iter.it_filter_cb = param->ip_filter_cb;
-	oiter->oit_iter.it_filter_arg = param->ip_filter_arg;
+	oiter->oit_iter.it_filter_arg = param->ip_filter_arg;  //首次使用的是参数带的vos_agg: epr->epr_lo
 	oiter->oit_flags = param->ip_flags;
 	
 	if (param->ip_flags & VOS_IT_FOR_PURGE)
@@ -502,6 +501,11 @@ exit:
  * returns immediately on true, otherwise it will move the iterator cursor
  * to the object matching the condition.
  */
+
+// 找到当前搜索路径的value(vos_obj_df),  取出其中的obj
+// 判断当前是否满足agg的条件:need_agg, 满足后检查obj下面的ilog是否被punch了
+// 如果被punch了，然后就会触发删除这个obj-index-tree树下的node, 然后触发gc
+		 
 static int
 oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t flags)
 {
@@ -519,7 +523,7 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 		d_iov_t	   iov;
 
         // vos_cont_open的时候这棵树对应的btr_context已经建立
-        // 找到这个搜索路径上的record,并将值取出
+        // 找到这个搜索路径上的record,并将值取出iov->vos_obj_df
 		rc = dbtree_iter_fetch(oiter->oit_hdl, NULL, &iov, anchor);
 		if (rc != 0) {
 			str = "fetch";
@@ -535,6 +539,7 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 			desc.id_oid = obj->vo_id;
 			desc.id_parent_punch = 0;
 
+            // 拿到dkey树的feats，查询得到desc.id_agg_write
 			feats = dbtree_feats_get(&obj->vo_tree);
 
 			if (!vos_feats_agg_time_get(feats, &desc.id_agg_write)) {
@@ -544,6 +549,7 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 				else
 					desc.id_agg_write = obj->vo_max_write;
 			}
+
 			
 			acts = 0;
 			start_seq = vos_sched_seq();
@@ -551,7 +557,7 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 			if (dth != NULL)
 				vos_dth_set(NULL);
 
-			// it_filter_cb：  vos_agg_filter
+			// it_filter_cb：  vos_agg_filter： 检查传入的epoch是否需要聚合，需要聚合的走删除反VOS_ITER_CB_DELETE，无需聚合的走返回VOS_ITER_CB_SKIP
 			rc = iter->it_filter_cb(vos_iter2hdl(iter), &desc, iter->it_filter_arg, &acts);
 			
 			if (dth != NULL)
@@ -563,14 +569,17 @@ oi_iter_match_probe(struct vos_iterator *iter, daos_anchor_t *anchor, uint32_t f
 			// check if an ULT was yielding between these two calls.
 			if (start_seq != vos_sched_seq())
 				acts |= VOS_ITER_CB_YIELD;
-			
+
+			// 会返回
 			if (acts & (VOS_ITER_CB_EXIT | VOS_ITER_CB_ABORT | VOS_ITER_CB_RESTART | VOS_ITER_CB_DELETE | VOS_ITER_CB_YIELD))
 				return acts;
-			
+
+			// 如果跳过 dbtree_iter_next， 当前的trace继续往后找
 			if (acts & VOS_ITER_CB_SKIP)
 				goto next;
 		}
 
+// flags & VOS_ITER_PROBE_AGAIN = 1
 		rc = oi_iter_ilog_check(obj, oiter, NULL, true);
 		if (rc == 0)
 			break;
@@ -745,13 +754,18 @@ oi_iter_check_punch(daos_handle_t ih)
 		return rc;
 	
 	D_ASSERT(rec_iov.iov_len == sizeof(struct vos_obj_df));
-	
+
+	// 取出树上的value: vos_obj_df
 	obj = (struct vos_obj_df *)rec_iov.iov_buf;
+
+	// 取出vos_obj_df中的obj_id
 	oid = obj->vo_id;
 
+    // obj的ilog没有被punch的, oiter->oit_epr: vos_agg带下来的epoch_range, oit_ilog_info带出来的输出参数
 	if (!vos_ilog_is_punched(vos_cont2hdl(oiter->oit_cont), &obj->vo_ilog, &oiter->oit_epr, NULL, &oiter->oit_ilog_info))
 		return 0;
 
+// ilog全部被punch了	
 	/** Ok, ilog is fully punched, so we can move it to gc heap */
 	rc = umem_tx_begin(vos_cont2umm(oiter->oit_cont), NULL);
 	if (rc != 0)
@@ -761,10 +775,12 @@ oi_iter_check_punch(daos_handle_t ih)
 	D_DEBUG(DB_IO, "Moving object "DF_UOID" to gc heap\n", DP_UOID(oid));
 	
 	/* Evict the object from cache */
+	// 删除lru的cont
 	rc = vos_obj_evict_by_oid(vos_obj_cache_current(), oiter->oit_cont, oid);
 	if (rc != 0)
 		D_ERROR("Could not evict object "DF_UOID" "DF_RC"\n", DP_UOID(oid), DP_RC(rc));
-	
+
+	// 删除这条搜索路径上的节点，触发gc
 	rc = dbtree_iter_delete(oiter->oit_hdl, oiter->oit_cont);
 	D_ASSERT(rc != -DER_NONEXIST);
 
@@ -805,13 +821,14 @@ oi_iter_aggregate(daos_handle_t ih, bool range_discard)
 	if (rc != 0)
 		goto exit;
 
+    // Aggregate (or discard) the incarnation log in the specified range
 	rc = vos_ilog_aggregate(vos_cont2hdl(oiter->oit_cont), &obj->vo_ilog,
 				&oiter->oit_epr, iter->it_for_discard, false, NULL,
 				&oiter->oit_ilog_info);
+	
 	if (rc == 1) {
 		/* Incarnation log is empty, delete the object */
-		D_DEBUG(DB_IO, "Removing object "DF_UOID" from tree\n",
-			DP_UOID(oid));
+		D_DEBUG(DB_IO, "Removing object "DF_UOID" from tree\n", DP_UOID(oid));
 		delete = true;
 
 		/* XXX: The dkey tree may be not empty because related prepared transaction can
@@ -819,14 +836,13 @@ oi_iter_aggregate(daos_handle_t ih, bool range_discard)
 		 */
 
 		/* Evict the object from cache */
-		rc = vos_obj_evict_by_oid(vos_obj_cache_current(),
-					  oiter->oit_cont, oid);
+		rc = vos_obj_evict_by_oid(vos_obj_cache_current(), oiter->oit_cont, oid);
 		if (rc != 0)
-			D_ERROR("Could not evict object "DF_UOID" "DF_RC"\n",
-				DP_UOID(oid), DP_RC(rc));
+			D_ERROR("Could not evict object "DF_UOID" "DF_RC"\n", DP_UOID(oid), DP_RC(rc));
 		rc = dbtree_iter_delete(oiter->oit_hdl, NULL);
 		D_ASSERT(rc != -DER_NONEXIST);
-	} else if (rc == -DER_NONEXIST) {
+	} 
+	else if (rc == -DER_NONEXIST) {
 		/** ilog isn't visible in range but still has some entries */
 		invisible = true;
 		rc = 0;

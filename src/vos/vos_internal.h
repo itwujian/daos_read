@@ -544,14 +544,14 @@ vos_dtx_cleanup_internal(struct dtx_handle *dth);
  * \param type		[IN]	The record type, see vos_dtx_record_types.
  * \param retry		[IN]	Whether need to retry if hit non-committed DTX entry.
  *
- * \return	positive value	If available to outside.
- *		zero		If unavailable to outside.
- *		-DER_INPROGRESS If the target record is in some
- *				uncommitted DTX, the caller
- *				needs to retry some time later.
- *				Or the caller is not sure about whether
- *				related DTX is committable or not, need
- *				to check with leader replica.
+ * \return	positive value	   If available to outside.
+ *		    zero		       If unavailable to outside.
+ *		    -DER_INPROGRESS    If the target record is in some
+ *				               uncommitted DTX, the caller
+ *				               needs to retry some time later.
+ *				               Or the caller is not sure about whether
+ *				               related DTX is committable or not, need
+ *				               to check with leader replica.
  *		negative value	For error cases.
  */
 int

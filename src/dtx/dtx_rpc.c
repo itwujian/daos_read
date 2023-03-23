@@ -156,6 +156,7 @@ dtx_req_cb(const struct crt_cb_info *cb_info)
 
 		switch (*ret) {
 			case DTX_ST_PREPARED:
+				// dtx_refresh消息从别的节点查询回来，有节点还没有prepared,则挂链
 				/* Not committable yet. */
 				if (dra->dra_act_list != NULL)
 					d_list_add_tail(&dsp->dsp_link, dra->dra_act_list);
@@ -959,19 +960,19 @@ dtx_refresh_internal(struct ds_cont_child *cont, int *check_count,
 		     d_list_t *check_list, d_list_t *cmt_list,
 		     d_list_t *abt_list, d_list_t *act_list, bool failout)
 {
-	struct ds_pool		*pool = cont->sc_pool->spc_pool;
-	struct pool_target	*target;
+	struct ds_pool		    *pool = cont->sc_pool->spc_pool;
+	struct pool_target	    *target;
 	struct dtx_share_peer	*dsp;
 	struct dtx_share_peer	*tmp;
-	struct dtx_req_rec	*drr;
-	struct dtx_req_args	 dra;
+	struct dtx_req_rec	    *drr;
+	struct dtx_req_args	     dra;
 	d_list_t		 head;
 	d_list_t		 self;
 	d_rank_t		 myrank;
 	uint32_t		 flags;
-	int			 len = 0;
-	int			 rc = 0;
-	int			 count;
+	int			     len = 0;
+	int			     rc = 0;
+	int			     count;
 	bool			 drop;
 
 	D_INIT_LIST_HEAD(&head);

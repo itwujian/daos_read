@@ -49,7 +49,7 @@ vos_ilog_is_same_tx(struct umem_instance *umm, uint32_t tx_id,
 		    daos_epoch_t epoch, bool *same, void *args)
 {
 	struct dtx_handle	*dth = vos_dth_get();
-	uint32_t		     dtx = vos_dtx_get();
+	uint32_t		     dtx = vos_dtx_get(); // DAE_LID
 
 	*same = false;
 
@@ -139,7 +139,7 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 
 	D_ASSERT(punch->pr_epc <= epr->epr_hi);
 
-// for循环开始遍历所有的log entry
+// for循环开始遍历ilog所有的entry
 	ilog_foreach_entry_reverse(&info->ii_entries, &entry) {
 		
 		if (entry.ie_status == ILOG_REMOVED)
@@ -150,6 +150,7 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 		/** If a punch epoch is passed in, and it is later than any
 		 * punch in this log, treat it as a prior(之前) punch
 		 */
+		 /** 这里只有punch操作能进来，punch是当前操作的时间戳 */
 		if (vos_ilog_punched(&entry, punch)) {
 			info->ii_prior_punch = *punch;
 			if (vos_epc_punched(any_punch->pr_epc, any_punch->pr_minor_epc, punch))
@@ -159,6 +160,7 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 
 		entry_epc = entry.ie_id.id_epoch;
 		
+		/** ilog中的entry 时间戳大于写入时间，场景：写入后来了个punch，punch先插入了，要么就是同时创建的io？ */
 		if (entry_epc > epr->epr_hi) {
 			info->ii_full_scan = false;
 			if (epr->epr_lo != 0) {
@@ -185,11 +187,13 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 		if (entry.ie_status == -DER_INPROGRESS)
 			return -DER_INPROGRESS;
 
+        /** 记录最晚的一次punch时间，这里的判断只判断有没有小版本，不判断最终是不是punch？*/
 		if (vos_ilog_punch_covered(&entry, &info->ii_prior_any_punch)) {
 			info->ii_prior_any_punch.pr_epc = entry.ie_id.id_epoch;
 			info->ii_prior_any_punch.pr_minor_epc = entry.ie_id.id_punch_minor_eph;
 		}
 
+        /* 记录最晚的一次未提交的且可见的（大于创建时间，没被punch）时间戳 */
 		if (entry.ie_status == ILOG_UNCOMMITTED) {
 			daos_epoch_t	epc   = entry.ie_id.id_epoch;
 			uint16_t	minor_epc = entry.ie_id.id_punch_minor_eph;
@@ -210,6 +214,9 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 
 		D_ASSERTF(entry.ie_status == ILOG_COMMITTED, "entry.ie_status is %d\n", entry.ie_status);
 
+		/** 已经commit了，但是有punch的小版本，记录punch的时间戳和小版本
+		  * 并且当该entry最终不是被punch的，那么即是一条创建记录
+		  *（小版本即：一个dtx下有多个操作，表示操作的顺序） */
 		if (ilog_has_punch(&entry)) {
 			info->ii_prior_punch.pr_epc = entry.ie_id.id_epoch;
 			info->ii_prior_punch.pr_minor_epc = entry.ie_id.id_punch_minor_eph;
@@ -218,9 +225,11 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 			break;
 		}
 
+        /** 没有punch小版本，一定是条创建记录 */
 		info->ii_create = entry.ie_id.id_epoch;
 	}
 // for循环结束
+
 
 	if (epr->epr_lo != 0) {
 		ilog_foreach_entry(&info->ii_entries, &entry) {
@@ -249,18 +258,16 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 }
 
 static int
-vos_ilog_fetch_internal(// vpool上偏移的基地址
-                                 struct umem_instance *umm,  
+vos_ilog_fetch_internal(struct umem_instance *umm,  // vpool上偏移的基地址
                                  daos_handle_t coh, 
-                                 uint32_t intent,
-                                 // ilog root for obj/dkey/akey
-			                     struct ilog_df *ilog,       
+                                 uint32_t intent,            // DAOS_INTENT_PURGE for agg
+			                     struct ilog_df *ilog,       // ilog root for obj/dkey/akey
 			                     const daos_epoch_range_t *epr,
 			                     daos_epoch_t bound,
 			                     // 带下来的punch信息(iter_check和agg使用)
 			                     const struct vos_punch_record *punched, 
 			                     const struct vos_ilog_info *parent,
-			                     // 需要带出来的ilog info信息
+			                     // 需要带出去的ilog info信息
 			                     struct vos_ilog_info *info)
 {
 	struct ilog_desc_cbs	 cbs;
@@ -268,7 +275,8 @@ vos_ilog_fetch_internal(// vpool上偏移的基地址
 	int			 rc;
 
 	vos_ilog_desc_cbs_init(&cbs, coh);
-	
+
+	// 填充ilog信息(vos_ilog_info)的entry数组
 	rc = ilog_fetch(umm, ilog, &cbs, intent, &info->ii_entries);
 	
 	if (rc == -DER_NONEXIST)
@@ -280,6 +288,8 @@ vos_ilog_fetch_internal(// vpool上偏移的基地址
 	}
 
 init:
+
+	// 填充ilog信息(vos_ilog_info)的头部
     // 不管缓存有没有命中info重新构造
 	info->ii_uncommitted = 0;
 	info->ii_create = 0;
@@ -390,6 +400,8 @@ int vos_ilog_update_(struct vos_container *cont, struct ilog_df *ilog,
 	if (parent != NULL) {
 		D_ASSERT(parent->ii_prior_any_punch.pr_epc >= parent->ii_prior_punch.pr_epc);
 
+        // 如果父亲已经punch了，将epr_lo更新为父亲的punch epoch
+        // 比如obj已经punch了，在dkey update的时候将epr_lo更新为obj的punch epoch
 		if (parent->ii_prior_any_punch.pr_epc > max_epr.epr_lo)
 			max_epr.epr_lo = parent->ii_prior_any_punch.pr_epc;
 	}
@@ -402,7 +414,7 @@ int vos_ilog_update_(struct vos_container *cont, struct ilog_df *ilog,
 	// 最重要的是把vos_ilog_info信息带出来，里面涵盖了ilog中entry信息遍历后的结果
 	rc = vos_ilog_fetch(vos_cont2umm(cont), vos_cont2hdl(cont),
 			            DAOS_INTENT_UPDATE, ilog/*ilog root*/, epr->epr_hi, bound,
-			            0/*not punch*/, parent, info);
+			            0/*not punch*/, parent, info/*出参*/);
 	
 	/** For now, if the state isn't settled, just retry with later timestamp. The state
 	 *  should get settled quickly due to commit on share
@@ -411,8 +423,8 @@ int vos_ilog_update_(struct vos_container *cont, struct ilog_df *ilog,
 		D_GOTO(done, rc = -DER_INPROGRESS); // 如果父节点的epoch还没有提交，不允许更新子节点的，返回失败
 	if (rc == -DER_TX_RESTART) // Transaction should restart
 		goto done;
-	if (rc == -DER_NONEXIST)   // The specified entity does not exist,ilog里面1个entry都没有
-		goto update;          // 说明ilog的这棵树还是空树，应该是第一次插入
+	if (rc == -DER_NONEXIST)   // The specified entity does not exist, ilog里面1个entry都没有
+		goto update;          // 说明ilog的这棵树还是空树，应该是第一次插入 or  
 	if (rc != 0)              
 		goto done;
 
@@ -422,7 +434,6 @@ int vos_ilog_update_(struct vos_container *cont, struct ilog_df *ilog,
 		if (cond == VOS_ILOG_COND_INSERT)
 			// 插入操作找到了ilog，反已经     存在
 			D_GOTO(done, rc = -DER_EXIST);
-		// punch、update操作找到了，什么都不做，带着ilog info就回去了
 		goto done;
 	}
 
@@ -477,17 +488,15 @@ vos_ilog_punch_(struct vos_container *cont, struct ilog_df *ilog,
 		struct vos_ilog_info *parent, struct vos_ilog_info *info,
 		struct vos_ts_set *ts_set, bool leaf, bool replay)
 {
-	struct dtx_handle	*dth = vos_dth_get();
-	daos_epoch_range_t	 max_epr = *epr;
+	struct dtx_handle	    *dth = vos_dth_get();
+	daos_epoch_range_t	     max_epr = *epr;
 	struct ilog_desc_cbs	 cbs;
-	daos_handle_t		 loh;
-	int			 rc;
-	uint16_t		 minor_epc = VOS_SUB_OP_MAX;
+	daos_handle_t		     loh;
+	int			             rc;
+	uint16_t		         minor_epc = VOS_SUB_OP_MAX;
 
 	if (parent != NULL) {
-		D_ASSERT(parent->ii_prior_any_punch.pr_epc >=
-			 parent->ii_prior_punch.pr_epc);
-
+		D_ASSERT(parent->ii_prior_any_punch.pr_epc >= parent->ii_prior_punch.pr_epc);
 		if (parent->ii_prior_any_punch.pr_epc > max_epr.epr_lo)
 			max_epr.epr_lo = parent->ii_prior_any_punch.pr_epc;
 	}
@@ -503,8 +512,7 @@ vos_ilog_punch_(struct vos_container *cont, struct ilog_df *ilog,
 	if (rc == -DER_TX_RESTART || info->ii_uncertain_create)
 		return -DER_TX_RESTART;
 
-	if (ts_set == NULL ||
-	    (ts_set->ts_flags & VOS_OF_COND_PUNCH) == 0) {
+	if (ts_set == NULL || (ts_set->ts_flags & VOS_OF_COND_PUNCH) == 0) {
 		if (leaf)
 			goto punch_log;
 		return 0;
@@ -559,8 +567,8 @@ punch_log:
 
 	if (rc == -DER_ALREADY && (dth == NULL || !dth->dth_already)) /* operation had no effect */
 		rc = 0;
-	VOS_TX_LOG_FAIL(rc, "Could not update incarnation log: "DF_RC"\n",
-			DP_RC(rc));
+	
+	VOS_TX_LOG_FAIL(rc, "Could not update incarnation log: "DF_RC"\n", DP_RC(rc));
 
 	return rc;
 }
@@ -603,11 +611,13 @@ vos_ilog_is_punched(daos_handle_t coh, struct ilog_df *ilog, const daos_epoch_ra
 	if (parent_punch)
 		punch_rec = *parent_punch;
 
-	rc = vos_ilog_fetch_internal(umm, coh, DAOS_INTENT_PURGE, ilog, epr, 0, &punch_rec, NULL,
-				     info);
+	rc = vos_ilog_fetch_internal(umm, coh, DAOS_INTENT_PURGE, ilog, epr, 0, &punch_rec, NULL, info);
 
 	if (rc != 0 || !info->ii_full_scan || info->ii_create != 0 || info->ii_uncommitted != 0)
 		return false;
+
+	// is punched
+	// rc == 0 && info->ii_full_scan && info->ii_create == 0 && info->ii_uncommitted == 0
 
 	return true;
 }

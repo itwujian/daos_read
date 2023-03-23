@@ -320,11 +320,12 @@ struct vos_krec_df {
 		struct {
 			/** btree root under the key */
 			struct btr_root			kr_btr; // dkey树里面存的akey树的树根
+			                                // akey树里面村的sv-tree(single-tree)树的根
 			/** Offset of known existing akey */
 			umem_off_t			kr_known_akey;
 		};
 		/** evtree root, which is only used by akey */
-		struct evt_root			kr_evt;
+		struct evt_root			kr_evt;    //  akey树里面村的ev-tree(Extent Version Tree)树的根
 	};
 	/* Checksum and key are stored after tree root */
 };
