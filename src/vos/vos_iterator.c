@@ -885,7 +885,7 @@ vos_iterate_key(struct vos_object *obj, daos_handle_t toh, vos_iter_type_t type,
 		vos_iter_cb_t cb, void *arg, struct dtx_handle *dth, daos_anchor_t *anchor)
 {
 	struct vos_iter_anchors	*anchors = NULL;
-	vos_iter_param_t	 param = {0};
+	vos_iter_param_t	     param   = {0};
 	int			 rc;
 
 	D_ALLOC_PTR(anchors);
@@ -908,8 +908,7 @@ vos_iterate_key(struct vos_object *obj, daos_handle_t toh, vos_iter_type_t type,
 	param.ip_flags = VOS_IT_KEY_TREE;
 	param.ip_dkey.iov_buf = obj;
 
-	rc = vos_iterate_internal(&param, type, false, ignore_inprogress,
-				  anchors, cb, NULL, arg, dth);
+	rc = vos_iterate_internal(&param, type, false, ignore_inprogress, anchors, cb, NULL, arg, dth);
 
 	D_FREE(anchors);
 

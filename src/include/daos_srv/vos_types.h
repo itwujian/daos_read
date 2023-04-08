@@ -392,11 +392,11 @@ typedef struct {
 	/** standalone prepare:	pool connection handle or container open handle
 	 *  nested prepare:	DAOS_HDL_INVAL
 	 */
-	daos_handle_t		ip_hdl;
+	daos_handle_t		ip_hdl; // 迭代开始查询树的句柄
 	/** standalone prepare:	DAOS_HDL_INVAL
 	 *  nested prepare:	parent iterator handle
 	 */
-	daos_handle_t		ip_ih;
+	daos_handle_t		ip_ih;  // 内嵌循环的树句柄
 	/** Optional, object ID for VOS_ITER_DKEY */
 	daos_unit_oid_t		ip_oid;
 	/** distribution key (VOS_ITER_AKEY, standalone only) */

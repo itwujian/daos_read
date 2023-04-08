@@ -42,30 +42,30 @@ erase_md(struct umem_instance *umem, struct vea_space_df *md)
  */
 int
 vea_format(struct umem_instance *umem, struct umem_tx_stage_data *txd,
-	   struct vea_space_df *md, uint32_t blk_sz, uint32_t hdr_blks,
+	   struct vea_space_df *md, uint32_t blk_sz, // VOS_BLK_SZ(4K:bytes)
+	   uint32_t hdr_blks,    // VOS_BLOB_HDR_BLKS(1)
 	   uint64_t capacity, vea_format_callback_t cb, void *cb_data,
 	   bool force)
 {
 	struct vea_free_extent free_ext;
-	struct umem_attr uma;
-	uint64_t tot_blks;
-	daos_handle_t free_btr, vec_btr;
-	d_iov_t key, val;
+	struct umem_attr       uma;
+	uint64_t               tot_blks;
+	daos_handle_t          free_btr, vec_btr;
+	d_iov_t                key, val;
 	int rc;
 
 	D_ASSERT(umem != NULL);
 	D_ASSERT(md != NULL);
 	/* Can't reformat without 'force' specified */
 	if (md->vsd_magic == VEA_MAGIC) {
-		D_CDEBUG(force, DLOG_WARN, DLOG_ERR, "reformat %p force=%d\n",
-			 md, force);
+		D_CDEBUG(force, DLOG_WARN, DLOG_ERR, "reformat %p force=%d\n", md, force);
 		if (!force)
 			return -DER_EXIST;
-
 		erase_md(umem, md);
 	}
 
 	/* Block size should be aligned with 4K and <= 1M */
+	// 要求blk_sz必须4K对齐，并且小于1M
 	if (blk_sz && ((blk_sz % VEA_BLK_SZ) != 0 || blk_sz > (1U << 20)))
 		return -DER_INVAL;
 
@@ -73,12 +73,18 @@ vea_format(struct umem_instance *umem, struct umem_tx_stage_data *txd,
 		return -DER_INVAL;
 
 	blk_sz = blk_sz ? : VEA_BLK_SZ;
+
+	// 容量必须大于400K，为啥？？
+	// capacity： Size of SCM for the pool(SCM元数据盘的大小)
 	if (capacity < (blk_sz * 100))
 		return -DER_NOSPACE;
 
+    // 元数据盘大小按照4K切分，多少个block
 	tot_blks = capacity / blk_sz;
 	if (tot_blks <= hdr_blks)
 		return -DER_NOSPACE;
+
+	// 预留hdr_blks为头部
 	tot_blks -= hdr_blks;
 
 	/*
@@ -98,6 +104,7 @@ vea_format(struct umem_instance *umem, struct umem_tx_stage_data *txd,
 		 */
 		D_ASSERT(pmemobj_tx_stage() == TX_STAGE_NONE);
 
+        // vos_blob_format_cb
 		rc = cb(cb_data, umem);
 		if (rc != 0)
 			return rc;
@@ -114,7 +121,7 @@ vea_format(struct umem_instance *umem, struct umem_tx_stage_data *txd,
 	if (rc != 0)
 		goto out;
 
-	md->vsd_magic = VEA_MAGIC;
+	md->vsd_magic  = VEA_MAGIC;
 	md->vsd_compat = 0;
 	md->vsd_blk_sz = blk_sz;
 	md->vsd_tot_blks = tot_blks;
@@ -129,12 +136,11 @@ vea_format(struct umem_instance *umem, struct umem_tx_stage_data *txd,
 		goto out;
 
 	/* Insert the initial free extent */
-	free_ext.vfe_blk_off = hdr_blks;
-	free_ext.vfe_blk_cnt = tot_blks;
+	free_ext.vfe_blk_off = hdr_blks;   // 1
+	free_ext.vfe_blk_cnt = tot_blks;   // 元数据盘大小按照4K切分后block的数量 - 1(预留1个给header)
 	free_ext.vfe_age = 0;	/* Not used */
 
-	d_iov_set(&key, &free_ext.vfe_blk_off,
-		     sizeof(free_ext.vfe_blk_off));
+	d_iov_set(&key, &free_ext.vfe_blk_off, sizeof(free_ext.vfe_blk_off));
 	d_iov_set(&val, &free_ext, sizeof(free_ext));
 
 	rc = dbtree_update(free_btr, &key, &val);
@@ -287,13 +293,13 @@ aging_flush(struct vea_space_info *vsi, bool force, uint32_t nr_flush, uint32_t 
  * 5. Fail reserve with ENOMEM if all above attempts fail.
  */
 int
-vea_reserve(struct vea_space_info *vsi, uint32_t blk_cnt,
-	    struct vea_hint_context *hint, d_list_t *resrvd_list)
+vea_reserve(struct vea_space_info *vsi, uint32_t blk_cnt, //本次要申请的block的数量(根据申请的size大小转换的) 
+	    struct vea_hint_context *hint, d_list_t *resrvd_list) // resrvd_list ->  ioc->ic_blk_exts
 {
 	struct vea_resrvd_ext	*resrvd;
 	uint32_t		 nr_flushed;
 	bool			 force = false;
-	int			 rc = 0;
+	int			     rc = 0;
 
 	D_ASSERT(vsi != NULL);
 	D_ASSERT(resrvd_list != NULL);
@@ -310,6 +316,7 @@ vea_reserve(struct vea_space_info *vsi, uint32_t blk_cnt,
 
 	/* Trigger aging extents flush */
 	aging_flush(vsi, force, MAX_FLUSH_FRAGS, &nr_flushed);
+	
 retry:
 	/* Reserve from hint offset */
 	rc = reserve_hint(vsi, blk_cnt, resrvd);
@@ -337,6 +344,7 @@ retry:
 	} else if (rc != 0) {
 		goto error;
 	}
+	
 done:
 	D_ASSERT(resrvd->vre_blk_off != VEA_HINT_OFF_INVAL);
 	D_ASSERT(resrvd->vre_blk_cnt == blk_cnt);
@@ -344,12 +352,12 @@ done:
 	dec_stats(vsi, STAT_FREE_BLKS, blk_cnt);
 
 	/* Update hint offset */
-	hint_update(hint, resrvd->vre_blk_off + blk_cnt,
-		    &resrvd->vre_hint_seq);
+	hint_update(hint, resrvd->vre_blk_off + blk_cnt, &resrvd->vre_hint_seq);
 
 	d_list_add_tail(&resrvd->vre_link, resrvd_list);
 
 	return 0;
+	
 error:
 	D_FREE(resrvd);
 	return rc;
@@ -366,6 +374,8 @@ process_resrvd_list(struct vea_space_info *vsi, struct vea_hint_context *hint,
 	unsigned int		 seq_cnt = 0;
 	int			 rc = 0;
 
+    // resrvd_list: dru->dru_nvme for vos_tx_end， vos_reserve_blocks入链的
+    //            io->ic_nvme_exts for agg
 	if (d_list_empty(resrvd_list))
 		return 0;
 
@@ -396,8 +406,7 @@ process_resrvd_list(struct vea_space_info *vsi, struct vea_hint_context *hint,
 		}
 
 		if (vfe.vfe_blk_cnt != 0) {
-			rc = publish ? persistent_alloc(vsi, &vfe) :
-				       compound_free(vsi, &vfe, 0);
+			rc = publish ? persistent_alloc(vsi, &vfe) : compound_free(vsi, &vfe, 0);
 			if (rc)
 				goto error;
 		}
@@ -407,15 +416,13 @@ process_resrvd_list(struct vea_space_info *vsi, struct vea_hint_context *hint,
 	}
 
 	if (vfe.vfe_blk_cnt != 0) {
-		rc = publish ? persistent_alloc(vsi, &vfe) :
-			       compound_free(vsi, &vfe, 0);
+		rc = publish ? persistent_alloc(vsi, &vfe) : compound_free(vsi, &vfe, 0);
 		if (rc)
 			goto error;
 	}
 
-	rc = publish ? hint_tx_publish(vsi->vsi_umem, hint, off_p, seq_min,
-				       seq_max, seq_cnt) :
-		       hint_cancel(hint, off_c, seq_min, seq_max, seq_cnt);
+	rc = publish ? hint_tx_publish(vsi->vsi_umem, hint, off_p, seq_min, seq_max, seq_cnt) : hint_cancel(hint, off_c, seq_min, seq_max, seq_cnt);
+	
 error:
 	d_list_for_each_entry_safe(resrvd, tmp, resrvd_list, vre_link) {
 		d_list_del_init(&resrvd->vre_link);
@@ -443,8 +450,7 @@ int
 vea_tx_publish(struct vea_space_info *vsi, struct vea_hint_context *hint,
 	       d_list_t *resrvd_list)
 {
-	D_ASSERT(pmemobj_tx_stage() == TX_STAGE_WORK ||
-		 vsi->vsi_umem->umm_id == UMEM_CLASS_VMEM);
+	D_ASSERT(pmemobj_tx_stage() == TX_STAGE_WORK || vsi->vsi_umem->umm_id == UMEM_CLASS_VMEM);
 	D_ASSERT(vsi != NULL);
 	D_ASSERT(resrvd_list != NULL);
 	/*
@@ -624,6 +630,7 @@ count_free_persistent(daos_handle_t ih, d_iov_t *key, d_iov_t *val,
 		return rc;
 
 	D_ASSERT(free_blks != NULL);
+	// 空闲的blk_cnt一直在迭代相加
 	*free_blks += vfe->vfe_blk_cnt;
 
 	return 0;
@@ -669,6 +676,8 @@ vea_query(struct vea_space_info *vsi, struct vea_attr *attr,
 		stat->vs_free_persistent = 0;
 		rc = dbtree_iterate(vsi->vsi_md_free_btr, DAOS_INTENT_DEFAULT,
 				    false, count_free_persistent,
+				    // 每次迭代stat->vs_free_persistent都会作为入参
+				    // 传进count_free_persistent中，一直相加
 				    (void *)&stat->vs_free_persistent);
 		if (rc != 0)
 			return rc;

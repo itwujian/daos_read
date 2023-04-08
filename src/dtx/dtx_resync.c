@@ -206,7 +206,7 @@ dtx_verify_groups(struct ds_pool *pool, struct dtx_memberships *mbs,
 	struct dtx_redundancy_group	*group;
 	int				 i, j, k;
 	int				 rc;
-	bool				 rdonly = true;
+	bool			 rdonly = true;
 
 	group = (void *)mbs->dm_data +
 		sizeof(struct dtx_daos_target) * mbs->dm_tgt_cnt;
@@ -226,8 +226,7 @@ dtx_verify_groups(struct ds_pool *pool, struct dtx_memberships *mbs,
 				continue;
 			}
 
-			rc = ds_pool_target_status_check(pool, group->drg_ids[j],
-							 (uint8_t)PO_COMP_ST_UPIN, NULL);
+			rc = ds_pool_target_status_check(pool, group->drg_ids[j], (uint8_t)PO_COMP_ST_UPIN, NULL);
 			if (rc < 0)
 				return rc;
 
@@ -247,16 +246,12 @@ dtx_verify_groups(struct ds_pool *pool, struct dtx_memberships *mbs,
 		 * original case, it will not correctness issue.
 		 */
 		if (k >= group->drg_redundancy && !rdonly) {
-			D_WARN("The DTX "DF_DTI" has %d redundancy group, "
-			       "the No.%d lost too many members %d/%d/%d, "
-			       "cannot recover such DTX.\n",
-			       DP_DTI(xid), mbs->dm_grp_cnt, i,
-			       group->drg_tgt_cnt, group->drg_redundancy, k);
+			D_WARN("The DTX "DF_DTI" has %d redundancy group, the No.%d lost too many members %d/%d/%d, cannot recover such DTX.\n",
+			       DP_DTI(xid), mbs->dm_grp_cnt, i, group->drg_tgt_cnt, group->drg_redundancy, k);
 			return 0;
 		}
 
-		group = (void *)group + sizeof(*group) +
-			sizeof(uint32_t) * group->drg_tgt_cnt;
+		group = (void *)group + sizeof(*group) + sizeof(uint32_t) * group->drg_tgt_cnt;
 	}
 
 	return 1;
@@ -272,15 +267,11 @@ dtx_status_handle_one(struct ds_cont_child *cont, struct dtx_entry *dte,
 	switch (rc) {
 		case DTX_ST_COMMITTED:
 		case DTX_ST_COMMITTABLE:
-			/* The DTX has been committed on some remote replica(s),
-			 * let's commit the DTX globally.
-			 */
+			/* The DTX has been committed on some remote replica(s), let's commit the DTX globally. */
 			return DSHR_NEED_COMMIT;
 		case -DER_INPROGRESS:
 		case -DER_TIMEDOUT:
-			D_WARN("Other participants not sure about whether the "
-			       "DTX "DF_DTI" is committed or not, need retry.\n",
-			       DP_DTI(&dte->dte_xid));
+			D_WARN("Other participants not sure about whether the DTX "DF_DTI" is committed or not, need retry.\n", DP_DTI(&dte->dte_xid));
 			return DSHR_NEED_RETRY;
 		case DTX_ST_PREPARED: {
 			struct dtx_memberships	*mbs = dte->dte_mbs;
@@ -327,9 +318,7 @@ dtx_status_handle_one(struct ds_cont_child *cont, struct dtx_entry *dte,
 
 			/* Skip this DTX if failed to get the status. */
 			if (rc != DTX_ST_PREPARED && rc != DTX_ST_INITED) {
-				D_WARN("Not sure about whether the DTX "DF_DTI
-				       " can be abort or not: %d, skip it.\n",
-				       DP_DTI(&dte->dte_xid), rc);
+				D_WARN("Not sure about whether the DTX "DF_DTI" can be abort or not: %d, skip it.\n", DP_DTI(&dte->dte_xid), rc);
 				D_GOTO(out, rc = (rc > 0 ? -DER_IO : rc));
 			}
 
@@ -359,9 +348,7 @@ dtx_status_handle_one(struct ds_cont_child *cont, struct dtx_entry *dte,
 
 			return DSHR_IGNORE;
 		default:
-			D_WARN("Not sure about whether the DTX "DF_DTI
-			       " can be committed or not: %d, skip it.\n",
-			       DP_DTI(&dte->dte_xid), rc);
+			D_WARN("Not sure about whether the DTX "DF_DTI" can be committed or not: %d, skip it.\n", DP_DTI(&dte->dte_xid), rc);
 			if (rc > 0)
 				rc = -DER_IO;
 			break;

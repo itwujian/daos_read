@@ -1510,8 +1510,7 @@ ifv_rec_alloc(struct btr_instance *tins, d_iov_t *key, d_iov_t *val, struct btr_
 	umem_off_t      roff;
 	int             rc;
 
-	if (key->iov_len != sizeof(uint64_t) || key->iov_buf_len < key->iov_len ||
-	    val->iov_buf_len < val->iov_len)
+	if (key->iov_len != sizeof(uint64_t) || key->iov_buf_len < key->iov_len || val->iov_buf_len < val->iov_len)
 		D_GOTO(err, rc = -DER_INVAL);
 
 	roff = umem_zalloc(&tins->ti_umm, sizeof(*r) + val->iov_len);

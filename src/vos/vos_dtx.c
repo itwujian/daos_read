@@ -1675,7 +1675,7 @@ done:
 	 * If someone (from non-leader) tried to refresh the DTX status
 	 * before its 'prepared', then let's commit it synchronously.
 	 */
-	if ((DAE_DKEY_HASH(dae) == 0 || dae->dae_maybe_shared) && (dth->dth_modification_cnt > 0))
+	if ((DAE_DKEY_HASH(dae) == 0 || dae->dae_maybe_shared) && (dth->dth_modification_cnt > 0//有写非读))
 		dth->dth_sync = 1;
 
 //  dae->dae_oids从dth中获取

@@ -1509,8 +1509,7 @@ bio_rwv(struct bio_io_context *ioctxt, struct bio_sglist *bsgl_in,
 	}
 
 	/* allocate blob I/O descriptor */
-	biod = bio_iod_alloc(ioctxt, 1 /* single bsgl */,
-			update ? BIO_IOD_TYPE_UPDATE : BIO_IOD_TYPE_FETCH);
+	biod = bio_iod_alloc(ioctxt, 1 /* single bsgl */, update ? BIO_IOD_TYPE_UPDATE : BIO_IOD_TYPE_FETCH);
 	if (biod == NULL)
 		return -DER_NOMEM;
 

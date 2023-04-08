@@ -140,6 +140,7 @@ struct vos_pool_df {
 	// container树的根节点
 	struct btr_root			pd_cont_root;
 	/** Free space tracking for NVMe device */
+	// vea的内存盘数据结构
 	struct vea_space_df		pd_vea_df;
 	/** GC bins for container/object/dkey... */
 	struct vos_gc_bin_df	pd_gc_bins[GC_MAX];
@@ -357,9 +358,9 @@ struct vos_irec_df {
 	 */
 	uint64_t			ir_gsize;
 	/** external payload address */
-	bio_addr_t			ir_ex_addr;
+	bio_addr_t			ir_ex_addr;  // 存储在NVME上的地址
 	/** placeholder for the key checksum & internal value */
-	char				ir_body[0];
+	char				ir_body[0];  // 存储在SCM上的地址
 };
 
 /**

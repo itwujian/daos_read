@@ -130,6 +130,11 @@ struct vea_space_info {
 	/* Last aging buffer flush timestamp */
 	uint32_t			 vsi_flush_time;
 	bool				 vsi_flush_scheduled;
+
+	/* alignment blk for reserve vector */
+	uint32_t             vsi_alignment_blk;
+	/* csum nr for one extent in array akey, changed when space reserve */
+	uint32_t             vsi_csum_nr;
 };
 
 static inline uint32_t

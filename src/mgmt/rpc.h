@@ -44,6 +44,7 @@
 	X(MGMT_GET_BS_STATE,						\
 		0, &CQF_mgmt_get_bs_state,				\
 		ds_mgmt_hdlr_get_bs_state, NULL)
+		
 #define MGMT_PROTO_SRV_RPC_LIST						\
 	X(MGMT_TGT_CREATE,						\
 		0, &CQF_mgmt_tgt_create,				\

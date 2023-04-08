@@ -1566,124 +1566,124 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc, uint32_t intent
 
 again:
 	switch (probe_opc) {
-	default:
-		D_ASSERT(0);
-	case BTR_PROBE_FIRST:
-		do {
-			alb.nd_off = tcx->tc_trace[level].tr_node;
-			alb.at = tcx->tc_trace[level].tr_at;
-			rc = btr_check_availability(tcx, &alb);
-		} while (rc == PROBE_RC_UNAVAILABLE && btr_probe_next(tcx));
+		default:
+			D_ASSERT(0);
+		case BTR_PROBE_FIRST:
+			do {
+				alb.nd_off = tcx->tc_trace[level].tr_node;
+				alb.at = tcx->tc_trace[level].tr_at;
+				rc = btr_check_availability(tcx, &alb);
+			} while (rc == PROBE_RC_UNAVAILABLE && btr_probe_next(tcx));
 
-		if (rc == PROBE_RC_UNAVAILABLE)
-			rc = PROBE_RC_NONE;
-		goto out;
+			if (rc == PROBE_RC_UNAVAILABLE)
+				rc = PROBE_RC_NONE;
+			goto out;
 
-	case BTR_PROBE_LAST:
-		do {
-			alb.nd_off = tcx->tc_trace[level].tr_node;
-			alb.at = tcx->tc_trace[level].tr_at;
-			rc = btr_check_availability(tcx, &alb);
-		} while (rc == PROBE_RC_UNAVAILABLE && btr_probe_prev(tcx));
+		case BTR_PROBE_LAST:
+			do {
+				alb.nd_off = tcx->tc_trace[level].tr_node;
+				alb.at = tcx->tc_trace[level].tr_at;
+				rc = btr_check_availability(tcx, &alb);
+			} while (rc == PROBE_RC_UNAVAILABLE && btr_probe_prev(tcx));
 
-		if (rc == PROBE_RC_UNAVAILABLE)
-			rc = PROBE_RC_NONE;
-		goto out;
+			if (rc == PROBE_RC_UNAVAILABLE)
+				rc = PROBE_RC_NONE;
+			goto out;
 
-	case BTR_PROBE_EQ:
-		if (cmp == BTR_CMP_EQ) {
-			rc = btr_check_availability(tcx, &alb);
-			if (rc != PROBE_RC_UNAVAILABLE)
-				goto out;
+		case BTR_PROBE_EQ:
+			if (cmp == BTR_CMP_EQ) {
+				rc = btr_check_availability(tcx, &alb);
+				if (rc != PROBE_RC_UNAVAILABLE)
+					goto out;
 
-			/* The record for current pos is unavailable, can be
-			 * reused for the follow-on insert if applicable.
-			 */
-		} else {
-			/* Point at the first key which is larger than the
-			 * probed one, this if for the follow-on insert if
-			 * applicable.
-			 */
-			btr_trace_set(tcx, level, nd_off, at + !(cmp & BTR_CMP_GT));
-		}
-
-		rc = PROBE_RC_NONE;
-		goto out;
-
-	case BTR_PROBE_GE:
-		if (cmp == BTR_CMP_EQ) {
-			rc = btr_check_availability(tcx, &alb);
-			if (rc != PROBE_RC_UNAVAILABLE)
-				goto out;
-
-			/* The record for current pos is unavailable, can be
-			 * reused for the follow-on insert if applicable.
-			 */
-			if (saved == -1)
-				saved = at;
-		}
-		/* fall through */
-	case BTR_PROBE_GT:
-		if (cmp & BTR_CMP_GT) {
-			/* Check availability if the target matched or it is
-			 * for non-modification related operation.
-			 */
-			rc = btr_check_availability(tcx, &alb);
-			if (rc != PROBE_RC_UNAVAILABLE) {
-				if (rc == PROBE_RC_OK)
-					break;
-				goto out;
+				/* The record for current pos is unavailable, can be
+				 * reused for the follow-on insert if applicable.
+				 */
+			} else {
+				/* Point at the first key which is larger than the
+				 * probed one, this if for the follow-on insert if
+				 * applicable.
+				 */
+				btr_trace_set(tcx, level, nd_off, at + !(cmp & BTR_CMP_GT));
 			}
 
-			/* The record for current pos is unavailable, can be
-			 * reused for the follow-on insert if applicable.
-			 */
-			if (saved == -1)
-				saved = at;
-		} else {
-			/* Point at the next position in the current leaf node,
-			 * this is for the follow-on insert if applicable.
-			 */
-			if (saved == -1)
-				saved = at + 1;
-		}
+			rc = PROBE_RC_NONE;
+			goto out;
 
-		if (btr_probe_next(tcx)) {
-			cmp = BTR_CMP_UNKNOWN;
-			break;
-		}
+		case BTR_PROBE_GE:
+			if (cmp == BTR_CMP_EQ) {
+				rc = btr_check_availability(tcx, &alb);
+				if (rc != PROBE_RC_UNAVAILABLE)
+					goto out;
 
-		btr_trace_set(tcx, level, nd_off, saved);
-		rc = PROBE_RC_NONE;
-		goto out;
-
-	case BTR_PROBE_LE:
-		if (cmp == BTR_CMP_EQ) {
-			rc = btr_check_availability(tcx, &alb);
-			if (rc != PROBE_RC_UNAVAILABLE)
-				goto out;
-		}
-		/* fall through */
-	case BTR_PROBE_LT:
-		if (cmp & BTR_CMP_LT) {
-			/* Check availability if the target matched or it is
-			 * for non-modification related operation.
-			 */
-			rc = btr_check_availability(tcx, &alb);
-			if (rc != PROBE_RC_UNAVAILABLE) {
-				if (rc == PROBE_RC_OK)
-					break;
-				goto out;
+				/* The record for current pos is unavailable, can be
+				 * reused for the follow-on insert if applicable.
+				 */
+				if (saved == -1)
+					saved = at;
 			}
-		}
+			/* fall through */
+		case BTR_PROBE_GT:
+			if (cmp & BTR_CMP_GT) {
+				/* Check availability if the target matched or it is
+				 * for non-modification related operation.
+				 */
+				rc = btr_check_availability(tcx, &alb);
+				if (rc != PROBE_RC_UNAVAILABLE) {
+					if (rc == PROBE_RC_OK)
+						break;
+					goto out;
+				}
 
-		if (btr_probe_prev(tcx)) {
-			cmp = BTR_CMP_UNKNOWN;
-			break;
-		}
+				/* The record for current pos is unavailable, can be
+				 * reused for the follow-on insert if applicable.
+				 */
+				if (saved == -1)
+					saved = at;
+			} else {
+				/* Point at the next position in the current leaf node,
+				 * this is for the follow-on insert if applicable.
+				 */
+				if (saved == -1)
+					saved = at + 1;
+			}
 
-		rc = PROBE_RC_NONE;
-		goto out;
+			if (btr_probe_next(tcx)) {
+				cmp = BTR_CMP_UNKNOWN;
+				break;
+			}
+
+			btr_trace_set(tcx, level, nd_off, saved);
+			rc = PROBE_RC_NONE;
+			goto out;
+
+		case BTR_PROBE_LE:
+			if (cmp == BTR_CMP_EQ) {
+				rc = btr_check_availability(tcx, &alb);
+				if (rc != PROBE_RC_UNAVAILABLE)
+					goto out;
+			}
+			/* fall through */
+		case BTR_PROBE_LT:
+			if (cmp & BTR_CMP_LT) {
+				/* Check availability if the target matched or it is
+				 * for non-modification related operation.
+				 */
+				rc = btr_check_availability(tcx, &alb);
+				if (rc != PROBE_RC_UNAVAILABLE) {
+					if (rc == PROBE_RC_OK)
+						break;
+					goto out;
+				}
+			}
+
+			if (btr_probe_prev(tcx)) {
+				cmp = BTR_CMP_UNKNOWN;
+				break;
+			}
+
+			rc = PROBE_RC_NONE;
+			goto out;
 	}
 
 	if (cmp == BTR_CMP_UNKNOWN) {/* position changed, compare again */
@@ -1801,11 +1801,12 @@ btr_probe_prev(struct btr_context *tcx)
 
 		if (trace->tr_at == 0) {
 			/* finish current level */
-			trace--;
+			trace--; // 再搜索上面一层
 			continue;
 		}
 
-		trace->tr_at--;
+		trace->tr_at--; // 当前record的前面1个record
+		
 		/* might split between two calls */
 		if (trace->tr_at >= nd->tn_keyn)
 			trace->tr_at = nd->tn_keyn - 1;
@@ -1971,10 +1972,10 @@ fetch_sibling(daos_handle_t toh, d_iov_t *key_out, d_iov_t *val_out, bool next, 
 	/* Save original trace */
 	if (!move) {
 		orig_trace = tcx->tc_trace;
-		memcpy(&orig_traces[0], &tcx->tc_traces[0],
-		       sizeof(tcx->tc_traces[0]) * BTR_TRACE_MAX);
+		memcpy(&orig_traces[0], &tcx->tc_traces[0], sizeof(tcx->tc_traces[0]) * BTR_TRACE_MAX);
 	}
 
+    // 会修改tcx->tc_traces[0], 所以上面会备份下，在出去的时候下恢复下
 	found = next ? btr_probe_next(tcx) : btr_probe_prev(tcx);
 	if (!found) {
 		rc = -DER_NONEXIST;
@@ -1983,12 +1984,12 @@ fetch_sibling(daos_handle_t toh, d_iov_t *key_out, d_iov_t *val_out, bool next, 
 
 	rec = btr_trace2rec(tcx, tcx->tc_depth - 1);
 	rc = btr_rec_fetch(tcx, rec, key_out, val_out);
+	
 out:
 	/* Restore original trace */
 	if (!move) {
 		tcx->tc_trace = orig_trace;
-		memcpy(&tcx->tc_traces[0], &orig_traces[0],
-		       sizeof(tcx->tc_traces[0]) * BTR_TRACE_MAX);
+		memcpy(&tcx->tc_traces[0], &orig_traces[0], sizeof(tcx->tc_traces[0]) * BTR_TRACE_MAX);
 	}
 
 	return rc;
@@ -3368,7 +3369,7 @@ int
 dbtree_create_inplace(unsigned int tree_class, // vos_tree_class 树的具体类型
                       uint64_t tree_feats,     // btr_feats      树的特点
 		              unsigned int tree_order, // 树中node的key的数量
-		              struct umem_attr *uma,
+		              struct umem_attr *uma,   // 传进去的目的是umem_class_init
 		              struct btr_root *root,   // 传入的需要填写内容的待创建树的根节点
 		              daos_handle_t *toh)      // 返回的树的操作句柄：btr_context
 {
@@ -3717,8 +3718,7 @@ dbtree_iter_prepare(daos_handle_t toh, unsigned int options, daos_handle_t *ih)
 	if (options & BTR_ITER_EMBEDDED) {
 		/* use the iterator embedded in btr_context */
 		if (tcx->tc_ref != 1) { /* don't screw up others */
-			D_DEBUG(DB_TRACE,
-				"The embedded iterator is in use\n");
+			D_DEBUG(DB_TRACE, "The embedded iterator is in use\n");
 			return -DER_BUSY;
 		}
 
@@ -4065,17 +4065,17 @@ dbtree_iter_empty(daos_handle_t ih)
  * \param arg		[IN]	Callback argument
  */
 int
-dbtree_iterate(daos_handle_t toh, uint32_t intent, bool backward,
+dbtree_iterate(daos_handle_t toh, uint32_t intent, bool backward,// 是否倒叙遍历
 	       dbtree_iterate_cb_t cb, void *arg)
 {
 	daos_handle_t	ih;
 	int		niterated = 0;
 	int		rc;
 
+    // ih为出参是按照toh的btr_context克隆了一份
 	rc = dbtree_iter_prepare(toh, 0 /* options */, &ih);
 	if (rc != 0) {
-		D_ERROR("failed to prepare tree iterator: "DF_RC"\n",
-			DP_RC(rc));
+		D_ERROR("failed to prepare tree iterator: "DF_RC"\n", DP_RC(rc));
 		D_GOTO(out, rc);
 	}
 
@@ -4087,6 +4087,8 @@ dbtree_iterate(daos_handle_t toh, uint32_t intent, bool backward,
 		D_GOTO(out_iter, rc);
 	}
 
+    // 找到第一个
+
 	for (;;) {
 		d_iov_t	key;
 		d_iov_t	val;
@@ -4094,10 +4096,10 @@ dbtree_iterate(daos_handle_t toh, uint32_t intent, bool backward,
 		d_iov_set(&key, NULL /* buf */, 0 /* size */);
 		d_iov_set(&val, NULL /* buf */, 0 /* size */);
 
+        // 拿到第一个的(k,v)
 		rc = dbtree_iter_fetch(ih, &key, &val, NULL /* anchor */);
 		if (rc != 0) {
-			D_ERROR("failed to fetch iterator: "DF_RC"\n",
-				DP_RC(rc));
+			D_ERROR("failed to fetch iterator: "DF_RC"\n", DP_RC(rc));
 			break;
 		}
 
@@ -4122,17 +4124,16 @@ dbtree_iterate(daos_handle_t toh, uint32_t intent, bool backward,
 			rc = 0;
 			break;
 		} else if (rc != 0) {
-			D_ERROR("failed to move iterator: "DF_RC"\n",
-				DP_RC(rc));
+			D_ERROR("failed to move iterator: "DF_RC"\n", DP_RC(rc));
 			break;
 		}
 	}
 
 out_iter:
 	dbtree_iter_finish(ih);
+	
 out:
-	D_DEBUG(DB_TRACE, "iterated %d records: "DF_RC"\n", niterated,
-		DP_RC(rc));
+	D_DEBUG(DB_TRACE, "iterated %d records: "DF_RC"\n", niterated, DP_RC(rc));
 	return rc;
 }
 

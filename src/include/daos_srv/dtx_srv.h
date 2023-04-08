@@ -108,7 +108,7 @@ struct dtx_handle {
 	uint16_t			 dth_rsrvd_cnt;
 	uint16_t			 dth_deferred_cnt;
 	/** The total sub modifications count. */
-	uint16_t			 dth_modification_cnt; //除了CPD流程会大于2之外，其余均为1
+	uint16_t			 dth_modification_cnt; //除了CPD流程会大于1之外，其余写均为1，读为0
 	/** Modification sequence in the distributed transaction. */
 	uint16_t			 dth_op_seq;
 
@@ -123,8 +123,8 @@ struct dtx_handle {
 	uint64_t			 dth_dkey_hash;
 
 	struct dtx_rsrvd_uint		 dth_rsrvd_inline;
-	struct dtx_rsrvd_uint		*dth_rsrvds;
-	void				**dth_deferred;
+	struct dtx_rsrvd_uint		*dth_rsrvds; // 数组的大小是写请求的数量，单个写为1，CPD有可能会大于1
+	void				     **dth_deferred; // 数组的大小是写请求的数量，单个写为1，CPD有可能会大于1
 	/* NVME extents to release */
 	d_list_t			 dth_deferred_nvme;
 	/* Committed or comittable DTX list */

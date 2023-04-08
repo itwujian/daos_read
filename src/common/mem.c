@@ -273,8 +273,7 @@ static umem_off_t
 pmem_reserve(struct umem_instance *umm, struct pobj_action *act, size_t size,
 	     unsigned int type_num)
 {
-	return umem_id2off(umm,
-			   pmemobj_reserve(umm->umm_pool, act, size, type_num));
+	return umem_id2off(umm, pmemobj_reserve(umm->umm_pool, act, size, type_num));
 }
 
 static void
@@ -357,17 +356,17 @@ pmem_tx_add_callback(struct umem_instance *umm, struct umem_tx_stage_data *txd,
 }
 
 static umem_ops_t	pmem_ops = {
-	.mo_tx_free		= pmem_tx_free,
+	.mo_tx_free		    = pmem_tx_free,
 	.mo_tx_alloc		= pmem_tx_alloc,
-	.mo_tx_add		= pmem_tx_add,
-	.mo_tx_xadd		= pmem_tx_xadd,
+	.mo_tx_add		    = pmem_tx_add,
+	.mo_tx_xadd	     	= pmem_tx_xadd,
 	.mo_tx_add_ptr		= pmem_tx_add_ptr,
 	.mo_tx_abort		= pmem_tx_abort,
 	.mo_tx_begin		= pmem_tx_begin,
 	.mo_tx_commit		= pmem_tx_commit,
-	.mo_reserve		= pmem_reserve,
+	.mo_reserve		    = pmem_reserve,
 	.mo_defer_free		= pmem_defer_free,
-	.mo_cancel		= pmem_cancel,
+	.mo_cancel		    = pmem_cancel,
 	.mo_tx_publish		= pmem_tx_publish,
 	.mo_tx_add_callback	= pmem_tx_add_callback,
 };

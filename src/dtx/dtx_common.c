@@ -811,9 +811,9 @@ dtx_handle_init(struct dtx_id *dti, daos_handle_t coh, struct dtx_epoch *epoch,
 		return -DER_OVERFLOW;
 	}
 
-	// 当前应该只有CPD流程sub_modification_cnt会大于1，
+	// 当前应该只有CPD流程sub_modification_cnt会大于1，dcde->dcde_write_cnt,
 	// count of write sub requests for the DTX on the DAOS target
-	// 其余流程进来都是1
+	// 其余写流程进来都是1， 读流程是0
 	dth->dth_modification_cnt = sub_modification_cnt;
 
 	dtx_shares_init(dth);
@@ -1232,19 +1232,14 @@ dtx_leader_end(struct dtx_leader_handle *dlh, struct ds_cont_hdl *coh, int resul
 
 		/* Aborted by race, restart it. */
 		if (rc == -DER_NONEXIST) {
-			D_WARN(DF_UUID": DTX "DF_DTI" is aborted with "
-			       "old epoch "DF_U64" by resync\n",
-			       DP_UUID(cont->sc_uuid), DP_DTI(&dth->dth_xid),
-			       dth->dth_epoch);
+			D_WARN(DF_UUID": DTX "DF_DTI" is aborted with old epoch "DF_U64" by resync\n",
+			       DP_UUID(cont->sc_uuid), DP_DTI(&dth->dth_xid), dth->dth_epoch);
 			D_GOTO(abort, result = -DER_TX_RESTART);
 		}
 
 		if (rc != DTX_ST_PREPARED) {
-			D_ASSERTF(rc < 0, "Invalid status %d for DTX "DF_DTI"\n",
-				  rc, DP_DTI(&dth->dth_xid));
-
-			D_WARN(DF_UUID": Failed to check local DTX "DF_DTI" status: "DF_RC"\n",
-			       DP_UUID(cont->sc_uuid), DP_DTI(&dth->dth_xid), DP_RC(rc));
+			D_ASSERTF(rc < 0, "Invalid status %d for DTX "DF_DTI"\n", rc, DP_DTI(&dth->dth_xid));
+			D_WARN(DF_UUID": Failed to check local DTX "DF_DTI" status: "DF_RC"\n", DP_UUID(cont->sc_uuid), DP_DTI(&dth->dth_xid), DP_RC(rc));
 			D_GOTO(abort, result = rc);
 		}
 	}
@@ -1625,8 +1620,7 @@ dtx_cont_register(struct ds_cont_child *cont)
 			 * once unless its former registered instance has
 			 * already deregistered.
 			 */
-			d_list_for_each_entry(dbca, &dbpa->dbpa_cont_list,
-					      dbca_pool_link)
+			d_list_for_each_entry(dbca, &dbpa->dbpa_cont_list, dbca_pool_link)
 				D_ASSERT(dbca->dbca_cont != cont);
 			new_pool = false;
 			break;
@@ -1655,8 +1649,7 @@ dtx_cont_register(struct ds_cont_child *cont)
 				      DAOS_HDL_INVAL, cont,
 				      &cont->sc_dtx_cos_hdl);
 	if (rc != 0) {
-		D_ERROR("Failed to create DTX CoS btree: "DF_RC"\n",
-			DP_RC(rc));
+		D_ERROR("Failed to create DTX CoS btree: "DF_RC"\n", DP_RC(rc));
 		D_GOTO(out, rc = -DER_NOMEM);
 	}
 

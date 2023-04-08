@@ -56,10 +56,10 @@ int
 free_class_add(struct vea_space_info *vsi, struct vea_entry *entry)
 {
 	struct vea_free_class	*vfc = &vsi->vsi_class;
-	daos_handle_t		 btr_hdl = vfc->vfc_size_btr;
-	uint32_t		 blk_cnt = entry->ve_ext.vfe_blk_cnt;
-	d_iov_t			 key, val, val_out;
-	uint64_t		 int_key = blk_cnt;
+	daos_handle_t		     btr_hdl = vfc->vfc_size_btr;
+	uint32_t		         blk_cnt = entry->ve_ext.vfe_blk_cnt;
+	d_iov_t			         key, val, val_out;
+	uint64_t		         int_key = blk_cnt;
 	struct vea_sized_class	 dummy, *sc;
 	int			 rc;
 
@@ -67,6 +67,7 @@ free_class_add(struct vea_space_info *vsi, struct vea_entry *entry)
 	D_ASSERT(d_list_empty(&entry->ve_link));
 
 	/* Add to heap if it's a large free extent */
+	// blk_cnt > 16K的用堆heap： vfc_heap
 	if (blk_cnt > vfc->vfc_large_thresh) {
 		rc = d_binheap_insert(&vfc->vfc_heap, &entry->ve_node);
 		if (rc != 0) {
@@ -78,6 +79,7 @@ free_class_add(struct vea_space_info *vsi, struct vea_entry *entry)
 		return 0;
 	}
 
+    // blk_cnt < 16K的用树： vfc_size_btr
 	/* Add to a sized class */
 	D_ASSERT(daos_handle_is_valid(btr_hdl));
 	d_iov_set(&key, &int_key, sizeof(int_key));
@@ -94,11 +96,9 @@ free_class_add(struct vea_space_info *vsi, struct vea_entry *entry)
 		d_iov_set(&val, &dummy, sizeof(dummy));
 		d_iov_set(&val_out, NULL, 0);
 
-		rc = dbtree_upsert(btr_hdl, BTR_PROBE_BYPASS, DAOS_INTENT_UPDATE, &key, &val,
-				   &val_out);
+		rc = dbtree_upsert(btr_hdl, BTR_PROBE_BYPASS, DAOS_INTENT_UPDATE, &key, &val, &val_out);
 		if (rc != 0) {
-			D_ERROR("Insert size class:%u failed. "DF_RC"\n",
-				blk_cnt, DP_RC(rc));
+			D_ERROR("Insert size class:%u failed. "DF_RC"\n", blk_cnt, DP_RC(rc));
 			return rc;
 		}
 		sc = (struct vea_sized_class *)val_out.iov_buf;
@@ -165,13 +165,14 @@ dock_entry(struct vea_space_info *vsi, struct vea_entry *entry, unsigned int typ
 }
 
 /*
- * Make sure there is no overlapping or duplicated extents in the free
- * extent tree. The passed in @ext_in will be merged with adjacent extents
- * and being inserted in the tree.
+ * Make sure there is no overlapping or duplicated extents in the free extent tree. 
+ * The passed in @ext_in will be merged with adjacent extents and being inserted in the tree.
  *
+ *   1. 确保在空闲区树中没有重叠或重复的区。 
+ *   2. 然后将传入的@ext_in将与相邻的区段合并并插入树中。
  * Return value:	0	- Not merged
- *			1	- Merged in tree
- *			-ve	- Error
+ *			        1	- Merged in tree
+ *			       -ve	- Error
  */
 static int
 merge_free_ext(struct vea_space_info *vsi, struct vea_free_extent *ext_in,
@@ -179,18 +180,23 @@ merge_free_ext(struct vea_space_info *vsi, struct vea_free_extent *ext_in,
 {
 	struct vea_free_extent	*ext, *neighbor = NULL;
 	struct vea_free_extent	 merged = *ext_in;
-	struct vea_entry	*entry, *neighbor_entry = NULL;
-	daos_handle_t		 btr_hdl;
-	d_iov_t			 key, key_out, val;
-	uint64_t		*off;
-	bool			 fetch_prev = true, large_prev = false;
-	int			 rc, del_opc = BTR_PROBE_BYPASS;
+	struct vea_entry	    *entry, *neighbor_entry = NULL;
+	daos_handle_t		     btr_hdl;
+	d_iov_t			         key, key_out, val;
+	uint64_t		        *off;
+	bool			         fetch_prev = true, large_prev = false;
+	int			             rc, del_opc = BTR_PROBE_BYPASS;
 
+    // type类型： vos_bio_addr_free -> svt_rec_free_internal/evt_dop_bio_free -> vea_free
+    
 	if (type == VEA_TYPE_COMPOUND)
+		// ... -> compound_free
 		btr_hdl = vsi->vsi_free_btr;
 	else if (type == VEA_TYPE_PERSIST)
+		// vea_free -> persistent_free
 		btr_hdl = vsi->vsi_md_free_btr;
 	else if (type  == VEA_TYPE_AGGREGATE)
+		// vea_free -> free_commit_cb -> aggregated_free
 		btr_hdl = vsi->vsi_agg_btr;
 	else
 		return -DER_INVAL;
@@ -204,49 +210,58 @@ merge_free_ext(struct vea_space_info *vsi, struct vea_free_extent *ext_in,
 	 * Search the one to be merged, the btree trace will be set to proper position for
 	 * later potential insertion (when merge failed), so don't change btree trace!
 	 */
+
+	// 在对应树上找ext_in->off的可以merged的节点
+	// 由于是拿着ext_in->off找，这个地方一定会找不到，找到就有问题了
+	// 这个地方的主要作用就是获取到搜索路径，然后向前后搜索
 	rc = dbtree_fetch(btr_hdl, BTR_PROBE_EQ, DAOS_INTENT_DEFAULT, &key, &key_out, &val);
 	if (rc == 0) {
-		D_ERROR("unexpected extent ["DF_U64", %u]\n",
-			ext_in->vfe_blk_off, ext_in->vfe_blk_cnt);
+		D_ERROR("unexpected extent ["DF_U64", %u]\n", ext_in->vfe_blk_off, ext_in->vfe_blk_cnt);
 		return -DER_INVAL;
 	} else if (rc != -DER_NONEXIST) {
-		D_ERROR("search extent with offset "DF_U64" failed. "DF_RC"\n",
-			ext_in->vfe_blk_off, DP_RC(rc));
+		D_ERROR("search extent with offset "DF_U64" failed. "DF_RC"\n", ext_in->vfe_blk_off, DP_RC(rc));
 		return rc;
 	}
+	
 repeat:
 	d_iov_set(&key_out, NULL, 0);
 	d_iov_set(&val, NULL, 0);
 
-	if (fetch_prev) {
+	if (fetch_prev) { // 在当前的搜索路径上找前面1个
+	    // move是false，表示这次搜索不会改变路径，目的是向后搜索时不用在回退了
 		rc = dbtree_fetch_prev(btr_hdl, &key_out, &val, false);
-		if (rc == -DER_NONEXIST) {
+		if (rc == -DER_NONEXIST) { // 如果前面已经没有了，就向后面找
 			fetch_prev = false;
 			goto repeat;
 		} else if (rc) {
 			D_ERROR("search prev extent failed. "DF_RC"\n", DP_RC(rc));
-			return rc;
+			return rc; // 找失败了就退出
 		}
-	} else {
+	} else {   // 向后面找
 		/*
 		 * The btree trace was set to the position for inserting the searched
 		 * one. If there is an extent in current position, let's try to merge
 		 * it with the searched one; otherwise, we'd lookup next to see if any
 		 * extent can be merged.
 		 */
+		// 这个地方又重新查找了下当前位置，理论上应该找不到应为前面215行找了
 		rc = dbtree_fetch_cur(btr_hdl, &key_out, &val);
 		if (rc == -DER_NONEXIST) {
 			del_opc = BTR_PROBE_EQ;
+			// 向后找
 			rc = dbtree_fetch_next(btr_hdl, &key_out, &val, false);
 		}
 
 		if (rc == -DER_NONEXIST) {
+			// 后面也没有了，最后1个了，结束退出
 			goto done; /* Merge done */
-		} else if (rc) {
+		} else if (rc) {  // 找失败了，返回
 			D_ERROR("search next extent failed. "DF_RC"\n", DP_RC(rc));
 			return rc;
 		}
 	}
+
+// 在offset大小的前面或后面，找到了1个可以merged的节点node
 
 	if (type == VEA_TYPE_PERSIST) {
 		entry = NULL;
@@ -255,13 +270,20 @@ repeat:
 		entry = (struct vea_entry *)val.iov_buf;
 		ext = &entry->ve_ext;
 	}
-
+    // 找到可以merge的node
 	off = (uint64_t *)key_out.iov_buf;
+    // 校验找到的这个(k,v)
 	rc = verify_free_entry(off, ext);
 	if (rc != 0)
 		return rc;
 
 	/* This checks overlapping & duplicated extents as well. */
+	// 如果是向前找到的：cur: 树上找到的可以合并的，next: 当前传入的， 向前合并
+	// 如果是向后找到的：cur: 当前传入的，           next: 树上找到的可以合并的， 向后合并
+	// 如果cur的 offset+block_cnt = next, 表示二者相邻， rc = 1
+	// 如果cur的 offset+block_cnt < next, 表示二者不相邻 rc = 0
+	// 如果cur的 offset+block_cnt > next, 表示存在覆盖或重叠，rc = -1003
+	// 即：树上存在的【offset，offset+block_cnt】为已经释放的空间，本次释放的空间在这个里面，重复释放了
 	rc = fetch_prev ? ext_adjacent(ext, &merged) : ext_adjacent(&merged, ext);
 	if (rc < 0)
 		return rc;
@@ -283,28 +305,29 @@ repeat:
 		}
 	}
 
+//相邻的合并
 	if (rc > 0) {
 		if (flags & VEA_FL_NO_MERGE) {
-			D_ERROR("unexpected adjacent extents:"
-				" ["DF_U64", %u], ["DF_U64", %u]\n",
-				merged.vfe_blk_off, merged.vfe_blk_cnt,
-				ext->vfe_blk_off, ext->vfe_blk_cnt);
+			D_ERROR("unexpected adjacent extents: ["DF_U64", %u], ["DF_U64", %u]\n", merged.vfe_blk_off, merged.vfe_blk_cnt, ext->vfe_blk_off, ext->vfe_blk_cnt);
 			return -DER_INVAL;
 		}
 
 		if (fetch_prev) {
+			// 向前合并merged的off修改为ext的，blk_cnt加进去
+			// example: ext[1000, 2], merged[1002, 4]
 			merged.vfe_blk_off = ext->vfe_blk_off;
 			merged.vfe_blk_cnt += ext->vfe_blk_cnt;
+		    // 修改后：ext[1000, 2], merged[1000, 6]
 
 			neighbor = ext;
 			neighbor_entry = entry;
 		} else {
+			// 向后合并off不变，blk_cnt加进去
+			// example: ext[1006, 2], merged[1002, 4]
 			merged.vfe_blk_cnt += ext->vfe_blk_cnt;
+			// 修改后：ext[1006, 2], merged[1002, 6]
 
-			/*
-			 * Prev adjacent extent will be kept, remove the next
-			 * adjacent extent.
-			 */
+			/* Prev adjacent extent will be kept, remove the next adjacent extent. */
 			if (neighbor != NULL) {
 				undock_entry(vsi, entry, type);
 				rc = dbtree_delete(btr_hdl, del_opc, &key_out, NULL);
@@ -319,17 +342,18 @@ repeat:
 		}
 	}
 
-	if (fetch_prev) {
+	if (fetch_prev) { // 向前合并成功后，还要在向后合并下
 		fetch_prev = false;
 		goto repeat;
 	}
+	
 done:
+    // 不相邻，无法合并
 	if (neighbor == NULL)
 		return 0;
 
 	if (type == VEA_TYPE_PERSIST) {
-		rc = umem_tx_add_ptr(vsi->vsi_umem, neighbor,
-				     sizeof(*neighbor));
+		rc = umem_tx_add_ptr(vsi->vsi_umem, neighbor, sizeof(*neighbor));
 		if (rc) {
 			D_ERROR("Failed add ptr into tx: %d\n", rc);
 			return rc;
@@ -344,6 +368,7 @@ done:
 
 	if (type == VEA_TYPE_AGGREGATE || type == VEA_TYPE_COMPOUND) {
 		neighbor->vfe_age = merged.vfe_age;
+		// 重点执行函数
 		rc = dock_entry(vsi, neighbor_entry, type);
 		if (rc < 0)
 			return rc;
@@ -354,13 +379,13 @@ done:
 
 /* Free extent to in-memory compound index */
 int
-compound_free(struct vea_space_info *vsi, struct vea_free_extent *vfe,
-	      unsigned int flags)
+compound_free(struct vea_space_info *vsi, struct vea_free_extent *vfe, unsigned int flags)
 {
 	struct vea_entry	*entry, dummy;
-	d_iov_t			 key, val, val_out;
-	int			 rc;
+	d_iov_t			     key, val, val_out;
+	int	rc;
 
+    // 操作vsi->vsi_free_btr树，查看vsi_free_btr树是否有可以合并的
 	rc = merge_free_ext(vsi, vfe, VEA_TYPE_COMPOUND, flags);
 	if (rc < 0) {
 		return rc;
@@ -379,8 +404,7 @@ compound_free(struct vea_space_info *vsi, struct vea_free_extent *vfe,
 	d_iov_set(&val, &dummy, sizeof(dummy));
 	d_iov_set(&val_out, NULL, 0);
 
-	rc = dbtree_upsert(vsi->vsi_free_btr, BTR_PROBE_BYPASS, DAOS_INTENT_UPDATE, &key,
-			   &val, &val_out);
+	rc = dbtree_upsert(vsi->vsi_free_btr, BTR_PROBE_BYPASS, DAOS_INTENT_UPDATE, &key, &val, &val_out);
 	if (rc != 0) {
 		D_ERROR("Insert compound extent failed. "DF_RC"\n", DP_RC(rc));
 		return rc;
@@ -404,9 +428,12 @@ persistent_free(struct vea_space_info *vsi, struct vea_free_extent *vfe)
 {
 	struct vea_free_extent	dummy;
 	d_iov_t			key, val;
-	daos_handle_t		btr_hdl = vsi->vsi_md_free_btr;
+	daos_handle_t	btr_hdl = vsi->vsi_md_free_btr;
 	int			rc;
 
+    // 拿着当前释放的空间块vfe，在persistree树上是否存在可以合并的空间空间块
+    // rc = 1, 表示已经在vsi_md_free_btr树上合并了
+    // rc = 0, 表示没有可以合并的空间块
 	rc = merge_free_ext(vsi, vfe, VEA_TYPE_PERSIST, 0);
 	if (rc < 0)
 		return rc;
@@ -422,6 +449,7 @@ persistent_free(struct vea_space_info *vsi, struct vea_free_extent *vfe)
 	d_iov_set(&key, &dummy.vfe_blk_off, sizeof(dummy.vfe_blk_off));
 	d_iov_set(&val, &dummy, sizeof(dummy));
 
+    // 在vsi_md_free_btr树上插入一个新的空闲空间块
 	rc = dbtree_upsert(btr_hdl, BTR_PROBE_BYPASS, DAOS_INTENT_UPDATE, &key, &val, NULL);
 	if (rc)
 		D_ERROR("Insert persistent extent failed. "DF_RC"\n", DP_RC(rc));

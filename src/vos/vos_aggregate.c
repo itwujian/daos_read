@@ -434,8 +434,7 @@ merge_window_status(struct agg_merge_window *mw)
 	struct agg_io_context	*io = &mw->mw_io_ctxt;
 
 	D_ASSERT(io->ic_seg_cnt == 0);
-	D_ASSERT(io->ic_rsrvd_scm == NULL ||
-		 io->ic_rsrvd_scm->rs_actv_at == 0);
+	D_ASSERT(io->ic_rsrvd_scm == NULL || io->ic_rsrvd_scm->rs_actv_at == 0);
 	D_ASSERT(d_list_empty(&io->ic_nvme_exts));
 
 	D_ASSERT(mw->mw_ext.ex_lo <= mw->mw_ext.ex_hi);
@@ -989,9 +988,9 @@ reserve_segment(struct vos_object *obj, struct agg_io_context *io,
 	int		rc;
 
 	memset(addr, 0, sizeof(*addr));
-	media = vos_policy_media_select(vos_obj2pool(obj), DAOS_IOD_ARRAY, size,
-					VOS_IOS_AGGREGATION);
+	media = vos_policy_media_select(vos_obj2pool(obj), DAOS_IOD_ARRAY, size, VOS_IOS_AGGREGATION);
 
+// 内存盘上分配
 	if (media == DAOS_MEDIA_SCM) {
 		off = vos_reserve_scm(obj->obj_cont, io->ic_rsrvd_scm, size);
 		if (UMOFF_IS_NULL(off)) {
@@ -1006,19 +1005,17 @@ reserve_segment(struct vos_object *obj, struct agg_io_context *io,
 		return 0;
 	}
 
+//NVME盘上分配
 	D_ASSERT(media == DAOS_MEDIA_NVME);
-	rc = vos_reserve_blocks(obj->obj_cont, &io->ic_nvme_exts, size,
-				VOS_IOS_AGGREGATION, &off);
+	rc = vos_reserve_blocks(obj->obj_cont, &io->ic_nvme_exts, size, VOS_IOS_AGGREGATION, &off);
 	if (rc == -DER_NOSPACE) {
 		now = daos_gettime_coarse();
 		if (now - obj->obj_cont->vc_agg_nospc_ts > VOS_NOSPC_ERROR_INTVL) {
-			D_ERROR("Reserve "DF_U64" from NVMe failed. "DF_RC"\n",
-				size, DP_RC(rc));
+			D_ERROR("Reserve "DF_U64" from NVMe failed. "DF_RC"\n", size, DP_RC(rc));
 			obj->obj_cont->vc_agg_nospc_ts = now;
 		}
 	} else if (rc) {
-		D_ERROR("Reserve "DF_U64" from NVMe failed. "DF_RC"\n",
-			size, DP_RC(rc));
+		D_ERROR("Reserve "DF_U64" from NVMe failed. "DF_RC"\n", size, DP_RC(rc));
 	} else {
 		bio_addr_set(addr, media, off);
 	}
@@ -1253,9 +1250,9 @@ fill_segments(daos_handle_t ih, struct agg_merge_window *mw,
 	      unsigned int *acts)
 {
 	struct agg_io_context	*io = &mw->mw_io_ctxt;
-	struct agg_lgc_seg	*lgc_seg;
-	struct pobj_action	*scm_exts;
-	unsigned int		 i, scm_max;
+	struct agg_lgc_seg	    *lgc_seg;
+	struct pobj_action	    *scm_exts;
+	unsigned int		    i, scm_max;
 	int			 rc = 0;
 
 	if (io->ic_seg_cnt == 0) {
@@ -1264,13 +1261,12 @@ fill_segments(daos_handle_t ih, struct agg_merge_window *mw,
 	}
 
 	scm_max = MAX(io->ic_seg_cnt, 200);
-	if (io->ic_rsrvd_scm == NULL ||
-	    io->ic_rsrvd_scm->rs_actv_cnt < scm_max) {
+	
+	if (io->ic_rsrvd_scm == NULL || io->ic_rsrvd_scm->rs_actv_cnt < scm_max) {
 		struct vos_rsrvd_scm	*rsrvd_scm;
-		size_t			 size;
+		size_t			        size;
 
-		size = sizeof(*io->ic_rsrvd_scm) *
-			sizeof(*scm_exts) * scm_max;
+		size = sizeof(*io->ic_rsrvd_scm) * sizeof(*scm_exts) * scm_max;
 
 		D_REALLOC_Z(rsrvd_scm, io->ic_rsrvd_scm, size);
 		if (rsrvd_scm == NULL)
@@ -1561,8 +1557,7 @@ insert_segments(daos_handle_t ih, struct agg_merge_window *mw, bool last, unsign
 	mw->mw_ext.ex_lo = mw->mw_ext.ex_hi = mw->mw_alloc_hi = 0;
 
 	/* Publish NVMe reservations */
-	rc = vos_publish_blocks(obj->obj_cont, &io->ic_nvme_exts, true,
-				VOS_IOS_AGGREGATION);
+	rc = vos_publish_blocks(obj->obj_cont, &io->ic_nvme_exts, true, VOS_IOS_AGGREGATION);
 	if (rc) {
 		D_ERROR("Publish NVMe extents error: "DF_RC"\n", DP_RC(rc));
 		goto abort;
@@ -1588,8 +1583,7 @@ cleanup_segments(daos_handle_t ih, struct agg_merge_window *mw, int rc)
 		vos_publish_scm(obj->obj_cont, io->ic_rsrvd_scm, false);
 
 		if (!d_list_empty(&io->ic_nvme_exts))
-			vos_publish_blocks(obj->obj_cont, &io->ic_nvme_exts,
-					   false, VOS_IOS_AGGREGATION);
+			vos_publish_blocks(obj->obj_cont, &io->ic_nvme_exts, false, VOS_IOS_AGGREGATION);
 	}
 
 	/* Reset io context */
@@ -1787,8 +1781,7 @@ flush_merge_window(daos_handle_t ih, struct vos_agg_param *agg_param,
 	/* Replace the old logical records with new segments in EV tree */
 	rc = insert_segments(ih, mw, last, acts);
 	if (rc) {
-		D_ERROR("Insert segments "DF_EXT" error: "DF_RC"\n",
-			DP_EXT(&mw->mw_ext), DP_RC(rc));
+		D_ERROR("Insert segments "DF_EXT" error: "DF_RC"\n", DP_EXT(&mw->mw_ext), DP_RC(rc));
 		goto out;
 	}
 	credits_consume(&agg_param->ap_credits, AGG_OP_MERGE);

@@ -270,13 +270,18 @@ vos_tx_end(struct vos_container *cont, struct dtx_handle *dth_in,
 		D_INIT_LIST_HEAD(&tmp.dth_deferred_nvme);
 	}
 
-	if (rsrvd_scmp != NULL) { // only for vos_update
+    // only for vos_update
+    // rsrvd_scmp:  ioc->ic_rsrvd_scm, 
+    // nvme_exts:   ioc->ic_blk_exts
+	if (rsrvd_scmp != NULL) { 
 		D_ASSERT(nvme_exts != NULL);
 		dru = &dth->dth_rsrvds[dth->dth_rsrvd_cnt++];
 		dru->dru_scm = *rsrvd_scmp;
 		*rsrvd_scmp = NULL;
 
 		D_INIT_LIST_HEAD(&dru->dru_nvme);
+
+		//把nvme_exts链表置空，dru->dru_nvme指向原来的nvme_exts：ioc->ic_blk_exts
 		d_list_splice_init(nvme_exts, &dru->dru_nvme);
 	}
 

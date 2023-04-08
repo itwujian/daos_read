@@ -360,7 +360,7 @@ static btr_ops_t key_btr_ops = {
 	.to_hkey_size		= ktr_hkey_size,
 	.to_hkey_gen		= ktr_hkey_gen,
 	.to_hkey_cmp		= ktr_hkey_cmp,
-	.to_key_cmp		= ktr_key_cmp,
+	.to_key_cmp		    = ktr_key_cmp,
 	.to_key_encode		= ktr_key_encode,
 	.to_key_decode		= ktr_key_decode,
 	.to_rec_alloc		= ktr_rec_alloc,
@@ -1179,7 +1179,7 @@ key_tree_punch(struct vos_object *obj, daos_handle_t toh, daos_epoch_t epoch,
 		goto done;
 
     // 在tree_is_empty函数执行之前该分支不会进入
-    // known_key是在第一次迭代判断树是否为空的时候赋值的
+    // known_key是在第一次punch迭代判断树是否为空的时候赋值的
 	if (*known_key == umem_ptr2off(vos_obj2umm(obj), krec)) {
 		/** Set the value to UMOFF_NULL so punch propagation will run full check */
 		rc = umem_tx_add_ptr(vos_obj2umm(obj), known_key, sizeof(*known_key));

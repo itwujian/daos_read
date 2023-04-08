@@ -53,7 +53,7 @@ create_free_class(struct vea_free_class *vfc, struct vea_space_df *md)
 		return -DER_NOMEM;
 
 	D_ASSERT(md->vsd_blk_sz > 0 && md->vsd_blk_sz <= (1U << 20));
-	vfc->vfc_large_thresh = (VEA_LARGE_EXT_MB << 20) / md->vsd_blk_sz;
+	vfc->vfc_large_thresh = (VEA_LARGE_EXT_MB << 20) / md->vsd_blk_sz; // 64M/4K = 16K
 
 	memset(&uma, 0, sizeof(uma));
 	uma.uma_id = UMEM_CLASS_VMEM;
@@ -66,6 +66,9 @@ create_free_class(struct vea_free_class *vfc, struct vea_space_df *md)
 	return rc;
 }
 
+
+
+//  pool_hop_free  -> 删pool
 void
 unload_space_info(struct vea_space_info *vsi)
 {
@@ -84,14 +87,15 @@ static int
 load_free_entry(daos_handle_t ih, d_iov_t *key, d_iov_t *val, void *arg)
 {
 	struct vea_free_extent *vfe;
-	struct vea_space_info *vsi;
-	uint64_t *off;
+	struct vea_space_info  *vsi;
+	uint64_t               *off;
 	int rc;
 
 	vsi = (struct vea_space_info *)arg;
 	off = (uint64_t *)key->iov_buf;
 	vfe = (struct vea_free_extent *)val->iov_buf;
 
+    // 校验offset和block cnt
 	rc = verify_free_entry(off, vfe);
 	if (rc != 0)
 		return rc;
@@ -122,6 +126,8 @@ load_vec_entry(daos_handle_t ih, d_iov_t *key, d_iov_t *val, void *arg)
 	return compound_vec_alloc(vsi, vec);
 }
 
+
+// pool open调用
 int
 load_space_info(struct vea_space_info *vsi)
 {
@@ -136,31 +142,29 @@ load_space_info(struct vea_space_info *vsi)
 	uma.uma_pool = vsi->vsi_umem->umm_pool;
 
 	D_ASSERT(daos_handle_is_inval(vsi->vsi_md_free_btr));
-	rc = dbtree_open_inplace(&vsi->vsi_md->vsd_free_tree, &uma,
-				 &vsi->vsi_md_free_btr);
+	rc = dbtree_open_inplace(&vsi->vsi_md->vsd_free_tree, &uma, &vsi->vsi_md_free_btr);
 	if (rc != 0)
 		goto error;
 
 	/* Open SCM extent vector tree */
 	D_ASSERT(daos_handle_is_inval(vsi->vsi_md_vec_btr));
-	rc = dbtree_open_inplace(&vsi->vsi_md->vsd_vec_tree, &uma,
-				 &vsi->vsi_md_vec_btr);
+	rc = dbtree_open_inplace(&vsi->vsi_md->vsd_vec_tree, &uma, &vsi->vsi_md_vec_btr);
 	if (rc != 0)
 		goto error;
 
 	/* Build up in-memory compound free extent index */
-	rc = dbtree_iterate(vsi->vsi_md_free_btr, DAOS_INTENT_DEFAULT, false,
-			    load_free_entry, (void *)vsi);
+	// 迭代遍历vsi_md_free_btr树上的每个node(空闲空间块[off, blk_cnt]), 执行load_free_entry(compound_free)
+	rc = dbtree_iterate(vsi->vsi_md_free_btr, DAOS_INTENT_DEFAULT, false, load_free_entry, (void *)vsi);
 	if (rc != 0)
 		goto error;
 
 	/* Build up in-memory extent vector tree */
-	rc = dbtree_iterate(vsi->vsi_md_vec_btr, DAOS_INTENT_DEFAULT, false,
-			    load_vec_entry, (void *)vsi);
+	rc = dbtree_iterate(vsi->vsi_md_vec_btr, DAOS_INTENT_DEFAULT, false, load_vec_entry, (void *)vsi);
 	if (rc != 0)
 		goto error;
 
 	return 0;
+	
 error:
 	unload_space_info(vsi);
 	return rc;

@@ -1038,8 +1038,7 @@ again:
 			goto again;
 		}
 
-		if (dsp->dsp_mbs->dm_flags & DMF_CONTAIN_LEADER &&
-		    dsp->dsp_mbs->dm_tgts[0].ddt_id == target->ta_comp.co_id)
+		if (dsp->dsp_mbs->dm_flags & DMF_CONTAIN_LEADER && dsp->dsp_mbs->dm_tgts[0].ddt_id == target->ta_comp.co_id)
 			flags = DRF_INITIAL_LEADER;
 		else
 			flags = 0;

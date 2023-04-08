@@ -839,8 +839,7 @@ bio_write_blob_hdr(struct bio_io_context *ioctxt, struct bio_blob_hdr *bio_bh)
 	uint16_t		 dev_type = DAOS_MEDIA_NVME;
 	int			 rc = 0;
 
-	D_DEBUG(DB_MGMT, "Writing header blob:%p, xs:%p\n",
-		ioctxt->bic_blob, ioctxt->bic_xs_ctxt);
+	D_DEBUG(DB_MGMT, "Writing header blob:%p, xs:%p\n", ioctxt->bic_blob, ioctxt->bic_xs_ctxt);
 
 	/* check that all VOS blob header vars are set */
 	D_ASSERT(uuid_is_null(bio_bh->bbh_pool) == 0);
@@ -857,8 +856,7 @@ bio_write_blob_hdr(struct bio_io_context *ioctxt, struct bio_blob_hdr *bio_bh)
 	/* Query per-server metadata to get blobID for this pool:target */
 	rc = smd_pool_get_blob(bio_bh->bbh_pool, bio_bh->bbh_vos_id, &blob_id);
 	if (rc) {
-		D_ERROR("Failed to find blobID for xs:%p, pool:"DF_UUID"\n",
-			ioctxt->bic_xs_ctxt, DP_UUID(bio_bh->bbh_pool));
+		D_ERROR("Failed to find blobID for xs:%p, pool:"DF_UUID"\n", ioctxt->bic_xs_ctxt, DP_UUID(bio_bh->bbh_pool));
 		return rc;
 	}
 
@@ -867,8 +865,7 @@ bio_write_blob_hdr(struct bio_io_context *ioctxt, struct bio_blob_hdr *bio_bh)
 	/* Query per-server metadata to get device id for xs */
 	rc = smd_dev_get_by_tgt(bio_bh->bbh_vos_id, &dev_info);
 	if (rc) {
-		D_ERROR("Not able to find device id/blobstore for tgt %d\n",
-			bio_bh->bbh_vos_id);
+		D_ERROR("Not able to find device id/blobstore for tgt %d\n", bio_bh->bbh_vos_id);
 		return rc;
 	}
 

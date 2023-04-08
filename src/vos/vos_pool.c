@@ -223,24 +223,22 @@ pool_lookup(struct d_uuid *ukey, struct vos_pool **pool)
 static int
 vos_blob_format_cb(void *cb_data, struct umem_instance *umem)
 {
-	struct bio_blob_hdr	*blob_hdr = cb_data;
-	struct bio_xs_context	*xs_ctxt = vos_xsctxt_get();
+	struct bio_blob_hdr	    *blob_hdr = cb_data;
+	struct bio_xs_context	*xs_ctxt  = vos_xsctxt_get();
 	struct bio_io_context	*ioctxt;
-	int			 rc;
+	int	rc;
 
 	/* Create a bio_io_context to get the blob */
 	rc = bio_ioctxt_open(&ioctxt, xs_ctxt, umem, blob_hdr->bbh_pool, false);
 	if (rc) {
-		D_ERROR("Failed to create an I/O context for writing blob "
-			"header: "DF_RC"\n", DP_RC(rc));
+		D_ERROR("Failed to create an I/O context for writing blob header: "DF_RC"\n", DP_RC(rc));
 		return rc;
 	}
 
 	/* Write the blob header info to blob offset 0 */
 	rc = bio_write_blob_hdr(ioctxt, blob_hdr);
 	if (rc)
-		D_ERROR("Failed to write header for blob:"DF_U64" : "DF_RC"\n",
-			blob_hdr->bbh_blob_id, DP_RC(rc));
+		D_ERROR("Failed to write header for blob:"DF_U64" : "DF_RC"\n", blob_hdr->bbh_blob_id, DP_RC(rc));
 
 	rc = bio_ioctxt_close(ioctxt, false);
 	if (rc)
@@ -750,6 +748,8 @@ pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, unsigned int flags, void
 		unmap_ctxt.vnc_unmap = vos_blob_unmap_cb;
 		unmap_ctxt.vnc_data = pool->vp_io_ctxt;
 		unmap_ctxt.vnc_ext_flush = flags & VOS_POF_EXTERNAL_FLUSH;
+
+		//  Load space tracking information from SCM to initialize the in-memory compound index.
 		rc = vea_load(&pool->vp_umm, vos_txd_get(), &pool_df->pd_vea_df, &unmap_ctxt, vea_metrics, &pool->vp_vea_info);
 		if (rc) {
 			D_ERROR("Failed to load block space info: "DF_RC"\n", DP_RC(rc));

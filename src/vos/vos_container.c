@@ -99,7 +99,7 @@ cont_df_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 
     // cont树的每个record对应1棵obj树
 	rc = dbtree_create_inplace_ex(VOS_BTR_OBJ_TABLE, 0, VOS_OBJ_ORDER,
-				      &pool->vp_uma, &cont_df->cd_obj_root,
+				      &pool->vp_uma, &cont_df->cd_obj_root,// 存放obj树的树根
 				      DAOS_HDL_INVAL, pool, &hdl);
 	if (rc) {
 		D_ERROR("dbtree create failed\n");
@@ -425,8 +425,7 @@ vos_cont_open(daos_handle_t poh, uuid_t co_uuid, daos_handle_t *coh)
 		int	i;
 
 		for (i = 0; i < VOS_IOS_CNT; i++) {
-			rc = vea_hint_load(&cont->vc_cont_df->cd_hint_df[i],
-					   &cont->vc_hint_ctxt[i]);
+			rc = vea_hint_load(&cont->vc_cont_df->cd_hint_df[i], &cont->vc_hint_ctxt[i]);
 			if (rc) {
 				D_ERROR("Error loading allocator %d hint "
 					DF_UUID": %d\n", i, DP_UUID(co_uuid),

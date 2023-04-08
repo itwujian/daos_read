@@ -59,13 +59,13 @@ empty_tree_check(daos_handle_t ih, vos_iter_entry_t *entry,
 		 vos_iter_type_t type, vos_iter_param_t *param, void *cb_arg,
 		 unsigned int *acts)
 {
-	struct vos_iterator	*iter;
-	struct vos_obj_iter	*oiter;
+	struct vos_iterator	    *iter;
+	struct vos_obj_iter	    *oiter;
 	struct vos_rec_bundle	 rbund = {0};
-	d_iov_t			 key_iov;
+	d_iov_t			         key_iov;
 	struct umem_instance	*umm;
-	struct vos_key_info	*kinfo = cb_arg;
-	int			 rc;
+	struct vos_key_info	    *kinfo = cb_arg;
+	int	rc;
 
 	if (kinfo->ki_first == entry->ie_key.iov_buf)
 		return 1; /** We've seen this one before */
@@ -89,8 +89,7 @@ empty_tree_check(daos_handle_t ih, vos_iter_entry_t *entry,
 
 	D_ASSERT(key_iov.iov_len == entry->ie_key.iov_len);
 	D_ASSERT(((char *)key_iov.iov_buf)[0] == ((char *)entry->ie_key.iov_buf)[0]);
-	D_ASSERT(((char *)key_iov.iov_buf)[key_iov.iov_len - 1] ==
-		 ((char *)entry->ie_key.iov_buf)[key_iov.iov_len - 1]);
+	D_ASSERT(((char *)key_iov.iov_buf)[key_iov.iov_len - 1] == ((char *)entry->ie_key.iov_buf)[key_iov.iov_len - 1]);
 	umm = vos_obj2umm(kinfo->ki_obj);
 	rc = umem_tx_add_ptr(umm, kinfo->ki_known_key, sizeof(*(kinfo->ki_known_key)));
 	if (rc != 0)
@@ -107,13 +106,13 @@ static int
 tree_is_empty(struct vos_object *obj, umem_off_t *known_key, daos_handle_t toh,
 	      const daos_epoch_range_t *epr, vos_iter_type_t type)
 {
-	daos_anchor_t		 anchor = {0};
-	struct dtx_handle	*dth = vos_dth_get();
-	struct umem_instance	*umm;
-	d_iov_t			 key;
-	struct vos_key_info	 kinfo = {0};
-	struct vos_krec_df	*krec;
-	int			 rc;
+	daos_anchor_t		    anchor = {0};
+	struct dtx_handle	   *dth = vos_dth_get();
+	struct umem_instance   *umm;
+	d_iov_t			        key;
+	struct vos_key_info	    kinfo = {0};
+	struct vos_krec_df	   *krec;
+	int rc;
 
 	/** The address of the known_key, which actually points at the krec is guaranteed by PMDK
 	 *  to be allocated at an 8 byte alignment so the low order bit is available to mark it as
@@ -125,7 +124,7 @@ tree_is_empty(struct vos_object *obj, umem_off_t *known_key, daos_handle_t toh,
 	kinfo.ki_obj = obj;
 	kinfo.ki_known_key = known_key;
 
- 
+    // 树还没有经过迭代判空
 	if (*known_key == UMOFF_NULL)
 		goto tail;
 
@@ -133,8 +132,8 @@ tree_is_empty(struct vos_object *obj, umem_off_t *known_key, daos_handle_t toh,
 	d_iov_set(&key, vos_krec2key(krec), krec->kr_size);
 	dbtree_key2anchor(toh, &key, &anchor);
 
-	rc = vos_iterate_key(obj, toh, type, epr, true, empty_tree_check,
-			     &kinfo, dth, &anchor);
+    // 从anchor位置开始迭代判断树是否为空
+	rc = vos_iterate_key(obj, toh, type, epr, true, empty_tree_check, &kinfo, dth, &anchor);
 
 	if (rc < 0)
 		return rc;
@@ -142,19 +141,19 @@ tree_is_empty(struct vos_object *obj, umem_off_t *known_key, daos_handle_t toh,
 	if (kinfo.ki_non_empty)
 		return 0;
 
-	/** Start from beginning one more time.  It will iterate until it
-	 *  sees the first thing it saw
-	 */
+	/** Start from beginning one more time.  It will iterate until it sees the first thing it saw */
+
+	// 首次迭代判空
 tail:
-	rc = vos_iterate_key(obj, toh, type, epr, true, empty_tree_check,
-			     &kinfo, dth, NULL);
+	rc = vos_iterate_key(obj, toh, type, epr, true, empty_tree_check, &kinfo, dth, NULL);
 
 	if (rc < 0)
 		return rc;
-
+    // 树是非空的，直接回去了
 	if (kinfo.ki_non_empty)
 		return 0;
 
+// 树如果是空的known_key又置回为0
 	/** We didn't find any committed entries, so reset to an unknown key */
 	umm = vos_obj2umm(obj);
 	rc = umem_tx_add_ptr(umm, known_key, sizeof(*known_key));
@@ -177,30 +176,29 @@ vos_propagate_check(struct vos_object *obj, umem_off_t *known_key, daos_handle_t
 {
 	const char	*tree_name = NULL;
 	uint64_t	 punch_flag = VOS_OF_PUNCH_PROPAGATE;
-	int		 rc = 0;
+	int		     rc = 0;
 	uint32_t	 read_flag = 0;
 	uint32_t	 write_flag = 0;
 
 	if (vos_ts_set_check_conflict(ts_set, epr->epr_hi)) {
-		D_DEBUG(DB_IO, "Failed to punch key: "DF_RC"\n",
-			DP_RC(-DER_TX_RESTART));
+		D_DEBUG(DB_IO, "Failed to punch key: "DF_RC"\n", DP_RC(-DER_TX_RESTART));
 		return -DER_TX_RESTART;
 	}
 
 	switch (type) {
-	case VOS_ITER_DKEY:
-		read_flag = VOS_TS_READ_OBJ;
-		write_flag = VOS_TS_WRITE_OBJ;
-		tree_name = "DKEY";
-		if (!vos_dkey_punch_propagate)
-			return 0; /** Unless we explicitly enable it, disable punch propagation */
-	case VOS_ITER_AKEY:
-		read_flag = VOS_TS_READ_DKEY;
-		write_flag = VOS_TS_WRITE_DKEY;
-		tree_name = "AKEY";
-		break;
-	default:
-		D_ASSERT(0);
+		case VOS_ITER_DKEY:
+			read_flag = VOS_TS_READ_OBJ;
+			write_flag = VOS_TS_WRITE_OBJ;
+			tree_name = "DKEY";
+			if (!vos_dkey_punch_propagate)
+				return 0; /** Unless we explicitly enable it, disable punch propagation */
+		case VOS_ITER_AKEY:
+			read_flag = VOS_TS_READ_DKEY;
+			write_flag = VOS_TS_WRITE_DKEY;
+			tree_name = "AKEY";
+			break;
+		default:
+			D_ASSERT(0);
 	}
 
 	/** The check for propagation needs to update the read
@@ -210,19 +208,14 @@ vos_propagate_check(struct vos_object *obj, umem_off_t *known_key, daos_handle_t
 
 	rc = tree_is_empty(obj, known_key, toh, epr, type);
 	if (rc > 0) {
-		/** tree is now empty, set the flags so we can punch
-		 *  the parent
-		 */
-		D_DEBUG(DB_TRACE, "%s tree empty, punching parent\n",
-			tree_name);
+		/** tree is now empty, set the flags so we can punch the parent */
+		D_DEBUG(DB_TRACE, "%s tree empty, punching parent\n", tree_name);
 		vos_ts_set_append_vflags(ts_set, punch_flag);
 		vos_ts_set_append_cflags(ts_set, write_flag);
-
 		return 1;
 	}
 
-	VOS_TX_LOG_FAIL(rc, "Could not check emptiness on punch: "DF_RC"\n",
-			DP_RC(rc));
+	VOS_TX_LOG_FAIL(rc, "Could not check emptiness on punch: "DF_RC"\n", DP_RC(rc));
 
 	return rc;
 }
@@ -309,6 +302,7 @@ key_punch(struct vos_object *obj, daos_epoch_t epoch, daos_epoch_t bound,
 
 	if (rc == 0 && (flags & VOS_OF_REPLAY_PC) == 0) {
 		/** Check if we need to propagate the punch */
+	    // toh:akey树的树根， 检查akey树是否是空树
 		rc = vos_propagate_check(obj, &krec->kr_known_akey, toh, ts_set, &epr, VOS_ITER_AKEY);
 	}
 
@@ -332,8 +326,8 @@ punch_dkey:
 
 	if (rc == 0 && (flags & VOS_OF_REPLAY_PC) == 0) {
 		/** Check if we need to propagate to object */
-		rc = vos_propagate_check(obj, &obj->obj_df->vo_known_dkey, obj->obj_toh, ts_set,
-					 &epr, VOS_ITER_DKEY);
+	    // 检查dkey树是否是空树，如果是需要
+		rc = vos_propagate_check(obj, &obj->obj_df->vo_known_dkey, obj->obj_toh, ts_set, &epr, VOS_ITER_DKEY);
 	}
  out:
 	vos_ilog_fetch_finish(&info->ki_obj);
@@ -1646,8 +1640,7 @@ vos_obj_iter_prep(vos_iter_type_t type, vos_iter_param_t *param,
 	 * the object/key if it's punched more than once. However, rebuild
 	 * system should guarantee this will never happen.
 	 */
-	rc = vos_obj_hold(vos_obj_cache_current(), cont,
-			  param->ip_oid, &oiter->it_epr,
+	rc = vos_obj_hold(vos_obj_cache_current(), cont, param->ip_oid, &oiter->it_epr,
 			  oiter->it_iter.it_bound,
 			  (oiter->it_flags & VOS_IT_PUNCHED) ? 0 :
 			  VOS_OBJ_VISIBLE, vos_iter_intent(&oiter->it_iter),
@@ -1684,8 +1677,7 @@ vos_obj_iter_prep(vos_iter_type_t type, vos_iter_param_t *param,
 		break;
 
 	case VOS_ITER_RECX:
-		rc = recx_iter_prepare(oiter, &param->ip_dkey, &param->ip_akey,
-				       ts_set);
+		rc = recx_iter_prepare(oiter, &param->ip_dkey, &param->ip_akey, ts_set);
 		break;
 	}
 
