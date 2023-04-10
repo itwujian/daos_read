@@ -29,9 +29,9 @@ struct dtx_handle;
 /** VOS thread local storage structure */
 struct vos_tls {
 	/** pools registered for GC */
-	d_list_t			 vtl_gc_pools;
+	d_list_t			         vtl_gc_pools;
 	/** tracking GC running status */
-	int				 vtl_gc_running;
+	int				             vtl_gc_running;
 	/* PMDK transaction stage callback data */
 	struct umem_tx_stage_data	 vtl_txd;
 	/** XXX: The DTX handle.

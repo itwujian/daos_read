@@ -348,8 +348,7 @@ vos_tls_fini(void *data)
 	 * uncleaned pools behind. It is OK to free these pool handles with
 	 * leftover, because GC can clean up leftover when it starts again.
 	 */
-	D_ASSERTF(tls->vtl_gc_running == 0, "GC running = %d\n",
-		  tls->vtl_gc_running);
+	D_ASSERTF(tls->vtl_gc_running == 0, "GC running = %d\n", tls->vtl_gc_running);
 
 	while (!d_list_empty(&tls->vtl_gc_pools)) {
 		struct vos_pool *pool;
@@ -391,19 +390,15 @@ vos_tls_init(int xs_id, int tgt_id)
 		goto failed;
 	}
 
-	rc = d_uhash_create(D_HASH_FT_NOLOCK, VOS_POOL_HHASH_BITS,
-			    &tls->vtl_pool_hhash);
+	rc = d_uhash_create(D_HASH_FT_NOLOCK, VOS_POOL_HHASH_BITS, &tls->vtl_pool_hhash);
 	if (rc) {
-		D_ERROR("Error in creating POOL ref hash: "DF_RC"\n",
-			DP_RC(rc));
+		D_ERROR("Error in creating POOL ref hash: "DF_RC"\n", DP_RC(rc));
 		goto failed;
 	}
 
-	rc = d_uhash_create(D_HASH_FT_NOLOCK | D_HASH_FT_EPHEMERAL,
-			    VOS_CONT_HHASH_BITS, &tls->vtl_cont_hhash);
+	rc = d_uhash_create(D_HASH_FT_NOLOCK | D_HASH_FT_EPHEMERAL, VOS_CONT_HHASH_BITS, &tls->vtl_cont_hhash);
 	if (rc) {
-		D_ERROR("Error in creating CONT ref hash: "DF_RC"\n",
-			DP_RC(rc));
+		D_ERROR("Error in creating CONT ref hash: "DF_RC"\n", DP_RC(rc));
 		goto failed;
 	}
 
@@ -428,10 +423,10 @@ vos_tls_init(int xs_id, int tgt_id)
 			     " reconstruction", "entries",
 			     "io/dtx/committed/tgt_%u", tgt_id);
 	if (rc)
-		D_WARN("Failed to create committed cnt sensor: "DF_RC"\n",
-		       DP_RC(rc));
+		D_WARN("Failed to create committed cnt sensor: "DF_RC"\n", DP_RC(rc));
 
 	return tls;
+	
 failed:
 	vos_tls_fini(tls);
 	return NULL;
