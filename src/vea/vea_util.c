@@ -15,20 +15,17 @@ verify_free_entry(uint64_t *off, struct vea_free_extent *vfe)
 {
 	D_ASSERT(vfe != NULL);
 	if (off != NULL && *off != vfe->vfe_blk_off) {
-		D_CRIT("corrupted free entry, off: "DF_U64" != "DF_U64"\n",
-		       *off, vfe->vfe_blk_off);
+		D_CRIT("corrupted free entry, off: "DF_U64" != "DF_U64"\n", *off, vfe->vfe_blk_off);
 		return -DER_INVAL;
 	}
 
 	if (vfe->vfe_blk_off == VEA_HINT_OFF_INVAL) {
-		D_CRIT("corrupted free entry, off == VEA_HINT_OFF_INVAL(%d)\n",
-			VEA_HINT_OFF_INVAL);
+		D_CRIT("corrupted free entry, off == VEA_HINT_OFF_INVAL(%d)\n", VEA_HINT_OFF_INVAL);
 		return -DER_INVAL;
 	}
 
 	if (vfe->vfe_blk_cnt == 0) {
-		D_CRIT("corrupted free entry, cnt:, %u\n",
-		       vfe->vfe_blk_cnt);
+		D_CRIT("corrupted free entry, cnt:, %u\n", vfe->vfe_blk_cnt);
 		return -DER_INVAL;
 	}
 	return 0;
@@ -111,6 +108,7 @@ verify_resrvd_ext(struct vea_resrvd_ext *resrvd)
 	return 0;
 }
 
+// 测试代码居多，打印树上的内容 
 int
 vea_dump(struct vea_space_info *vsi, bool transient)
 {
@@ -142,7 +140,6 @@ vea_dump(struct vea_space_info *vsi, bool transient)
 		off = (uint64_t *)key.iov_buf;
 		if (transient) {
 			struct vea_entry *entry;
-
 			entry = (struct vea_entry *)val.iov_buf;
 			ext = &entry->ve_ext;
 		} else {
@@ -225,12 +222,12 @@ vea_verify_alloc(struct vea_space_info *vsi, bool transient, uint64_t off,
 
 	D_ASSERT(daos_handle_is_valid(btr_hdl));
 	d_iov_set(&key, &vfe.vfe_blk_off, sizeof(vfe.vfe_blk_off));
+	
 repeat:
 	d_iov_set(&key_out, NULL, 0);
 	d_iov_set(&val, NULL, 0);
 
-	rc = dbtree_fetch(btr_hdl, opc, DAOS_INTENT_DEFAULT, &key, &key_out,
-			  &val);
+	rc = dbtree_fetch(btr_hdl, opc, DAOS_INTENT_DEFAULT, &key, &key_out, &val);
 	if (rc == -DER_NONEXIST && opc == BTR_PROBE_LE) {
 		opc = BTR_PROBE_GE;
 		goto repeat;

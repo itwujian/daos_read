@@ -866,10 +866,10 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	    struct cont_svc *svc, crt_rpc_t *rpc)
 {
 	struct cont_create_in  *in = crt_req_get(rpc);
-	daos_prop_t	       *prop_dup = NULL;
-	d_iov_t			key;
-	d_iov_t			value;
-	struct rdb_kvs_attr	attr;
+	daos_prop_t	           *prop_dup = NULL;
+	d_iov_t			        key;
+	d_iov_t			        value;
+	struct rdb_kvs_attr	    attr;
 	rdb_path_t		kvs;
 	uint64_t		ghce = 0;
 	uint64_t		alloced_oid = 0;
@@ -877,7 +877,7 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	struct daos_prop_entry *def_lbl_ent;
 	d_string_t		lbl = NULL;
 	uint32_t		nsnapshots = 0;
-	int			rc;
+	int			    rc;
 
 	D_DEBUG(DB_MD, DF_CONT": processing rpc %p\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), rpc);
 
@@ -894,10 +894,12 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 		prop_dup = daos_prop_dup(&cont_prop_default_v0, false, false);
 	else
 		prop_dup = daos_prop_dup(&cont_prop_default, false, false);
+	
 	if (prop_dup == NULL) {
 		D_ERROR(DF_CONT" daos_prop_dup failed.\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid));
 		D_GOTO(out, rc = -DER_NOMEM);
 	}
+	
 	rc = cont_create_prop_prepare(pool_hdl, prop_dup, in->cci_prop);
 	if (rc != 0) {
 		D_ERROR(DF_CONT" cont_create_prop_prepare failed: "DF_RC"\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), DP_RC(rc));
@@ -918,13 +920,9 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	rc = cont_existence_check(tx, svc, pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid, lbl);
 	if (rc != -DER_NONEXIST) {
 		if (rc == 0)
-			D_DEBUG(DB_MD, DF_CONT": container already exists\n",
-				DP_CONT(pool_hdl->sph_pool->sp_uuid,
-					in->cci_op.ci_uuid));
+			D_DEBUG(DB_MD, DF_CONT": container already exists\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid));
 		else
-			D_ERROR(DF_CONT": container lookup failed: "DF_RC"\n",
-				DP_CONT(pool_hdl->sph_pool->sp_uuid,
-					in->cci_op.ci_uuid), DP_RC(rc));
+			D_ERROR(DF_CONT": container lookup failed: "DF_RC"\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), DP_RC(rc));
 		D_GOTO(out, rc);
 	}
 
@@ -940,10 +938,8 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	attr.dsa_order = 16;
 	rc = rdb_tx_create_kvs(tx, &svc->cs_conts, &key, &attr);
 	if (rc != 0) {
-		D_ERROR(DF_CONT" failed to create container attribute KVS: "
-			""DF_RC"\n",
-			DP_CONT(pool_hdl->sph_pool->sp_uuid,
-				in->cci_op.ci_uuid), DP_RC(rc));
+		D_ERROR(DF_CONT" failed to create container attribute KVS: "DF_RC"\n",
+			DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), DP_RC(rc));
 		D_GOTO(out, rc);
 	}
 
@@ -951,6 +947,7 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	rc = rdb_path_clone(&svc->cs_conts, &kvs);
 	if (rc != 0)
 		D_GOTO(out, rc);
+	
 	rc = rdb_path_push(&kvs, &key);
 	if (rc != 0)
 		D_GOTO(out_kvs, rc);
@@ -960,8 +957,7 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	rc = rdb_tx_update(tx, &kvs, &ds_cont_prop_ghce, &value);
 	if (rc != 0) {
 		D_ERROR(DF_CONT": create ghce property failed: "DF_RC"\n",
-			DP_CONT(pool_hdl->sph_pool->sp_uuid,
-				in->cci_op.ci_uuid), DP_RC(rc));
+			DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), DP_RC(rc));
 		D_GOTO(out_kvs, rc);
 	}
 
@@ -1057,10 +1053,7 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	attr.dsa_order = 16;
 	rc = rdb_tx_create_kvs(tx, &kvs, &ds_cont_attr_user, &attr);
 	if (rc != 0) {
-		D_ERROR(DF_CONT" failed to create container user attr KVS: "
-			""DF_RC"\n",
-			DP_CONT(pool_hdl->sph_pool->sp_uuid,
-				in->cci_op.ci_uuid), DP_RC(rc));
+		D_ERROR(DF_CONT" failed to create container user attr KVS: "DF_RC"\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), DP_RC(rc));
 		D_GOTO(out_kvs, rc);
 	}
 
@@ -1069,10 +1062,7 @@ cont_create(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	attr.dsa_order = 16;
 	rc = rdb_tx_create_kvs(tx, &kvs, &ds_cont_prop_handles, &attr);
 	if (rc != 0) {
-		D_ERROR(DF_CONT" failed to create container handle index KVS: "
-			""DF_RC"\n",
-			DP_CONT(pool_hdl->sph_pool->sp_uuid,
-				in->cci_op.ci_uuid), DP_RC(rc));
+		D_ERROR(DF_CONT" failed to create container handle index KVS: "DF_RC"\n", DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cci_op.ci_uuid), DP_RC(rc));
 		D_GOTO(out_kvs, rc);
 	}
 
@@ -4536,24 +4526,23 @@ static int
 cont_op_with_svc(struct ds_pool_hdl *pool_hdl, struct cont_svc *svc,
 		 crt_rpc_t *rpc, int cont_proto_ver)
 {
-	struct cont_op_in		*in = crt_req_get(rpc);
-	struct cont_open_bylabel_in	*olbl_in = NULL;
+	struct cont_op_in		        *in = crt_req_get(rpc);
+	struct cont_open_bylabel_in	    *olbl_in = NULL;
 	struct cont_open_bylabel_out	*olbl_out = NULL;
 	struct cont_destroy_bylabel_in	*dlbl_in = NULL;
-	struct rdb_tx			 tx;
-	crt_opcode_t			 opc = opc_get(rpc->cr_opc);
-	struct cont			*cont = NULL;
-	struct cont_pool_metrics	*metrics;
-	bool				 update_mtime = false;
-	int				 rc;
+	struct rdb_tx			         tx;
+	crt_opcode_t			         opc   = opc_get(rpc->cr_opc);
+	struct cont			            *cont = NULL;
+	struct cont_pool_metrics	    *metrics;
+	bool				             update_mtime = false;
+	int	rc;
 
 	rc = rdb_tx_begin(svc->cs_rsvc->s_db, svc->cs_rsvc->s_term, &tx);
 	if (rc != 0)
 		D_GOTO(out, rc);
 
 	/* TODO: Implement per-container locking. */
-	if (opc == CONT_QUERY || opc == CONT_ATTR_GET ||
-	    opc == CONT_ATTR_LIST || opc == CONT_SNAP_LIST)
+	if (opc == CONT_QUERY || opc == CONT_ATTR_GET || opc == CONT_ATTR_LIST || opc == CONT_SNAP_LIST)
 		ABT_rwlock_rdlock(svc->cs_lock);
 	else
 		ABT_rwlock_wrlock(svc->cs_lock);

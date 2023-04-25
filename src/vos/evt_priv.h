@@ -341,6 +341,7 @@ int evt_ent_array_sort(struct evt_context *tcx,
 		       struct evt_entry_array *ent_array,
 		       const struct evt_filter *filter,
 		       int flags);
+
 /** Scan the tree and select all rectangles that match
  * \param[IN]		tcx		The evtree context
  * \param[IN]		opc		The opcode for the scan
@@ -358,8 +359,7 @@ int evt_ent_array_sort(struct evt_context *tcx,
 int
 evt_ent_array_fill(struct evt_context *tcx, enum evt_find_opc find_opc,
 		   uint32_t intent, const struct evt_filter *filter,
-		   const struct evt_rect *rect,
-		   struct evt_entry_array *ent_array);
+		   const struct evt_rect *rect, struct evt_entry_array *ent_array);
 
 /** Compare two rectangles
  * \param[IN]		rt1	The first rectangle

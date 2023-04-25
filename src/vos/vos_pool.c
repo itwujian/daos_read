@@ -402,7 +402,8 @@ end:
 
 	/* Create SPDK blob on NVMe device */
 	D_DEBUG(DB_MGMT, "Creating blob for xs:%p pool:"DF_UUID"\n", xs_ctxt, DP_UUID(uuid));
-	
+
+	// 数据盘上创建blob
 	rc = bio_blob_create(uuid, xs_ctxt, nvme_sz);
 	if (rc != 0) {
 		D_ERROR("Error creating blob for xs:%p pool:"DF_UUID" "DF_RC"\n", xs_ctxt, DP_UUID(uuid), DP_RC(rc));

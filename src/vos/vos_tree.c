@@ -1018,9 +1018,7 @@ key_tree_prepare(struct vos_object *obj,
 			
 		case -DER_NONEXIST:
 			
-			/** Key hash may already be calculated but isn't for some key
-			 * types so pass it in here.
-			 */
+			/** Key hash may already be calculated but isn't for some key types so pass it in here. */
 			if (ilog != NULL && (flags & SUBTR_CREATE))
 				vos_ilog_ts_ignore(vos_obj2umm(obj), &krec->kr_ilog);
 			

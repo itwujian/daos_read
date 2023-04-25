@@ -361,14 +361,16 @@ ent_array_alloc(struct evt_context *tcx, struct evt_entry_array *ent_array,
 		size *= 3;
 		ent_array->ea_max = size;
 	}
+	
 	if (ent_array->ea_ent_nr == ent_array->ea_size) {
 		/** We should never exceed the maximum number of entries. */
-		D_ASSERTF(ent_array->ea_size != ent_array->ea_max,
-			  "Maximum number of ent_array entries exceeded: %d\n",
-			  ent_array->ea_max);
+		D_ASSERTF(ent_array->ea_size != ent_array->ea_max, "Maximum number of ent_array entries exceeded: %d\n", ent_array->ea_max);
+		
 		size = ent_array->ea_size * 4;
+	
 		if (size < EVT_MIN_ALLOC)
 			size = EVT_MIN_ALLOC;
+		
 		if (size > ent_array->ea_max)
 			size = ent_array->ea_max;
 
@@ -384,6 +386,7 @@ ent_array_alloc(struct evt_context *tcx, struct evt_entry_array *ent_array,
 		if (notify_realloc)
 			return -DER_AGAIN; /* Invalidate any cached state */
 	}
+	
 	D_ASSERT(ent_array->ea_ent_nr < ent_array->ea_size);
 
 	*entry = evt_ent_array_get(ent_array, ent_array->ea_ent_nr++);
@@ -1097,8 +1100,7 @@ evt_tcx_trace(struct evt_context *tcx, int level)
 }
 
 static void
-evt_tcx_set_trace(struct evt_context *tcx, int level, umem_off_t nd_off, int at,
-		  bool alloc)
+evt_tcx_set_trace(struct evt_context *tcx, int level, umem_off_t nd_off, int at, bool alloc)
 {
 	struct evt_trace *trace;
 
@@ -1116,13 +1118,22 @@ evt_tcx_set_trace(struct evt_context *tcx, int level, umem_off_t nd_off, int at,
 }
 
 /** Reset all traces within context and set root as the 0-level trace */
+// 重置上下文中的所有trace，并将根设置为0级trace
 static void
 evt_tcx_reset_trace(struct evt_context *tcx)
 {
-	memset(&tcx->tc_trace_scratch[0], 0,
-	       sizeof(tcx->tc_trace_scratch[0]) * EVT_TRACE_MAX);
+	memset(&tcx->tc_trace_scratch[0], 0, sizeof(tcx->tc_trace_scratch[0]) * EVT_TRACE_MAX);
+	
 	evt_tcx_set_dep(tcx, tcx->tc_root->tr_depth);
+    //  即：
+    //	tcx->tc_depth = tcx->tc_root->tr_depth;
+	//  tcx->tc_trace = &tcx->tc_trace_scratch[EVT_TRACE_MAX - tcx->tc_root->tr_depth];
+	
 	evt_tcx_set_trace(tcx, 0, tcx->tc_root->tr_node, 0, false);
+	//  即：
+	//   tcx->tc_trace[0]->tr_at = 0;
+	//   tcx->tc_trace[0]->tr_node = tcx->tc_root->tr_node;
+	//   tcx->tc_trace[0]->tr_tx_added = false;
 }
 
 /**
@@ -1338,16 +1349,25 @@ evt_node_child_at(struct evt_context *tcx, struct evt_node *node,
 
 void
 evt_node_rect_read_at(struct evt_context *tcx, struct evt_node *node,
-		      unsigned int at, struct evt_rect *rout)
+		      unsigned int at,  // 	The index in the node entry
+		      struct evt_rect *rout)
 {
 	struct evt_node_entry	*ne;
 	struct evt_node		*child;
 
+    // 如果node节点是叶子节点
 	if (evt_node_is_leaf(tcx, node)) {
+
+	    // 返回node节点里面的第at个evt_node_entry(evt_node->tn_rec)
 		ne = evt_node_entry_at(tcx, node, at);
+		// 读取evt_node_entry填充到输出参数evt_rect中
 		evt_rect_read(rout, &ne->ne_rect);
-	} else {
+	
+	} else {    // node节点不是叶子节点
+
+        // evt_node_child_at(tcx, node, at)获取node节点里面的第at个child
 		child = evt_off2node(tcx, evt_node_child_at(tcx, node, at));
+		//  读取child填充到输出参数evt_rect中
 		evt_mbr_read(rout, child);
 	}
 }
@@ -1411,13 +1431,12 @@ evt_node_alloc(struct evt_context *tcx, unsigned int flags,
 	umem_off_t		 nd_off;
 	bool			 leaf = (flags & EVT_NODE_LEAF);
 
-	nd_off = vos_slab_alloc(evt_umm(tcx), evt_node_size(tcx, leaf),
-			leaf ? VOS_SLAB_EVT_NODE : VOS_SLAB_EVT_NODE_SM);
+	nd_off = vos_slab_alloc(evt_umm(tcx), evt_node_size(tcx, leaf), leaf ? VOS_SLAB_EVT_NODE : VOS_SLAB_EVT_NODE_SM);
 	if (UMOFF_IS_NULL(nd_off))
 		return -DER_NOSPACE;
 
-	V_TRACE(DB_TRACE, "Allocate new node "DF_U64" %d bytes\n",
-		nd_off, evt_node_size(tcx, leaf));
+	V_TRACE(DB_TRACE, "Allocate new node "DF_U64" %d bytes\n", nd_off, evt_node_size(tcx, leaf));
+	
 	nd = evt_off2ptr(tcx, nd_off);
 	nd->tn_flags = flags;
 	nd->tn_magic = EVT_NODE_MAGIC;
@@ -1686,9 +1705,9 @@ out:
 static int
 evt_root_activate(struct evt_context *tcx, const struct evt_entry_in *ent)
 {
-	struct evt_root			*root;
-	umem_off_t			 nd_off;
-	int				 rc;
+	struct evt_root			    *root;
+	umem_off_t			         nd_off;
+	int				             rc;
 	const struct dcs_csum_info	*csum;
 
 	root = tcx->tc_root;
@@ -1709,8 +1728,10 @@ evt_root_activate(struct evt_context *tcx, const struct evt_entry_in *ent)
 
 	root->tr_node = nd_off;
 	root->tr_depth = 1;
+	
 	if (inob != 0)
 		tcx->tc_inob = root->tr_inob = inob;
+	
 	if (ci_is_valid((struct dcs_csum_info *) csum)) {
 		/**
 		 * csum len, type, and chunksize will be a configuration stored
@@ -1997,8 +2018,7 @@ evt_insert_entry(struct evt_context *tcx, const struct evt_entry_in *ent,
 	int			level;
 	int			i;
 
-	V_TRACE(DB_TRACE, "Inserting rectangle "DF_RECT"\n",
-		DP_RECT(&ent->ei_rect));
+	V_TRACE(DB_TRACE, "Inserting rectangle "DF_RECT"\n", DP_RECT(&ent->ei_rect));
 
 	evt_tcx_reset_trace(tcx);
 	nd_off = tcx->tc_trace->tr_node; /* NB: trace points at root node */
@@ -2136,22 +2156,27 @@ done:
  * Please check API comment in evtree.h for the details.
  */
 int
-evt_insert(daos_handle_t toh, const struct evt_entry_in *entry,
-	   uint8_t **csum_bufp)
+evt_insert(daos_handle_t toh, const struct evt_entry_in *entry, uint8_t **csum_bufp)
 {
 	struct evt_context		*tcx;
 	struct evt_entry		*ent = NULL;
 	struct evt_entry_in		 ent_cpy;
+	
 	EVT_ENT_ARRAY_SM_PTR(ent_array);
+	// struct evt_entry_array_sm	 ent_array_alloc;			
+	// struct evt_entry_array		*ent_array
+	
 	const struct evt_entry_in	*entryp = entry;
-	struct evt_filter		 filter;
+	struct evt_filter		    filter;
 	int				 rc;
 	int				 alt_rc = 0;
 
+    // 上次查找的上下文
 	tcx = evt_hdl2tcx(toh);
 	if (tcx == NULL)
 		return -DER_NO_HDL;
 
+    // entry->ei_inob(iod->size)
 	if (tcx->tc_inob && entry->ei_inob && tcx->tc_inob != entry->ei_inob) {
 		D_ERROR("Variable record size not supported in evtree: %d != %d\n", entry->ei_inob, tcx->tc_inob);
 		return -DER_INVAL;
@@ -2160,7 +2185,8 @@ evt_insert(daos_handle_t toh, const struct evt_entry_in *entry,
 	D_ASSERT(evt_rect_width(&entry->ei_rect) != 0);
 	D_ASSERT(entry->ei_inob != 0 || bio_addr_is_hole(&entry->ei_addr));
 	D_ASSERT(bio_addr_is_hole(&entry->ei_addr) || entry->ei_addr.ba_off != 0);
-	
+
+	// 校验
 	if (evt_rect_width(&entry->ei_rect) > MAX_RECT_WIDTH) {
 		if (bio_addr_is_hole(&entry->ei_addr)) {
 			/** csum_bufp is specific to aggregation case and we
@@ -2175,6 +2201,8 @@ evt_insert(daos_handle_t toh, const struct evt_entry_in *entry,
 	}
 
 	evt_ent_array_init(ent_array, 1);
+	//	ent_array= &ent_array_alloc.ea_data;						
+    //  evt_ent_array_init_(ent_array, ARRAY_SIZE(ent_array_alloc.ea_embedded), 1);	
 
 	filter.fr_ex = entry->ei_rect.rc_ex;
 	filter.fr_epr.epr_lo = entry->ei_rect.rc_epc;
@@ -2184,6 +2212,7 @@ evt_insert(daos_handle_t toh, const struct evt_entry_in *entry,
 	filter.fr_punch_minor_epc = 0;
 	
 	/* Phase-1: Check for overwrite and uncertainty */
+	// 输出参数：ent_array
 	rc = evt_ent_array_fill(tcx, EVT_FIND_OVERWRITE, DAOS_INTENT_UPDATE, &filter, &entry->ei_rect, ent_array);
 	
 	alt_rc = rc;
@@ -2472,110 +2501,152 @@ agg_check(const struct evt_extent *inserted, const struct evt_extent *intree)
 int
 evt_ent_array_fill(struct evt_context *tcx, enum evt_find_opc find_opc,
 		   uint32_t intent, const struct evt_filter *filter,
-		   const struct evt_rect *rect,
-		   struct evt_entry_array *ent_array)
+		   const struct evt_rect *rect, struct evt_entry_array *ent_array)
 {
 	struct evt_data_loss_item	*edli;
 	d_list_t			 data_loss_list;
 	umem_off_t			 nd_off;
-	int				 level;
-	int				 at;
-	int				 i;
-	int				 rc = 0;
+	int				     level;
+	int				     at;
+	int				     i;
+	int				     rc = 0;
 	bool				 has_agg = false;
 
-	V_TRACE(DB_TRACE, "Searching rectangle "DF_RECT" opc=%d\n",
-		DP_RECT(rect), find_opc);
+    // DF_RECT:  (rect->ext)->ex_lo - (rect->ext)->ex_hi "@" rect->rc_epc    .  rc_minor_epc -INF "
+    // FOR:             550         -      55f            @  ff82f89ac5c0010 .      1        -INF
+	V_TRACE(DB_TRACE, "Searching rectangle "DF_RECT" opc=%d\n", DP_RECT(rect), find_opc);
+	
 	if (tcx->tc_root->tr_depth == 0)
 		return 0; /* empty tree */
 
 	D_INIT_LIST_HEAD(&data_loss_list);
 
+    // 重置上下文中的所有trace，并将根设置为0级trace
 	evt_tcx_reset_trace(tcx);
+	
 	ent_array->ea_inob = tcx->tc_inob;
 
 	level = at = 0;
 	nd_off = tcx->tc_root->tr_node;
+	
 	while (1) {
-		struct evt_node		*node;
-		bool			 leaf;
+		struct evt_node	  *node;
+		bool			  leaf;
 
+        //  首次循环是由存在tcx->tc_root->tr_node的偏移转换成这个节点node
+        //  在后面的逻辑中会改变这个值，也就是会改变取的node节点
 		node = evt_off2node(tcx, nd_off);
+		
 		leaf = evt_node_is_leaf(tcx, node);
 
 		D_ASSERT(!leaf || at == 0);
-		V_TRACE(DB_TRACE,
-			"Checking mbr="DF_MBR"("DF_X64"), l=%d, a=%d, f=%d\n",
-			DP_MBR(node), nd_off, level, at, leaf);
 
+		// Checking mbr=0-413@ff82f8671200009.1(7bf198), l=0, a=0, f=0
+		V_TRACE(DB_TRACE, "Checking mbr="DF_MBR"("DF_X64"), l=%d, a=%d, f=%d\n", DP_MBR(node), nd_off, level, at, leaf);
+
+        // 遍历这个节点所有的孩子或者叶子节点
 		for (i = at; i < node->tn_nr; i++) {
+			
 			struct evt_entry	*ent;
 			struct evt_desc		*desc;
 			struct evt_rect		 rtmp;
-			int			 time_overlap;
-			int			 range_overlap;
+			int	 time_overlap;
+			int	 range_overlap;
 
+            // 读取node里面的第i个child节点或者leaf节点的内容到rtmp
 			evt_node_rect_read_at(tcx, node, i, &rtmp);
 
+            // 如果矩形(rtmp)没有与过滤器(filter)相交，则返回true
+            // rtmp:   读取的leaf或者child的内容
+            // filter：调用者调用evt_ent_array_fil传入的参数 
 			if (evt_filter_rect(filter, &rtmp, leaf)) {
-				V_TRACE(DB_TRACE, "Filtered "DF_RECT" filter=("
-					DF_FILTER")\n", DP_RECT(&rtmp), DP_FILTER(filter));
+				
+				V_TRACE(DB_TRACE, "Filtered "DF_RECT" filter=("DF_FILTER")\n", DP_RECT(&rtmp), DP_FILTER(filter));
+				
 				if (find_opc == EVT_FIND_OVERWRITE && !has_agg) {
 					if (agg_check(&filter->fr_ex, &rtmp.rc_ex))
 						has_agg = true;
 				}
+
+// 读取到node节点里面的第i个child或者leaf的矩形rtmp与filter没有相交，不处理； 继续读取node节点的下一个child或者leaf
 				continue; /* Doesn't match the filter */
 			}
+
+// 读取到node节点里面的第i个child或者leaf的矩形rtmp与filter有相交
+
+// 找到node中与filter有相交的child的rtmp
 
 			if (find_opc == EVT_FIND_OVERWRITE)
 				has_agg = true;
 
-			evt_rect_overlap(&rtmp, rect, &range_overlap,
-					 &time_overlap);
+            // 检查两个矩形(node里面的第i个child节点或者leaf节点的rtmp和函数带下来的rect)是否互相重叠。
+            //  rtmp： be in-tree
+            //  rect： one being searched/inserted
+            //  range_overlap：evt_rect中的evt_extent是否有重叠
+            //  time_overlap： evt_rect中的rc_epc、rc_minor_epc是否有重叠
+			evt_rect_overlap(&rtmp, rect, &range_overlap, &time_overlap);
+			
 			switch (range_overlap) {
-			default:
-				D_ASSERT(0);
-			case RT_OVERLAP_NO:
-				continue; /* skip, no overlap */
+				default:
+					D_ASSERT(0);
+			
+// 读取到node节点里面的第i个child或者leaf的矩形rtmp与函数带下来的rect没有重叠，不处理； 继续读取node节点的下一个child或者leaf
 
-			case RT_OVERLAP_SAME:
-			case RT_OVERLAP_INCLUDED:
-			case RT_OVERLAP_INCLUDES:
-			case RT_OVERLAP_PARTIAL:
-				break; /* overlapped */
+// node中与filter有相交，但是和evt_rect无重叠， 不处理
+				case RT_OVERLAP_NO:
+					continue; /* skip, no overlap */ // continue是继续for循环，不走下面
+
+				case RT_OVERLAP_SAME:
+				case RT_OVERLAP_INCLUDED:
+				case RT_OVERLAP_INCLUDES:
+				case RT_OVERLAP_PARTIAL:
+					break; /* overlapped */         // break是跳出当前switch, 然后走下面
 			}
 
+// 开始处理node中与filter有相交，和evt_rect有重叠的child
+
+            // 如果矩形落在不确定窗口内，则返回true， 非叶子节点无需检查
 			if (evt_epoch_uncertain(filter, &rtmp, leaf)) {
-				V_TRACE(DB_TRACE, "Epoch uncertainty found for "
-					DF_RECT" filter="DF_FILTER"\n",
-					DP_RECT(&rtmp), DP_FILTER(filter));
+				V_TRACE(DB_TRACE, "Epoch uncertainty found for "DF_RECT" filter="DF_FILTER"\n", DP_RECT(&rtmp), DP_FILTER(filter));
 				D_GOTO(out, rc = -DER_TX_RESTART);
 			}
 
 			switch (time_overlap) {
-			default:
-				D_ASSERT(0);
-			case RT_OVERLAP_NO:
-			case RT_OVERLAP_UNDER:
-				continue; /* skip, no overlap */
-			case RT_OVERLAP_OVER:
-			case RT_OVERLAP_SAME:
-				break; /* overlapped */
+				default:
+					D_ASSERT(0);
+
+// 读取到node节点里面的第i个child或者leaf的矩形rtmp与函数带下来的rect没有重叠或者under，不处理； 继续读取node节点的下一个child或者leaf
+
+// node中与filter有相交，和evt_rect有重叠的child, 但是和rc_epc、rc_minor_epc无重叠或者under的不处理
+				case RT_OVERLAP_NO:
+				case RT_OVERLAP_UNDER:
+					continue; /* skip, no overlap */
+				
+				case RT_OVERLAP_OVER:
+				case RT_OVERLAP_SAME:
+					break; /* overlapped */
 			}
 
+// 开始处理node中与filter有相交，和evt_rect有重叠，和rc_epc、rc_minor_epc有重叠的child
+
+            // 不是叶子节点跳出for循环执行for循环外代码，但是仍在while循环中：
 			if (!leaf) {
-				/* break the internal loop and enter the
-				 * child node.
-				 */
+				/* break the internal loop and enter the  child node. */
 				V_TRACE(DB_TRACE, "Enter the next level\n");
-				break;
+				break;  //当前这个node不是叶子节点，直接不在玩这个node节点了，只有这一种情况不会继续遍历node中的其余child
 			}
-			V_TRACE(DB_TRACE, "Found overlapped leaf rect: "DF_RECT
-				"\n", DP_RECT(&rtmp));
 
+// 是叶子节点有重叠， 执行下面的处理
+			V_TRACE(DB_TRACE, "Found overlapped leaf rect: "DF_RECT"\n", DP_RECT(&rtmp));
+
+  
+            // 获取：evt_node_entry(node->tn_rec[i])->ne_child的偏移地址转换成evt_desc
 			desc = evt_node_desc_at(tcx, node, i);
-			rc = evt_desc_log_status(tcx, rtmp.rc_epc, desc,
-						 intent);
+
+// 获取dtx事务的状态
+			// 调用-> evt_dop_log_status
+			rc = evt_desc_log_status(tcx, rtmp.rc_epc, desc, intent);
+			
 			/* Skip the unavailable record. */
 			if (rc == ALB_UNAVAILABLE) {
 				continue;
@@ -2583,121 +2654,137 @@ evt_ent_array_fill(struct evt_context *tcx, enum evt_find_opc find_opc,
 
 			/* early check */
 			switch (find_opc) {
-			default:
-				D_ASSERTF(0, "%d\n", find_opc);
-			case EVT_FIND_OVERWRITE:
-				if (time_overlap != RT_OVERLAP_SAME)
-					continue; /* not same epoch, skip */
+				
+				default:
+					D_ASSERTF(0, "%d\n", find_opc);
+			
+				case EVT_FIND_OVERWRITE:   // evt_insert 函数调用
+					if (time_overlap != RT_OVERLAP_SAME)
+						continue; /* not same epoch, skip */
 
-				/* If the availability is unknown, go out. */
-				if (rc < 0)
-					D_GOTO(out, rc);
+					/* If the availability is unknown, go out. */
+					if (rc < 0)
+						D_GOTO(out, rc);
 
-				D_ASSERTF(rect->rc_minor_epc != EVT_MINOR_EPC_MAX,
-					  "Should never have overlap with removals: " DF_RECT
-					  " overlaps with " DF_RECT "\n",
-					  DP_RECT(&rtmp), DP_RECT(rect));
+					D_ASSERTF(rect->rc_minor_epc != EVT_MINOR_EPC_MAX, "Should never have overlap with removals: " DF_RECT" overlaps with " DF_RECT "\n",
+						  DP_RECT(&rtmp), DP_RECT(rect));
 
-				/* NB: This is temporary to allow full overwrite
-				 * in same epoch to avoid breaking rebuild.
-				 * Without some sequence number and client
-				 * identifier, we can't do this robustly.
-				 * There can be a race between rebuild and
-				 * client doing different updates.  But this
-				 * isn't any worse than what we already have in
-				 * place so I did it this way to minimize
-				 * change while we decide how to handle this
-				 * properly.
-				 */
-				if (range_overlap != RT_OVERLAP_SAME) {
-					D_ERROR("Same epoch partial "
-						"overwrite not supported:"
-						DF_RECT" overlaps with "DF_RECT
-						"\n", DP_RECT(rect),
-						DP_RECT(&rtmp));
-					rc = -DER_NO_PERM;
-					goto out;
-				}
-				break; /* we can update the record in place */
-			case EVT_FIND_SAME:
-				if (range_overlap != RT_OVERLAP_SAME)
-					continue;
-				if (time_overlap != RT_OVERLAP_SAME)
-					continue;
+					/* NB: This is temporary to allow full overwrite
+					 * in same epoch to avoid breaking rebuild.
+					 * Without some sequence number and client
+					 * identifier, we can't do this robustly.
+					 * There can be a race between rebuild and
+					 * client doing different updates.  But this
+					 * isn't any worse than what we already have in
+					 * place so I did it this way to minimize
+					 * change while we decide how to handle this
+					 * properly.
+					 */
+					if (range_overlap != RT_OVERLAP_SAME) {
+						D_ERROR("Same epoch partial overwrite not supported:"DF_RECT" overlaps with "DF_RECT"\n", DP_RECT(rect), DP_RECT(&rtmp));
+						rc = -DER_NO_PERM;
+						goto out;
+					}
 
-				/* If the availability is unknown, go out. */
-				if (rc < 0)
-					D_GOTO(out, rc);
+// 往下走，跳出break，说明：time_overlap == RT_OVERLAP_SAME && range_overlap == RT_OVERLAP_SAME
+					break; /* we can update the record in place */
+					
+				case EVT_FIND_SAME:  // evt_delete_internal or evt_iter_probe
+					if (range_overlap != RT_OVERLAP_SAME)
+						continue;
+					if (time_overlap != RT_OVERLAP_SAME)
+						continue;
 
-				break;
-			case EVT_FIND_FIRST:
-				/* If the availability is unknown, go out. */
-				if (rc < 0)
-					D_GOTO(out, rc);
-			case EVT_FIND_ALL:
-				if (rc == -DER_DATA_LOSS) {
-					if (evt_data_loss_add(&data_loss_list,
-							      &rtmp) == NULL)
-						D_GOTO(out, rc = -DER_NOMEM);
-					continue;
-				}
+					/* If the availability is unknown, go out. */
+					if (rc < 0)
+						D_GOTO(out, rc);
 
-				/* Stop when read hit -DER_INPROGRESS. */
-				if (rc == -DER_INPROGRESS &&
-				    intent == DAOS_INTENT_DEFAULT)
-					goto out;
+					break;
+				case EVT_FIND_FIRST:   // evt_iter_probe
+					/* If the availability is unknown, go out. */
+					if (rc < 0)
+						D_GOTO(out, rc);
+				case EVT_FIND_ALL:    // evt_find  evt_has_data   evt_iter_probe_sorted
+					if (rc == -DER_DATA_LOSS) {
+						if (evt_data_loss_add(&data_loss_list, &rtmp) == NULL)
+							D_GOTO(out, rc = -DER_NOMEM);
+						continue;
+					}
 
-				break;
+					/* Stop when read hit -DER_INPROGRESS. */
+					if (rc == -DER_INPROGRESS && intent == DAOS_INTENT_DEFAULT)
+						goto out;
+
+					break;
 			}
 
+// 申请1个evt_entry，并获取地址
 			rc = ent_array_alloc(tcx, ent_array, &ent, false);
 			if (rc != 0) {
 				D_ASSERT(rc != -DER_AGAIN);
 				goto out;
 			}
 
+//   在树节点的索引处从记录中填充一个evt_entry(ent)
 			evt_entry_fill(tcx, node, i, rect, intent, ent);
+			
 			switch (find_opc) {
-			default:
-				D_ASSERTF(0, "%d\n", find_opc);
-			case EVT_FIND_OVERWRITE:
-			case EVT_FIND_FIRST:
-			case EVT_FIND_SAME:
-				/* store the trace and return for clip or
-				 * iteration.
-				 * NB: clip is not implemented yet.
-				 */
-				evt_tcx_set_trace(tcx, level, nd_off, i, false);
-				D_GOTO(out, rc = 0);
+				default:
+					D_ASSERTF(0, "%d\n", find_opc);
+				case EVT_FIND_OVERWRITE:  // 如果是evt_insert 函数调进来的，这里上面填充完毕应该就OUT出去了
+				case EVT_FIND_FIRST:
+				case EVT_FIND_SAME:
+					/* store the trace and return for clip or
+					 * iteration.
+					 * NB: clip is not implemented yet.
+					 */
+					evt_tcx_set_trace(tcx, level, nd_off, i, false);
+					D_GOTO(out, rc = 0);
 
-			case EVT_FIND_ALL:
-				break;
+				case EVT_FIND_ALL:
+					break;
 			}
+
+			// 遍历node中的下个孩子节点
 		}
 
-		if (i < node->tn_nr) {
+
+// for循环外执行代码
+
+// 当前node中的所有节点都遍历完了，或者遍历到了node中的1个非叶子child
+
+		if (i < node->tn_nr) {  // 遍历到1个非叶子节点退出for循环的
+		
 			/* overlapped with a non-leaf node, dive into it. */
 			evt_tcx_set_trace(tcx, level, nd_off, i, false);
+            //  tcx->tc_trace[level]->tr_at = i;
+            //  tcx->tc_trace[level]->tr_node = nd_off;
+	        //  tcx->tc_trace[level]->tr_tx_added = false;
+		
 			nd_off = evt_node_child_at(tcx, node, i);
+            //  while中的for循环下次访问的node是： 当前这个node的child(有个这child不是叶子，因此里面也挂了多个child)
+			
 			at = 0;
-			level++;
+			level++; // 这个lever只有在evt_tcx_set_trace中调用，用于记录下次tcx->tc_trace的访问路径
 
 		} else {
+
+		    // 当前node中的所有节点都遍历完了
 			struct evt_trace *trace;
 
 			if (level == 0) { /* done with the root */
-				V_TRACE(DB_TRACE, "Found total %d rects\n",
-					ent_array ? ent_array->ea_ent_nr : 0);
+				V_TRACE(DB_TRACE, "Found total %d rects\n", ent_array ? ent_array->ea_ent_nr : 0);
 				return has_agg ? 1 : 0; /* succeed and return */
 			}
 
 			level--;
 			trace = evt_tcx_trace(tcx, level);
-			nd_off = trace->tr_node;
+			nd_off = trace->tr_node;  //拿出上层访问的最后1个节点的最后1个record
 			at = trace->tr_at + 1;
 			D_ASSERT(at <= tcx->tc_order);
 		}
 	}
+	
 out:
 	if (rc == 0 && !d_list_empty(&data_loss_list))
 		rc = evt_data_loss_check(&data_loss_list, ent_array);
@@ -2705,9 +2792,7 @@ out:
 	if (rc != 0)
 		ent_array->ea_ent_nr = 0;
 
-	while ((edli = d_list_pop_entry(&data_loss_list,
-					struct evt_data_loss_item,
-					edli_link)) != NULL)
+	while ((edli = d_list_pop_entry(&data_loss_list, struct evt_data_loss_item, edli_link)) != NULL)
 		D_FREE(edli);
 
 	if (rc == 0 && has_agg)
@@ -3688,7 +3773,6 @@ int evt_delete(daos_handle_t toh, const struct evt_rect *rect,
 	tcx = evt_hdl2tcx(toh);
 	if (tcx == NULL)
 		return -DER_NO_HDL;
-
 
 	return evt_delete_internal(tcx, rect, ent, false);
 }

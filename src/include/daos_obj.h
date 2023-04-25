@@ -357,6 +357,7 @@ typedef enum {
 typedef struct {
 	/** akey for this iod */
 	daos_key_t		  iod_name;
+	
 	/**
 	 * Type of the value in an iod can be either a single type that is
 	 * always overwritten when updated, or it can be an array of EQUAL sized
@@ -369,17 +370,16 @@ typedef struct {
 	 * ignored and the rx_nr is also required to be 1.
 	 */
 	daos_iod_type_t	  iod_type;
+	
 	/** Size of the single value or the record size of the array */
 	daos_size_t		  iod_size;
-	/** Per akey conditional. If DAOS_COND_PER_AKEY not set, this is
-	 *  ignored.
-	 */
+	
+	/** Per akey conditional. If DAOS_COND_PER_AKEY not set, this is ignored. */
 	uint64_t		  iod_flags;
-	/**
-	 * Number of entries in the #iod_recxs for arrays,
-	 * should be 1 if single value.
-	 */
+	
+	/* Number of entries in the #iod_recxs for arrays, should be 1 if single value. */
 	uint32_t		  iod_nr;
+	
 	/**
 	 * Array of extents, where each extent defines the index of the first
 	 * record in the extent and the number of records to access. If the
