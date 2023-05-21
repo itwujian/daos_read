@@ -33,7 +33,7 @@ struct vos_io_context {
 	/** reference on the object */
 	struct vos_object	    *ic_obj;
 	/** BIO descriptor, has ic_iod_nr SGLs */
-	struct bio_desc		    *ic_biod;
+	struct bio_desc		    *ic_biod;    // vos_ioc_create
 	struct vos_ts_set	    *ic_ts_set;
 	/** Checksums for bio_iovs in \ic_biod */
 	struct dcs_ci_list	     ic_csum_list;
@@ -66,7 +66,7 @@ struct vos_io_context {
 	/** the total size of the IO */
 	uint64_t		     ic_io_size;
 	/** flags */
-	unsigned int		 ic_update:1,
+	unsigned int		 ic_update:1,   // 是否是写操作
 				 ic_size_fetch:1,
 				 ic_save_recx:1,
 				 ic_dedup:1, /** candidate for dedup */
@@ -530,15 +530,15 @@ vos_ioc_reserve_init(struct vos_io_context *ioc, struct dtx_handle *dth)
 {
 	struct vos_rsrvd_scm	*scm;
 	size_t			 size;
-	int			 total_acts = 0;
+	int			 total_acts = 0;  // 获取到所有akey里面的所有record的数量
 	int			 i;
 
+    // 读操作不用，直接返回
 	if (!ioc->ic_update)
 		return 0;
 
 	for (i = 0; i < ioc->ic_iod_nr; i++) {
 		daos_iod_t *iod = &ioc->ic_iods[i];
-
 		total_acts += iod->iod_nr;
 	}
 
@@ -618,37 +618,50 @@ vos_ioc_create(daos_handle_t coh, daos_unit_oid_t oid, bool read_only,
 		return -DER_NOMEM;
 
 	ioc->ic_io_size = 0;
-	ioc->ic_iod_nr = iod_nr;
+	ioc->ic_iod_nr = iod_nr;  // akey的数量
 	ioc->ic_iods = iods;  // 前台IO下发的化是：orw->orw_iod_array.oia_iods，下发的参数带下来的
+
+	// dth有效就用dth里面的，否则用客户端带下来的epoch
 	ioc->ic_epr.epr_hi = dtx_is_valid_handle(dth) ? dth->dth_epoch : epoch;
 	bound = dtx_is_valid_handle(dth) ? dth->dth_epoch_bound : epoch;
+	
 	ioc->ic_bound = MAX(bound, ioc->ic_epr.epr_hi);
 	ioc->ic_epr.epr_lo = 0;
 	ioc->ic_oid = oid;
 	ioc->ic_cont = vos_hdl2cont(coh);
+	
 	vos_cont_addref(ioc->ic_cont);
+	
 	ioc->ic_update = !read_only;
+	
 	ioc->ic_size_fetch = ((vos_flags & VOS_OF_FETCH_SIZE_ONLY) != 0);
 	ioc->ic_save_recx = ((vos_flags & VOS_OF_FETCH_RECX_LIST) != 0);
 	ioc->ic_dedup = ((vos_flags & VOS_OF_DEDUP) != 0);
 	ioc->ic_dedup_verify = ((vos_flags & VOS_OF_DEDUP_VERIFY) != 0);
 	ioc->ic_skip_fetch = ((vos_flags & VOS_OF_SKIP_FETCH) != 0);
+	
 	ioc->ic_agg_needed = 0; /** Will be set if we detect a need for aggregation */
+	
 	ioc->ic_dedup_th = dedup_th;
+	
 	if (vos_flags & VOS_OF_FETCH_CHECK_EXISTENCE)
 		ioc->ic_read_ts_only = ioc->ic_check_existence = 1;
 	else if (vos_flags & VOS_OF_FETCH_SET_TS_ONLY)
 		ioc->ic_read_ts_only = 1;
+	
 	ioc->ic_remove = ((vos_flags & VOS_OF_REMOVE) != 0);
 	ioc->ic_ec = ((vos_flags & VOS_OF_EC) != 0);
 	ioc->ic_umoffs_cnt = ioc->ic_umoffs_at = 0;
 	ioc->ic_iod_csums = iod_csums;
+	
 	vos_ilog_fetch_init(&ioc->ic_dkey_info);
 	vos_ilog_fetch_init(&ioc->ic_akey_info);
+	
 	D_INIT_LIST_HEAD(&ioc->ic_blk_exts);
 	ioc->ic_shadows = shadows;
 	D_INIT_LIST_HEAD(&ioc->ic_dedup_entries);
 
+    // 读操作没啥用，写操作用来分配空间
 	rc = vos_ioc_reserve_init(ioc, dth);
 	if (rc != 0)
 		goto error;
@@ -686,8 +699,9 @@ vos_ioc_create(daos_handle_t coh, daos_unit_oid_t oid, bool read_only,
 
 	bioc = cont->vc_pool->vp_io_ctxt;
 	D_ASSERT(bioc != NULL);
-	ioc->ic_biod = bio_iod_alloc(bioc, iod_nr,
-			read_only ? BIO_IOD_TYPE_FETCH : BIO_IOD_TYPE_UPDATE);
+	
+	ioc->ic_biod = bio_iod_alloc(bioc, iod_nr, read_only ? BIO_IOD_TYPE_FETCH : BIO_IOD_TYPE_UPDATE);
+	
 	if (ioc->ic_biod == NULL) {
 		rc = -DER_NOMEM;
 		goto error;
@@ -698,13 +712,12 @@ vos_ioc_create(daos_handle_t coh, daos_unit_oid_t oid, bool read_only,
 		goto error;
 
 	for (i = 0; i < iod_nr; i++) {
+		
 		int iov_nr = iods[i].iod_nr;
 		struct bio_sglist *bsgl;
 
-		if ((iods[i].iod_type == DAOS_IOD_SINGLE && iov_nr != 1) ||
-		    (iov_nr == 0 && iods[i].iod_recxs != NULL)) {
-			D_ERROR("Invalid iod_nr=%d, iod_type %d.\n",
-				iov_nr, iods[i].iod_type);
+		if ((iods[i].iod_type == DAOS_IOD_SINGLE && iov_nr != 1) || (iov_nr == 0 && iods[i].iod_recxs != NULL)) {
+			D_ERROR("Invalid iod_nr=%d, iod_type %d.\n", iov_nr, iods[i].iod_type);
 			rc = -DER_IO_INVAL;
 			goto error;
 		}
@@ -721,6 +734,7 @@ vos_ioc_create(daos_handle_t coh, daos_unit_oid_t oid, bool read_only,
 
 	*ioc_pp = ioc;
 	return 0;
+	
 error:
 	if (ioc != NULL)
 		vos_ioc_destroy(ioc, false);
@@ -1255,8 +1269,7 @@ fetch_value:
 // for DAOS_IOD_ARRAY
 // 搜索sv-tree并插入
 	iod->iod_size = 0;
-	shadow = (ioc->ic_shadows == NULL) ? NULL :
-					     &ioc->ic_shadows[ioc->ic_sgl_at];
+	shadow = (ioc->ic_shadows == NULL) ? NULL : &ioc->ic_shadows[ioc->ic_sgl_at];
 	for (i = 0; i < iod->iod_nr; i++) {
 		daos_recx_t	iod_recx;
 		daos_recx_t	fetch_recx;
@@ -1455,7 +1468,7 @@ vos_fetch_begin(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 
 	D_DEBUG(DB_TRACE, "Fetch "DF_UOID", desc_nr %d, epoch "DF_X64"\n", DP_UOID(oid), iod_nr, epoch);
 
-	rc = vos_ioc_create(coh, oid, true, epoch, iod_nr, iods, NULL, vos_flags, shadows, 0, dth, &ioc);
+	rc = vos_ioc_create(coh, oid, true/*read_only*/, epoch, iod_nr, iods, NULL, vos_flags, shadows, 0, dth, &ioc);
 	if (rc != 0)
 		return rc;
 
@@ -1467,8 +1480,8 @@ vos_fetch_begin(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 	rc = vos_obj_hold(vos_obj_cache_current(), ioc->ic_cont, oid,
 			  &ioc->ic_epr, ioc->ic_bound, VOS_OBJ_VISIBLE,
 			  DAOS_INTENT_DEFAULT, &ioc->ic_obj, ioc->ic_ts_set);
-	if (stop_check(ioc, VOS_COND_FETCH_MASK | VOS_OF_COND_PER_AKEY, NULL,
-		       &rc, false)) {
+	
+	if (stop_check(ioc, VOS_COND_FETCH_MASK | VOS_OF_COND_PER_AKEY, NULL, &rc, false)) {
 		if (rc == 0) {
 			if (ioc->ic_read_ts_only)
 				goto set_ioc;
@@ -1481,6 +1494,7 @@ vos_fetch_begin(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 		}
 		goto out;
 	}
+	
 fetch_dkey:
 	if (dkey == NULL || dkey->iov_len == 0) {
 		if (ioc->ic_read_ts_only)
@@ -1491,15 +1505,15 @@ fetch_dkey:
 	rc = dkey_fetch(ioc, dkey);
 	if (rc != 0)
 		goto out;
+	
 set_ioc:
 	*ioh = vos_ioc2ioh(ioc);
+	
 out:
 	vos_dth_set(NULL);
 
-	if (rc == -DER_NONEXIST || rc == -DER_INPROGRESS ||
-	    (rc == 0 && ioc->ic_read_ts_only)) {
-		if (vos_ts_wcheck(ioc->ic_ts_set, ioc->ic_epr.epr_hi,
-				  ioc->ic_bound))
+	if (rc == -DER_NONEXIST || rc == -DER_INPROGRESS || (rc == 0 && ioc->ic_read_ts_only)) {
+		if (vos_ts_wcheck(ioc->ic_ts_set, ioc->ic_epr.epr_hi, ioc->ic_bound))
 			rc = -DER_TX_RESTART;
 	}
 
@@ -1721,8 +1735,7 @@ vos_ioc_mark_agg(struct vos_io_context *ioc)
 }
 
 static int
-akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh,
-	    uint16_t minor_epc)
+akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh, uint16_t minor_epc)
 {
 	struct vos_object	    *obj = ioc->ic_obj;
 	struct vos_krec_df	    *krec = NULL;
@@ -2269,7 +2282,9 @@ dkey_update_begin(struct vos_io_context *ioc)
 	int i, rc = 0;
 
 	for (i = 0; i < ioc->ic_iod_nr; i++) {
+		
 		iod_set_cursor(ioc, i);
+		
 		// 在SCM和NVME上分配空间得到offset,分别存入ic_umoffs和ic_blk_exts
 		rc = akey_update_begin(ioc);
 		if (rc != 0)
@@ -2509,7 +2524,9 @@ int
 vos_update_begin(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 		 uint64_t flags, daos_key_t *dkey, unsigned int iod_nr,
 		 daos_iod_t *iods, struct dcs_iod_csums *iods_csums,
-		 uint32_t dedup_th, daos_handle_t *ioh, struct dtx_handle *dth)
+		 uint32_t dedup_th,
+		 daos_handle_t *ioh,   // 返回的vos_io_context的操作句柄
+		 struct dtx_handle *dth)
 {
 	struct vos_io_context	*ioc;
 	int			 rc;
@@ -2517,9 +2534,7 @@ vos_update_begin(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 	if (oid.id_shard % 3 == 1 && DAOS_FAIL_CHECK(DAOS_DTX_FAIL_IO))
 		return -DER_IO;
 
-	D_DEBUG(DB_TRACE, "Prepare IOC for "DF_UOID", iod_nr %d, epc "DF_X64
-		", flags="DF_X64"\n", DP_UOID(oid), iod_nr,
-		dtx_is_valid_handle(dth) ? dth->dth_epoch :  epoch, flags);
+	D_DEBUG(DB_TRACE, "Prepare IOC for "DF_UOID", iod_nr %d, epc "DF_X64", flags="DF_X64"\n", DP_UOID(oid), iod_nr, dtx_is_valid_handle(dth) ? dth->dth_epoch :  epoch, flags);
 
 	rc = vos_check_akeys(iod_nr, iods);
 	if (rc != 0) {
@@ -2527,17 +2542,14 @@ vos_update_begin(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 		return rc;
 	}
 
-	rc = vos_ioc_create(coh, oid, false, epoch, iod_nr, iods, iods_csums,
-			    flags, NULL, dedup_th, dth, &ioc);
+	rc = vos_ioc_create(coh, oid, false, epoch, iod_nr, iods, iods_csums, flags, NULL, dedup_th, dth, &ioc);
 	if (rc != 0)
 		return rc;
 
 	/* flags may have VOS_OF_CRIT to skip sys/held checks here */
-	rc = vos_space_hold(vos_cont2pool(ioc->ic_cont), flags, dkey, iod_nr,
-			    iods, iods_csums, &ioc->ic_space_held[0]);
+	rc = vos_space_hold(vos_cont2pool(ioc->ic_cont), flags, dkey, iod_nr, iods, iods_csums, &ioc->ic_space_held[0]);
 	if (rc != 0) {
-		D_ERROR(DF_UOID": Hold space failed. "DF_RC"\n",
-			DP_UOID(oid), DP_RC(rc));
+		D_ERROR(DF_UOID": Hold space failed. "DF_RC"\n", DP_UOID(oid), DP_RC(rc));
 		goto error;
 	}
 
@@ -2546,8 +2558,10 @@ vos_update_begin(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 		D_ERROR(DF_UOID ": dkey update begin failed. %d\n", DP_UOID(oid), rc);
 		goto error;
 	}
+	
 	*ioh = vos_ioc2ioh(ioc);
 	return 0;
+	
 error:
 	vos_update_end(vos_ioc2ioh(ioc), 0, dkey, rc, NULL, dth);
 	return rc;

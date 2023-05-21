@@ -1103,7 +1103,7 @@ vos_evt_desc_cbs_init(struct evt_desc_cbs *cbs, struct vos_pool *pool,
 
 /* Reserve SCM through umem_reserve() for a PMDK transaction */
 struct vos_rsrvd_scm {
-	unsigned int		rs_actv_cnt; // akey的iod_recxs的数量
+	unsigned int		rs_actv_cnt; // 所有akey的iod_recxs的数量
 	unsigned int		rs_actv_at;
 	struct pobj_action	rs_actv[0];
 };

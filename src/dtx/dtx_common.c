@@ -744,24 +744,16 @@ dtx_shares_fini(struct dtx_handle *dth)
 	if (!dth->dth_shares_inited)
 		return;
 
-	while ((dsp = d_list_pop_entry(&dth->dth_share_cmt_list,
-				       struct dtx_share_peer,
-				       dsp_link)) != NULL)
+	while ((dsp = d_list_pop_entry(&dth->dth_share_cmt_list, struct dtx_share_peer, dsp_link)) != NULL)
 		dtx_dsp_free(dsp);
 
-	while ((dsp = d_list_pop_entry(&dth->dth_share_abt_list,
-				       struct dtx_share_peer,
-				       dsp_link)) != NULL)
+	while ((dsp = d_list_pop_entry(&dth->dth_share_abt_list, struct dtx_share_peer, dsp_link)) != NULL)
 		dtx_dsp_free(dsp);
 
-	while ((dsp = d_list_pop_entry(&dth->dth_share_act_list,
-				       struct dtx_share_peer,
-				       dsp_link)) != NULL)
+	while ((dsp = d_list_pop_entry(&dth->dth_share_act_list, struct dtx_share_peer, dsp_link)) != NULL)
 		dtx_dsp_free(dsp);
 
-	while ((dsp = d_list_pop_entry(&dth->dth_share_tbd_list,
-				       struct dtx_share_peer,
-				       dsp_link)) != NULL)
+	while ((dsp = d_list_pop_entry(&dth->dth_share_tbd_list, struct dtx_share_peer, dsp_link)) != NULL)
 		dtx_dsp_free(dsp);
 
 	dth->dth_share_tbd_count = 0;
@@ -867,12 +859,11 @@ dtx_handle_init(struct dtx_id *dti, daos_handle_t coh, struct dtx_epoch *epoch,
 		return 0;
 
 	if (!dtx_epoch_chosen(epoch)) {
-		D_ERROR("initializing DTX "DF_DTI" with invalid epoch: value="
-			DF_U64" first="DF_U64" flags=%x\n",
-			DP_DTI(dti), epoch->oe_value, epoch->oe_first,
-			epoch->oe_flags);
+		D_ERROR("initializing DTX "DF_DTI" with invalid epoch: value="DF_U64" first="DF_U64" flags=%x\n",
+			DP_DTI(dti), epoch->oe_value, epoch->oe_first, epoch->oe_flags);
 		return -DER_INVAL;
 	}
+	
 	dth->dth_epoch = epoch->oe_value;
 	dth->dth_epoch_bound = dtx_epoch_bound(epoch);
 
@@ -1380,18 +1371,17 @@ out:
 /**
  * Prepare the DTX handle in DRAM.
  *
- * \param coh		[IN]	Container handle.
- * \param dti		[IN]	The DTX identifier.
- * \param epoch		[IN]	Epoch for the DTX.
- * \param sub_modification_cnt
- *			[IN]	Sub modifications count.
- * \param pm_ver	[IN]	Pool map version for the DTX.
- * \param leader_oid	[IN]    The object ID is used to elect the DTX leader.
- * \param dti_cos	[IN]	The DTX array to be committed because of shared.
- * \param dti_cos_cnt	[IN]	The @dti_cos array size.
- * \param flags		[IN]	See dtx_flags.
- * \param mbs		[IN]	DTX participants information.
- * \param p_dth		[OUT]	Pointer to the DTX handle.
+ * \param coh		             [IN]	Container handle.
+ * \param dti		             [IN]	The DTX identifier.
+ * \param epoch		             [IN]	Epoch for the DTX.
+ * \param sub_modification_cnt   [IN]	Sub modifications count.
+ * \param pm_ver	             [IN]	Pool map version for the DTX.
+ * \param leader_oid	         [IN]    The object ID is used to elect the DTX leader.
+ * \param dti_cos	             [IN]	The DTX array to be committed because of shared.
+ * \param dti_cos_cnt	         [IN]	The @dti_cos array size.
+ * \param flags		             [IN]	See dtx_flags.
+ * \param mbs		             [IN]	DTX participants information.
+ * \param p_dth		             [OUT]	Pointer to the DTX handle.
  *
  * \return			Zero on success, negative value if error.
  */
@@ -1409,15 +1399,22 @@ dtx_begin(daos_handle_t coh, struct dtx_id *dti,
 	if (dth == NULL)
 		return -DER_NOMEM;
 
+    // 初始化并填充dth
 	rc = dtx_handle_init(dti, coh, epoch, sub_modification_cnt,
 			     pm_ver, leader_oid, dti_cos, dti_cos_cnt, mbs,
-			     false, false, false,
+			     false,       // not leader
+			     false,       // not solo
+			     false,       // not sync
 			     (flags & DTX_DIST) ? true : false,
 			     (flags & DTX_FOR_MIGRATION) ? true : false,
 			     (flags & DTX_IGNORE_UNCOMMITTED) ? true : false,
-			     (flags & DTX_RESEND) ? true : false, false, false, dth);
+			     (flags & DTX_RESEND) ? true : false, 
+			     false,   // not prepared
+			     false,   // not drop_cmt
+			     dth);    // 填充dth
 	
 	if (rc == 0 && sub_modification_cnt > 0)
+		// 只有写流程才会有attach
 		rc = vos_dtx_attach(dth, false, false);
 
 	D_DEBUG(DB_IO, "Start DTX "DF_DTI" sub modification %d, ver %u, "
@@ -1443,7 +1440,9 @@ dtx_end(struct dtx_handle *dth, struct ds_cont_child *cont, int result)
 	if (daos_is_zero_dti(&dth->dth_xid))
 		goto out;
 
+    // 在事务执行的过程中有失败的
 	if (result < 0) {
+		
 		if (dth->dth_dti_cos_count > 0 && !dth->dth_cos_done) {
 			int	rc;
 
@@ -1474,6 +1473,8 @@ dtx_end(struct dtx_handle *dth, struct ds_cont_child *cont, int result)
 	D_ASSERTF(result <= 0, "unexpected return value %d\n", result);
 
 	vos_dtx_rsrvd_fini(dth);
+
+	// 解除dae和dth的双向互指的绑定关系
 	vos_dtx_detach(dth);
 
 out:

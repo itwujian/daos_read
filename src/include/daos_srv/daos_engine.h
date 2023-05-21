@@ -101,8 +101,7 @@ extern struct dss_module_key *dss_module_keys[];
 static inline struct dss_thread_local_storage *
 dss_tls_get()
 {
-	return (struct dss_thread_local_storage *)
-		pthread_getspecific(dss_tls_key);
+	return (struct dss_thread_local_storage *)pthread_getspecific(dss_tls_key);
 }
 
 /**

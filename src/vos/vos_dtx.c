@@ -2140,9 +2140,12 @@ vos_dtx_commit(daos_handle_t coh, struct dtx_id dtis[], int count, bool rm_cos[]
 
 	/* Commit multiple DTXs via single PMDK transaction. */
 	rc = umem_tx_begin(vos_cont2umm(cont), NULL);
+	
 	if (rc == 0) {
+		
 		// 出参：daes, dces
 		committed = vos_dtx_commit_internal(cont, dtis, count, 0, rm_cos, daes, dces);
+		
 		rc = umem_tx_end(vos_cont2umm(cont), committed > 0 ? 0 : committed);
 		if (rc == 0)
 			vos_dtx_post_handle(cont, daes, dces, count, false, false);
@@ -2837,8 +2840,25 @@ vos_dtx_cleanup(struct dtx_handle *dth, bool unpin)
 // 2. dtx_begin在事务开始的时候执行：(false, false)
 // 3. dtx_leader_begin在事务开始的时候执行：(false, preared:true)
 
+// Generate DTX entry for the given DTX, and attach it to the DTX handle.
+
+// persistent : true  :  仅 cpd的非leader在事务开始执行的时候调用传true
+// exist      : true  :  仅 dtx在leader端，客户端调用flag为dtx_prepared时为true
+
+
+// 1. cpd的非leader端： -> 在umem_off2ptr(cont_df->cd_dtx_active_tail)找到dbd(如果满了，还需要扩容dtx blob), 
+//                      ->  vos_dtx_alloc
+//                      ->  填充 dae->dae_df_off 和     dae->dae_dbd
+//                      ->  vos_dtx_prepared
+//                      ->  vos_dtx_post_handle
+
+// 2. dtx在leader和非leader的begin的场景下： ->   vos_dtx_alloc
+//                                           ->   dth->dth_pinned = 1;
+
 int
-vos_dtx_attach(struct dtx_handle *dth, bool persistent, bool exist)
+vos_dtx_attach(struct dtx_handle *dth,
+                       bool persistent,  // Save the DTX entry in persistent storage if set
+                       bool exist)       // Related DTX entry exists or not.
 {
 	struct vos_container	*cont;
 	struct umem_instance	*umm = NULL;

@@ -198,7 +198,7 @@ vos_obj_cache_current(void)
 	return vos_obj_cache_get();
 }
 
-static __thread struct vos_object	 obj_local = {0};
+static __thread struct vos_object obj_local = {0};
 
 void
 vos_obj_release(struct daos_lru_cache *occ, struct vos_object *obj, bool evict)

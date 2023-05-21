@@ -63,13 +63,13 @@ dss_thread_local_storage_init(struct dss_thread_local_storage *dtls,
 	int i;
 
 	if (dtls->dtls_values == NULL) {
-		D_ALLOC_ARRAY(dtls->dtls_values,
-			      (int)ARRAY_SIZE(dss_module_keys));
+		D_ALLOC_ARRAY(dtls->dtls_values, (int)ARRAY_SIZE(dss_module_keys));
 		if (dtls->dtls_values == NULL)
 			return -DER_NOMEM;
 	}
 
 	for (i = 0; i < DAOS_MODULE_KEYS_NR; i++) {
+		
 		struct dss_module_key *dmk = dss_module_keys[i];
 
 		if (dmk != NULL && dtls->dtls_tag & dmk->dmk_tags) {

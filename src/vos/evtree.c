@@ -3588,9 +3588,9 @@ evt_node_delete(struct evt_context *tcx)
 	umem_off_t		 nm_cur;
 	umem_off_t		 old_cur = UMOFF_NULL;
 	bool			 leaf;
-	int			 level	= tcx->tc_depth - 1;
-	int			 rc;
-	int			 changed_level;
+	int			     level	= tcx->tc_depth - 1;
+	int			     rc;
+	int			     changed_level;
 
 	/* We take a simple approach here which may be refined later.
 	 * We simply remove the record, and if it's the last record, we
@@ -3598,6 +3598,9 @@ evt_node_delete(struct evt_context *tcx)
 	 * Then we check the mbr at each level and make appropriate
 	 * adjustments.
 	 */
+
+	//  这里只是简单的移除了这个record, 如果是最后1个record, 
+	//  使用冒泡算法移除只有1个record的node
 	while (1) {
 		int	count;
 
@@ -3618,8 +3621,10 @@ evt_node_delete(struct evt_context *tcx)
 			child_off = *child_offp;
 			child_size = sizeof(child_off);
 		}
+		
 		if (!UMOFF_IS_NULL(old_cur))
 			D_ASSERT(old_cur == child_off);
+		
 		if (leaf) {
 			/* Free the evt_desc */
 			rc = evt_node_entry_free(tcx, ne);
@@ -3732,15 +3737,19 @@ evt_delete_internal(struct evt_context *tcx, const struct evt_rect *rect,
 	filter.fr_epr.epr_lo = rect->rc_epc;
 	filter.fr_epr.epr_hi = rect->rc_epc;
 	filter.fr_epoch = rect->rc_epc;
-	rc = evt_ent_array_fill(tcx, EVT_FIND_SAME, DAOS_INTENT_PURGE,
-				&filter, rect, ent_array);
+
+	// Scan the tree and select all rectangles that match
+	// ent_array: OUT  -> evt_entry_array
+	rc = evt_ent_array_fill(tcx, EVT_FIND_SAME, DAOS_INTENT_PURGE, &filter, rect, ent_array);
 	if (rc != 0)
 		return rc;
 
+    // total number of entries in the array
 	if (ent_array->ea_ent_nr == 0)
 		return -DER_ENOENT;
 
 	D_ASSERT(ent_array->ea_ent_nr == 1);
+	
 	if (ent != NULL)
 		*ent = *evt_ent_array_get(ent_array, 0);
 
@@ -3765,8 +3774,9 @@ evt_delete_internal(struct evt_context *tcx, const struct evt_rect *rect,
 	return in_tx ? rc : evt_tx_end(tcx, rc);
 }
 
-int evt_delete(daos_handle_t toh, const struct evt_rect *rect,
-	       struct evt_entry *ent)
+int evt_delete(daos_handle_t toh, 
+                   const struct evt_rect *rect,  // The versioned extent to delete
+	               struct evt_entry *ent)
 {
 	struct evt_context	*tcx;
 
