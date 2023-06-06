@@ -351,6 +351,7 @@ ktr_node_alloc(struct btr_instance *tins, int size)
 	/* Dynamic root could have smaller size */
 	if (size == umem_slab_usize(&tins->ti_umm, VOS_SLAB_KEY_NODE))
 		return vos_slab_alloc(&tins->ti_umm, size, VOS_SLAB_KEY_NODE);
+	
 	return umem_zalloc(&tins->ti_umm, size);
 }
 
@@ -581,8 +582,7 @@ cancel_nvme_exts(bio_addr_t *addr, struct dtx_handle *dth)
 		d_list_for_each_entry(ext, &dru->dru_nvme, vre_link) {
 			if (ext->vre_blk_off == blk_off) {
 				d_list_del(&ext->vre_link);
-				d_list_add_tail(&ext->vre_link,
-						&dth->dth_deferred_nvme);
+				d_list_add_tail(&ext->vre_link, &dth->dth_deferred_nvme);
 				return;
 			}
 		}
@@ -595,13 +595,13 @@ static int
 svt_rec_free_internal(struct btr_instance *tins, struct btr_record *rec,
 		      bool overwrite)
 {
-	daos_epoch_t		*epc = (daos_epoch_t *)&rec->rec_hkey[0];
-	struct vos_irec_df	*irec = vos_rec2irec(tins, rec);
-	bio_addr_t		*addr = &irec->ir_ex_addr;
-	struct dtx_handle	*dth = NULL;
+	daos_epoch_t		    *epc = (daos_epoch_t *)&rec->rec_hkey[0];
+	struct vos_irec_df	    *irec = vos_rec2irec(tins, rec);
+	bio_addr_t		        *addr = &irec->ir_ex_addr;
+	struct dtx_handle	    *dth = NULL;
 	struct vos_rsrvd_scm	*rsrvd_scm;
-	struct pobj_action	*act;
-	int			 i;
+	struct pobj_action	    *act;
+	int	i;
 
 	if (UMOFF_IS_NULL(rec->rec_off))
 		return 0;
@@ -612,8 +612,7 @@ svt_rec_free_internal(struct btr_instance *tins, struct btr_record *rec,
 			return -DER_NO_PERM; /* Not allowed */
 	}
 
-	vos_dtx_deregister_record(&tins->ti_umm, tins->ti_coh,
-				  irec->ir_dtx, *epc, rec->rec_off);
+	vos_dtx_deregister_record(&tins->ti_umm, tins->ti_coh, irec->ir_dtx, *epc, rec->rec_off);
 
 	if (!overwrite) {
 		/** TODO: handle NVME */
@@ -628,18 +627,20 @@ svt_rec_free_internal(struct btr_instance *tins, struct btr_record *rec,
 		return umem_free(&tins->ti_umm, rec->rec_off);
 	}
 
-	/** There can't be more cancellations than updates in this
-	 *  modification so just use the current one
-	 */
+	/** There can't be more cancellations than updates in this modification so just use the current one	 */
 	D_ASSERT(dth->dth_op_seq > 0);
 	D_ASSERT(dth->dth_op_seq <= dth->dth_deferred_cnt);
+	
 	i = dth->dth_op_seq - 1;
 	rsrvd_scm = dth->dth_deferred[i];
+	
 	D_ASSERT(rsrvd_scm != NULL);
 	D_ASSERT(rsrvd_scm->rs_actv_at < rsrvd_scm->rs_actv_cnt);
 
 	act = &rsrvd_scm->rs_actv[rsrvd_scm->rs_actv_at];
+	
 	umem_defer_free(&tins->ti_umm, rec->rec_off, act);
+	
 	rsrvd_scm->rs_actv_at++;
 
 	cancel_nvme_exts(addr, dth);
@@ -1242,7 +1243,8 @@ obj_tree_init(struct vos_object *obj)
 		D_DEBUG(DB_DF, "Open btree for object\n");
 		// 树已经创建好了，根节点已经存在，直接打开
 		rc = dbtree_open_inplace_ex(&obj->obj_df->vo_tree, vos_obj2uma(obj),
-					                vos_cont2hdl(obj->obj_cont), vos_obj2pool(obj), 
+					                vos_cont2hdl(obj->obj_cont), 
+					                vos_obj2pool(obj), 
 					                &obj->obj_toh);       //  出参：返回的dkey树的操作句柄
 	} 
 

@@ -585,7 +585,8 @@ dtx_batched_commit_one(void *arg)
 		if (stat.dtx_pool_cmt_count >= dtx_agg_thd_cnt_up && dbca->dbca_pool->dbpa_aggregating == 0)
 			sched_req_wakeup(dmi->dmi_dtx_agg_req);
 
-		if ((stat.dtx_committable_count <= DTX_THRESHOLD_COUNT) && (stat.dtx_oldest_committable_time == 0 || dtx_hlc_age2sec(stat.dtx_oldest_committable_time) < DTX_COMMIT_THRESHOLD_AGE))
+		if ((stat.dtx_committable_count <= DTX_THRESHOLD_COUNT) && 
+			(stat.dtx_oldest_committable_time == 0 || dtx_hlc_age2sec(stat.dtx_oldest_committable_time) < DTX_COMMIT_THRESHOLD_AGE))
 			break;
 	}
 
@@ -646,7 +647,8 @@ dtx_batched_commit(void *arg)
 
 		if (dtx_cont_opened(cont) && dbca->dbca_commit_req == NULL &&
 		    (dtx_batched_ult_max != 0 && tls->dt_batched_ult_cnt < dtx_batched_ult_max) &&
-		    ((stat.dtx_committable_count > DTX_THRESHOLD_COUNT) || (stat.dtx_oldest_committable_time != 0 && dtx_hlc_age2sec(stat.dtx_oldest_committable_time) >= DTX_COMMIT_THRESHOLD_AGE))) {
+		    ((stat.dtx_committable_count > DTX_THRESHOLD_COUNT) || 
+		    (stat.dtx_oldest_committable_time != 0 && dtx_hlc_age2sec(stat.dtx_oldest_committable_time) >= DTX_COMMIT_THRESHOLD_AGE))) {
 		    
 			D_ASSERT(!dbca->dbca_commit_done);
 			sleep_time = 0;
@@ -667,7 +669,8 @@ dtx_batched_commit(void *arg)
 			dbca->dbca_cleanup_done = 0;
 		}
 
-		if (dtx_cont_opened(cont) && !dbca->dbca_deregister && dbca->dbca_cleanup_req == NULL && stat.dtx_oldest_active_time != 0 && dtx_hlc_age2sec(stat.dtx_oldest_active_time) >=  DTX_CLEANUP_THD_AGE_UP) {
+		if (dtx_cont_opened(cont) && !dbca->dbca_deregister && dbca->dbca_cleanup_req == NULL && stat.dtx_oldest_active_time != 0 && 
+			dtx_hlc_age2sec(stat.dtx_oldest_active_time) >=  DTX_CLEANUP_THD_AGE_UP) {
 			
 			D_ASSERT(!dbca->dbca_cleanup_done);
 			sleep_time = 0;
@@ -803,14 +806,14 @@ dtx_handle_init(struct dtx_id *dti, daos_handle_t coh, struct dtx_epoch *epoch,
 		return -DER_OVERFLOW;
 	}
 
-	// 当前应该只有CPD流程sub_modification_cnt会大于1，dcde->dcde_write_cnt,
+	// 当前应该只有CPD流程sub_modification_cnt会大于1，dcde->dcde_write_cnt(含有update和punch),
 	// count of write sub requests for the DTX on the DAOS target
 	// 其余写流程进来都是1， 读流程是0
 	dth->dth_modification_cnt = sub_modification_cnt;
 
 	dtx_shares_init(dth);
 
-	dth->dth_xid = *dti;
+	dth->dth_xid = *dti;    // the identifier of the DTX
 	dth->dth_coh = coh;
 
 	dth->dth_leader_oid = *leader_oid;
@@ -859,8 +862,7 @@ dtx_handle_init(struct dtx_id *dti, daos_handle_t coh, struct dtx_epoch *epoch,
 		return 0;
 
 	if (!dtx_epoch_chosen(epoch)) {
-		D_ERROR("initializing DTX "DF_DTI" with invalid epoch: value="DF_U64" first="DF_U64" flags=%x\n",
-			DP_DTI(dti), epoch->oe_value, epoch->oe_first, epoch->oe_flags);
+		D_ERROR("initializing DTX "DF_DTI" with invalid epoch: value="DF_U64" first="DF_U64" flags=%x\n", DP_DTI(dti), epoch->oe_value, epoch->oe_first, epoch->oe_flags);
 		return -DER_INVAL;
 	}
 	
@@ -870,6 +872,7 @@ dtx_handle_init(struct dtx_id *dti, daos_handle_t coh, struct dtx_epoch *epoch,
 	if (dth->dth_modification_cnt == 0)
 		return 0;
 
+    // 写请求才需要分配空间管理地址
 	return vos_dtx_rsrvd_init(dth);
 }
 
@@ -1056,7 +1059,7 @@ dtx_leader_begin(daos_handle_t coh, struct dtx_id *dti,
 		 struct dtx_memberships *mbs, struct dtx_leader_handle **p_dlh)
 {
 	struct dtx_leader_handle	*dlh;
-	struct dtx_handle		*dth;
+	struct dtx_handle		    *dth;
 	int				 rc;
 	int				 i;
 
@@ -1065,13 +1068,17 @@ dtx_leader_begin(daos_handle_t coh, struct dtx_id *dti,
 		return -DER_NOMEM;
 
 	if (tgt_cnt > 0) {
+		
 		dlh->dlh_future = ABT_FUTURE_NULL;
 		dlh->dlh_subs = (struct dtx_sub_status *)(dlh + 1);
+	
 		for (i = 0; i < tgt_cnt; i++) {
 			dlh->dlh_subs[i].dss_tgt = tgts[i];
 			if (unlikely(tgts[i].st_flags & DTF_DELAY_FORWARD))
 				dlh->dlh_delay_sub_cnt++;
 		}
+
+		// How many normal sub request
 		dlh->dlh_normal_sub_cnt = tgt_cnt - dlh->dlh_delay_sub_cnt;
 	}
 
@@ -1215,8 +1222,7 @@ dtx_leader_end(struct dtx_leader_handle *dlh, struct ds_cont_hdl *coh, int resul
 		 * then let's abort it.
 		 */
 		if (rc == DTX_ST_CORRUPTED) {
-			D_WARN(DF_UUID": DTX "DF_DTI" is marked as corrupted "
-			       "by resync because of lost some participants\n",
+			D_WARN(DF_UUID": DTX "DF_DTI" is marked as corrupted by resync because of lost some participants\n",
 			       DP_UUID(cont->sc_uuid), DP_DTI(&dth->dth_xid));
 			D_GOTO(abort, result = -DER_TX_RESTART);
 		}
@@ -1877,22 +1883,16 @@ dtx_sub_comp_cb(struct dtx_leader_handle *dlh, int idx, int rc)
 	struct dtx_sub_status	*sub = &dlh->dlh_subs[idx];
 	struct daos_shard_tgt	*tgt = &sub->dss_tgt;
 
-	if ((dlh->dlh_normal_sub_done == 0 && !(tgt->st_flags & DTF_DELAY_FORWARD)) ||
-	    (dlh->dlh_normal_sub_done == 1 && tgt->st_flags & DTF_DELAY_FORWARD)) {
-		D_ASSERTF(sub->dss_comp == 0,
-			  "Repeat sub completion for idx %d (%d:%d), flags %x: %d\n",
-			  idx, tgt->st_rank, tgt->st_tgt_idx, tgt->st_flags, rc);
+	if ((dlh->dlh_normal_sub_done == 0 && !(tgt->st_flags & DTF_DELAY_FORWARD)) || (dlh->dlh_normal_sub_done == 1 && tgt->st_flags & DTF_DELAY_FORWARD)) {
+		D_ASSERTF(sub->dss_comp == 0, "Repeat sub completion for idx %d (%d:%d), flags %x: %d\n", idx, tgt->st_rank, tgt->st_tgt_idx, tgt->st_flags, rc);
 		sub->dss_comp = 1;
 		sub->dss_result = rc;
 
-		D_DEBUG(DB_TRACE, "execute from idx %d (%d:%d), flags %x: rc %d\n",
-			idx, tgt->st_rank, tgt->st_tgt_idx, tgt->st_flags, rc);
+		D_DEBUG(DB_TRACE, "execute from idx %d (%d:%d), flags %x: rc %d\n", idx, tgt->st_rank, tgt->st_tgt_idx, tgt->st_flags, rc);
 	}
 
 	rc = ABT_future_set(dlh->dlh_future, dlh);
-	D_ASSERTF(rc == ABT_SUCCESS,
-		  "ABT_future_set failed for idx %d (%d:%d), flags %x: %d\n",
-		  idx, tgt->st_rank, tgt->st_tgt_idx, tgt->st_flags, rc);
+	D_ASSERTF(rc == ABT_SUCCESS, "ABT_future_set failed for idx %d (%d:%d), flags %x: %d\n", idx, tgt->st_rank, tgt->st_tgt_idx, tgt->st_flags, rc);
 }
 
 static void
@@ -2013,6 +2013,7 @@ again:
 	 */
 
 	// 这个是feature完成之后的结果汇总函数
+	// dtx_comp_cb： 所有执行结果的汇总
 	rc = ABT_future_create(dlh->dlh_forward_cnt + 1, dtx_comp_cb, &dlh->dlh_future);
 	if (rc != ABT_SUCCESS) {
 		D_ERROR("ABT_future_create failed [%u, %u] (1): "DF_RC"\n", dlh->dlh_forward_idx, dlh->dlh_forward_cnt, DP_RC(rc));
@@ -2020,23 +2021,25 @@ again:
 	}
 
 	/*
-	 * NOTE: Ideally, we probably should create ULT for each shard, but for performance
-	 *	 reasons, let's only create one for all remote targets for now.
+	 * NOTE: Ideally, we probably should create ULT for each shard, but for performance reasons, let's only create one for all remote targets for now.
 	 */
+	// dss_get_module_info()->dmi_tgt_id: tgt_idx
+	// 针对事务里面的每个tgt创建1个ult处理
 	rc = dss_ult_create(dtx_leader_exec_ops_ult, &ult_arg, DSS_XS_IOFW, dss_get_module_info()->dmi_tgt_id, DSS_DEEP_STACK_SZ, NULL);
 	if (rc != 0) {
-		D_ERROR("ult create failed [%u, %u] (2): "DF_RC"\n",
-			dlh->dlh_forward_idx, dlh->dlh_forward_cnt, DP_RC(rc));
+		D_ERROR("ult create failed [%u, %u] (2): "DF_RC"\n", dlh->dlh_forward_idx, dlh->dlh_forward_cnt, DP_RC(rc));
 		ABT_future_free(&dlh->dlh_future);
 		goto out;
 	}
 
 exec:
 	/* Execute the local operation only for once. */
+    // 本地tgt也就是leader主的tgt上执行func
 	if (dlh->dlh_forward_idx == 0)
 		local_rc = func(dlh, func_arg, -1, NULL);
 
 	/* Even the local request failure, we still need to wait for remote sub request. */
+	// 等待子请求的执行结果
 	if (dlh->dlh_normal_sub_cnt > 0)
 		remote_rc = dtx_leader_wait(dlh);
 

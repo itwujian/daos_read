@@ -372,10 +372,11 @@ struct vos_obj_df {
 	/** The latest sync epoch */
 	daos_epoch_t			vo_sync;
 	/** Offset of known existing dkey */
-	umem_off_t			vo_known_dkey;
+	umem_off_t			    vo_known_dkey;
 	/** Attributes for future use */
 	daos_epoch_t			vo_max_write;
 	/** Incarnation log for the object */
+	// ilog for obj
 	struct ilog_df			vo_ilog;
 	/** VOS dkey btree root */
 	// dkey树的树根

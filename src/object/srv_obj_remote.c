@@ -487,16 +487,15 @@ ds_obj_cpd_dispatch(struct dtx_leader_handle *dlh, void *arg, int idx,
 	tgt_ep.ep_rank = shard_tgt->st_rank;
 	tgt_ep.ep_tag = shard_tgt->st_tgt_idx;
 
-	rc = obj_req_create(dss_get_module_info()->dmi_ctx, &tgt_ep,
-			    DAOS_OBJ_RPC_CPD, &req);
+    // 创建消息
+	rc = obj_req_create(dss_get_module_info()->dmi_ctx, &tgt_ep, DAOS_OBJ_RPC_CPD, &req);
 	if (rc != 0) {
-		D_ERROR("CPD crt_req_create failed, idx %u: "DF_RC"\n",
-			idx, DP_RC(rc));
+		D_ERROR("CPD crt_req_create failed, idx %u: "DF_RC"\n", idx, DP_RC(rc));
 		D_GOTO(out, rc);
 	}
 
 	oci_parent = crt_req_get(parent_req);
-	oci = crt_req_get(req);
+	oci        = crt_req_get(req);
 
 	uuid_copy(oci->oci_pool_uuid, oci_parent->oci_pool_uuid);
 	uuid_copy(oci->oci_co_hdl, oci_parent->oci_co_hdl);
@@ -527,8 +526,7 @@ ds_obj_cpd_dispatch(struct dtx_leader_handle *dlh, void *arg, int idx,
 		D_GOTO(out, rc = -DER_INVAL);
 
 	if (shard_tgt->st_flags & DTF_REASSEMBLE_REQ) {
-		rc = ds_obj_cpd_clone_reqs(shard_tgt, dcde_parent, dcsr_parent,
-					   total, &dcde, &dcsr);
+		rc = ds_obj_cpd_clone_reqs(shard_tgt, dcde_parent, dcsr_parent, total, &dcde, &dcsr);
 		if (rc < 0)
 			D_GOTO(out, rc);
 
@@ -554,20 +552,16 @@ ds_obj_cpd_dispatch(struct dtx_leader_handle *dlh, void *arg, int idx,
 	oci->oci_disp_ents.ca_arrays = dcde_dcs;
 	oci->oci_disp_ents.ca_count = 1;
 
-	D_DEBUG(DB_TRACE, "Forwarding CPD RPC to rank:%d tag:%d idx %u for DXT "
-		DF_DTI"\n",
-		tgt_ep.ep_rank, tgt_ep.ep_tag, idx, DP_DTI(&dcsh->dcsh_xid));
+	D_DEBUG(DB_TRACE, "Forwarding CPD RPC to rank:%d tag:%d idx %u for DXT "DF_DTI"\n", tgt_ep.ep_rank, tgt_ep.ep_tag, idx, DP_DTI(&dcsh->dcsh_xid));
 
+    //发生消息
 	rc = crt_req_send(req, shard_cpd_req_cb, remote_arg);
 	if (rc != 0) {
 		D_ASSERT(sub->dss_comp == 1);
 		D_ERROR("crt_req_send failed, rc "DF_RC"\n", DP_RC(rc));
 	}
 
-	D_CDEBUG(rc != 0, DLOG_ERR, DB_TRACE,
-		 "Forwarded CPD RPC to rank:%d tag:%d idx %u for DXT "
-		 DF_DTI": "DF_RC"\n", tgt_ep.ep_rank, tgt_ep.ep_tag, idx,
-		 DP_DTI(&dcsh->dcsh_xid), DP_RC(rc));
+	D_CDEBUG(rc != 0, DLOG_ERR, DB_TRACE,"Forwarded CPD RPC to rank:%d tag:%d idx %u for DXT "DF_DTI": "DF_RC"\n", tgt_ep.ep_rank, tgt_ep.ep_tag, idx, DP_DTI(&dcsh->dcsh_xid), DP_RC(rc));
 
 	return rc;
 out:

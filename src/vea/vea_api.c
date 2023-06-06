@@ -369,10 +369,12 @@ process_resrvd_list(struct vea_space_info *vsi, struct vea_hint_context *hint,
 {
 	struct vea_resrvd_ext	*resrvd, *tmp;
 	struct vea_free_extent	 vfe;
+	
 	uint64_t		 seq_max = 0, seq_min = 0;
 	uint64_t		 off_c = 0, off_p = 0;
-	unsigned int		 seq_cnt = 0;
-	int			 rc = 0;
+	unsigned int	 seq_cnt = 0;
+	
+	int rc = 0;
 
     // resrvd_list: dru->dru_nvme for vos_tx_end， vos_reserve_blocks入链的
     //            io->ic_nvme_exts for agg
@@ -453,6 +455,7 @@ vea_tx_publish(struct vea_space_info *vsi, struct vea_hint_context *hint,
 	D_ASSERT(pmemobj_tx_stage() == TX_STAGE_WORK || vsi->vsi_umem->umm_id == UMEM_CLASS_VMEM);
 	D_ASSERT(vsi != NULL);
 	D_ASSERT(resrvd_list != NULL);
+	
 	/*
 	 * We choose to don't rollback the in-memory hint updates even if the
 	 * transaction manipulcated by caller is aborted, that'll result in

@@ -3986,12 +3986,9 @@ evt_overhead_get(int alloc_overhead, int tree_order,
 	ovhd->to_dyn_count = 0;
 	ovhd->to_record_msize = alloc_overhead + sizeof(struct evt_desc);
 	ovhd->to_node_rec_msize = sizeof(struct evt_node_entry);
-	ovhd->to_leaf_overhead.no_size = alloc_overhead +
-		sizeof(struct evt_node) +
-		(tree_order * sizeof(struct evt_node_entry));
+	ovhd->to_leaf_overhead.no_size = alloc_overhead + sizeof(struct evt_node) + (tree_order * sizeof(struct evt_node_entry));
 	ovhd->to_leaf_overhead.no_order = tree_order;
-	ovhd->to_int_node_size = alloc_overhead + sizeof(struct evt_node) +
-		(tree_order * sizeof(uint64_t));
+	ovhd->to_int_node_size = alloc_overhead + sizeof(struct evt_node) + (tree_order * sizeof(uint64_t));
 
 	return 0;
 }

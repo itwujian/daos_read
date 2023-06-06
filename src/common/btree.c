@@ -21,8 +21,8 @@
  * NB: a node can be both root and leaf.
  */
 enum btr_node_type {
-	BTR_NODE_LEAF		= (1 << 0),
-	BTR_NODE_ROOT		= (1 << 1),
+	BTR_NODE_LEAF		= (1 << 0),   // 1
+	BTR_NODE_ROOT		= (1 << 1),   // 2
 };
 
 enum btr_probe_rc {
@@ -513,14 +513,12 @@ btr_hkey_cmp(struct btr_context *tcx, struct btr_record *rec, void *hkey)
 		uint64_t a = rec->rec_ukey[0];
 		uint64_t b = *(uint64_t *)hkey;
 
-		return (a < b) ? BTR_CMP_LT :
-				 ((a > b) ? BTR_CMP_GT : BTR_CMP_EQ);
+		return (a < b) ? BTR_CMP_LT : ((a > b) ? BTR_CMP_GT : BTR_CMP_EQ);
 	}
 	if (btr_ops(tcx)->to_hkey_cmp)
 		return btr_ops(tcx)->to_hkey_cmp(&tcx->tc_tins, rec, hkey);
 	else
-		return dbtree_key_cmp_rc(
-			memcmp(&rec->rec_hkey[0], hkey, btr_hkey_size(tcx)));
+		return dbtree_key_cmp_rc(memcmp(&rec->rec_hkey[0], hkey, btr_hkey_size(tcx)));
 }
 
 static void
@@ -724,7 +722,7 @@ btr_node_rec_at(struct btr_context *tcx, umem_off_t nd_off, unsigned int at)
 	return (struct btr_record *)&addr[btr_rec_size(tcx) * at];
 }
 
-// at是从0开始的，获取的是某节点的第一个孩子
+// at是从0开始的，获取的是某节点的第at个孩子
 static umem_off_t
 btr_node_child_at(struct btr_context *tcx, umem_off_t nd_off, unsigned int at)
 {
@@ -869,10 +867,12 @@ btr_root_init(struct btr_context *tcx, struct btr_root *root, bool in_place)
 	root->tr_class		= tcx->tc_class;
 	root->tr_feats		= tcx->tc_feats;
 	root->tr_order		= tcx->tc_order;
+	
 	if (tcx->tc_feats & BTR_FEAT_DYNAMIC_ROOT)
 		root->tr_node_size	= 1;
 	else
 		root->tr_node_size	= tcx->tc_order;
+	
 	root->tr_node		= BTR_NODE_NULL;
 
 	return 0;
@@ -941,8 +941,10 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 	// 新生成的btr_node，里面只有1个key
 	nd->tn_keyn = 1;
 
-    // 获取rec的地址，把record内容拷过去
+    // 获取新生成的btr_node的btr_record的地址
 	rec_dst = btr_node_rec_at(tcx, nd_off, 0);
+
+	// 把btr_rec_alloc中填充的record内容拷贝到btr_node的record数组中(tn_recs)
 	btr_rec_copy(tcx, rec_dst, rec, 1);
 
 	if (btr_has_tx(tcx)) {
@@ -959,8 +961,15 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 	root->tr_depth = 1;
 	
 	btr_context_set_depth(tcx, root->tr_depth);
+	// 即：
+	//	tcx->tc_depth = 1;
+	//  tcx->tc_trace = &tcx->tc_traces[BTR_TRACE_MAX - 1];
 
 	btr_trace_set(tcx, 0, nd_off, 0);
+	//  即：
+	//	tcx->tc_trace[level].tr_node = nd_off;
+	//  tcx->tc_trace[level].tr_at = 0;
+	
 	return 0;
 }
 
@@ -1096,9 +1105,9 @@ btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace, struc
 {
 	struct btr_record  *rec_a;
 	struct btr_node    *nd;
-	bool		       leaf;
-	bool		   reuse = false;
-	char		   sbuf[BTR_PRINT_BUF];
+	bool		        leaf;
+	bool		        reuse = false;
+	char		        sbuf[BTR_PRINT_BUF];
 
 	/* NB: assume trace->tr_node has been added to TX */
 	D_ASSERT(!btr_node_is_full(tcx, trace->tr_node));
@@ -1314,6 +1323,16 @@ btr_root_resize_needed(struct btr_context *tcx)
 	if (nd->tn_keyn != root->tr_node_size)
 		return false;
 
+// tr_node_size的来源
+#if 0
+	if (tcx->tc_feats & BTR_FEAT_DYNAMIC_ROOT)
+		root->tr_node_size	= 1;
+	else
+		root->tr_node_size	= tcx->tc_order;
+#endif
+
+    // tcx->tc_order !=  root->tr_node_size
+    // nd->tn_keyn   ==  root->tr_node_size
 	return true;
 }
 
@@ -1321,13 +1340,13 @@ static int
 btr_root_resize(struct btr_context *tcx, struct btr_trace *trace,
 		bool *node_alloc)
 {
-	struct btr_root	*root = tcx->tc_tins.ti_root;
-	umem_off_t	     old_node = root->tr_node;
-	struct btr_node	*nd = btr_off2ptr(tcx, old_node);
-	daos_size_t	 old_size = btr_node_size(tcx);
-	int		     new_order;
-	umem_off_t	 nd_off;
-	int		     rc = 0;
+	struct btr_root	  *root = tcx->tc_tins.ti_root;
+	umem_off_t	       old_node = root->tr_node;
+	struct btr_node	  *nd = btr_off2ptr(tcx, old_node);
+	daos_size_t	       old_size = btr_node_size(tcx);
+	int		           new_order;
+	umem_off_t	       nd_off;
+	int		           rc = 0;
 
 	D_ASSERT(root->tr_depth == 1);
 
@@ -1354,6 +1373,7 @@ btr_root_resize(struct btr_context *tcx, struct btr_trace *trace,
 	trace->tr_node = root->tr_node = nd_off;
 	
 	memcpy(btr_off2ptr(tcx, nd_off), nd, old_size);
+	
 	/* NB: Both of the following routines can fail but neither presently
 	 * returns an error code.   For now, ignore this fact.   DAOS-2577
 	 */
@@ -1371,7 +1391,7 @@ btr_node_insert_rec(struct btr_context *tcx, struct btr_trace *trace,
 	bool	node_alloc = false;
 
 	if (btr_root_resize_needed(tcx)) {
-		// 根节点root需要分裂的场景
+		// 没有理解???????
 		rc = btr_root_resize(tcx, trace, &node_alloc);
 		if (rc != 0) {
 			D_ERROR("Failed to resize root node: %s", d_errstr(rc));
@@ -1379,7 +1399,6 @@ btr_node_insert_rec(struct btr_context *tcx, struct btr_trace *trace,
 		}
 	}
 
-    // root不需要分裂或者分裂失败
 	if (!node_alloc && btr_has_tx(tcx)) {
 		rc = btr_node_tx_add(tcx, trace->tr_node);
 		if (rc != 0) {
@@ -1411,7 +1430,7 @@ btr_cmp(struct btr_context *tcx, umem_off_t nd_off,
 		at = trace->tr_at;
 	}
 
-	rec = btr_node_rec_at(tcx, nd_off, at);
+	rec = btr_node_rec_at(tcx, nd_off, at);	
 	if (btr_is_direct_key(tcx)) {
 		/* For direct keys, resolve the offset in the record */
 		if (!btr_node_is_leaf(tcx, nd_off))
@@ -1528,6 +1547,7 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc, uint32_t intent
 			continue;
 		}
 
+        // 当前节点是叶子节点，直接退出了
 		if (btr_node_is_leaf(tcx, nd_off))
 			break;
 
@@ -2114,7 +2134,7 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 	
 		D_DEBUG(DB_TRACE, "Add record %s to an empty tree\n", rec_str);
 
-		// 当前是1棵空树，需要先创建1个btr_node, 然后把record里面的内容考进去
+		// 当前是1棵空树，需要先创建1个btr_node, 然后把record里面的内容(rec)考进去
         //  btr_node里面存放key的个数记为1，将record的内容拷贝至btr_node->btr_record
 		rc = btr_root_start(tcx, rec);
 		if (rc != 0) {
@@ -3380,8 +3400,9 @@ dbtree_create_inplace(unsigned int tree_class, // vos_tree_class 树的具体类
 int
 dbtree_create_inplace_ex(unsigned int tree_class, uint64_t tree_feats,
 			 unsigned int tree_order, struct umem_attr *uma,
-			 struct btr_root *root, daos_handle_t coh,
-			 void *priv, daos_handle_t *toh)
+			 struct btr_root *root,     // 出参： 待创建树的根节点
+			 daos_handle_t coh, void *priv, 
+			 daos_handle_t *toh)        // 出参： 创建树的操作句柄
 {
 	struct btr_context *tcx;
 	int		    rc;

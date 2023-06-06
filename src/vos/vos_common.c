@@ -82,9 +82,7 @@ vos_ts_add_missing(struct vos_ts_set *ts_set, daos_key_t *dkey, int akey_nr,
 
 	if (ts_set->ts_etype == VOS_TS_TYPE_DKEY) {
 		/** Add the negative dkey entry */
-		rc = vos_ts_set_add(ts_set, 0 /* don't care */,
-				    dkey->iov_buf,
-				    (int)dkey->iov_len);
+		rc = vos_ts_set_add(ts_set, 0 /* don't care */, dkey->iov_buf, (int)dkey->iov_len);
 		D_ASSERT(rc == 0);
 	}
 
@@ -92,11 +90,8 @@ vos_ts_add_missing(struct vos_ts_set *ts_set, daos_key_t *dkey, int akey_nr,
 
 	/** Add negative akey entries */
 	for (i = akey_nr - remaining; i < akey_nr; i++) {
-		akey = ad->ad_is_iod ?
-			&ad->ad_iods[i].iod_name : &ad->ad_keys[i];
-		rc = vos_ts_set_add(ts_set, 0 /* don't care */,
-				    akey->iov_buf,
-				    (int)akey->iov_len);
+		akey = ad->ad_is_iod ? &ad->ad_iods[i].iod_name : &ad->ad_keys[i];
+		rc = vos_ts_set_add(ts_set, 0 /* don't care */, akey->iov_buf, (int)akey->iov_len);
 		D_ASSERT(rc == 0);
 	}
 }
@@ -184,7 +179,10 @@ vos_tx_publish(struct dtx_handle *dth, bool publish)
 		return 0;
 
 	for (i = 0; i < dth->dth_rsrvd_cnt; i++) {
+		
 		dru = &dth->dth_rsrvds[i];
+
+	    // 调用PMDK的publish or cancel 
 		rc = vos_publish_scm(cont, dru->dru_scm, publish);
 		D_FREE(dru->dru_scm);
 
@@ -199,10 +197,12 @@ vos_tx_publish(struct dtx_handle *dth, bool publish)
 		 *
 		 *	  It is not fatal, will be handled later.
 		 */
+		// vos事务提交失败，返回错误码
 		if (rc && publish)
 			return rc;
 
 		/** Function checks if list is empty */
+		// 调用vea_tx_publish or vea_cancel来处理vea
 		rc = vos_publish_blocks(cont, &dru->dru_nvme, publish, VOS_IOS_GENERIC);
 		if (rc && publish)
 			return rc;
@@ -255,11 +255,12 @@ vos_tx_end(struct vos_container *cont, struct dtx_handle *dth_in,
 	   struct vos_rsrvd_scm **rsrvd_scmp, d_list_t *nvme_exts,
 	   bool started, int err)
 {
-	struct dtx_handle	*dth = dth_in;
+	struct dtx_handle	    *dth = dth_in;
 	struct dtx_rsrvd_uint	*dru;
 	struct vos_dtx_cmt_ent	*dce = NULL;
-	struct dtx_handle	 tmp = {0};
+	struct dtx_handle	     tmp = {0};
 
+    // dth无效
 	if (!dtx_is_valid_handle(dth)) {
 		/** Created a dummy dth handle for publishing extents */
 		dth = &tmp;
@@ -270,7 +271,7 @@ vos_tx_end(struct vos_container *cont, struct dtx_handle *dth_in,
 		D_INIT_LIST_HEAD(&tmp.dth_deferred_nvme);
 	}
 
-    // only for vos_update
+    // only for vos_update_end
     // rsrvd_scmp:  ioc->ic_rsrvd_scm, 
     // nvme_exts:   ioc->ic_blk_exts
 	if (rsrvd_scmp != NULL) { 
@@ -300,6 +301,7 @@ vos_tx_end(struct vos_container *cont, struct dtx_handle *dth_in,
 		err = vos_dtx_prepared(dth, &dce);
 
 	if (err == 0)
+		// true  ->  pubilsh    ->    umem_tx_publish
 		err = vos_tx_publish(dth, true);
 
 	vos_dth_set(NULL);
@@ -309,6 +311,7 @@ vos_tx_end(struct vos_container *cont, struct dtx_handle *dth_in,
 cancel:
 	if (err != 0) {
 		/* The transaction aborted or failed to commit. */
+	    // false   ->  not publish     ->   umem_cancel
 		vos_tx_publish(dth, false);
 		if (dtx_is_valid_handle(dth_in))
 			vos_dtx_cleanup_internal(dth);

@@ -385,10 +385,16 @@ vos_ilog_update_check(struct vos_ilog_info *info, const daos_epoch_range_t *epr)
 	return 0;
 }
 
-int vos_ilog_update_(struct vos_container *cont, struct ilog_df *ilog,
-		     const daos_epoch_range_t *epr, daos_epoch_t bound,
-		     struct vos_ilog_info *parent, struct vos_ilog_info *info,
-		     uint32_t cond, struct vos_ts_set *ts_set)
+int vos_ilog_update_(struct vos_container *cont, 
+                            struct ilog_df *ilog,              // 要更新的ilog(obj的在obj_df中存放，dkey和akey的在krec中存放)
+		                    const daos_epoch_range_t *epr, 
+		                    daos_epoch_t bound,
+		                    struct vos_ilog_info *parent,      // ilog的父ilog信息(obj没有父, 为NULL)，
+		                                                       // dkey的父为obj，在vos_obj_hold的时候有vos_ilog_update带出存在vos_object->obj_ilog_info
+		                                                       // akey的父为dkey, 在dkey_update的时候有vos_ilog_update带出存放在ioc->ic_dkey_info
+		                    struct vos_ilog_info *info,        // 出参，带出ilog的info信息(vos_obj_hold带出obj的ilog;dkey_update带出dkey的ilog信息，akey_update带出akey的)
+		                    uint32_t cond, 
+		                    struct vos_ts_set *ts_set)
 {
 	struct dtx_handle	  *dth = vos_dth_get();
 	daos_epoch_range_t	  max_epr = *epr;

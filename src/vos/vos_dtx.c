@@ -1014,8 +1014,6 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 }
 
 // key-ilog: 将obj、dkey、akey的ilog的根节点作为record写入dae->dae_records或dae->dae_base.dae_rec_inline
-
-
 static int
 vos_dtx_append(struct dtx_handle *dth, 
                      umem_off_t record, /* ilog的根节点作为record传入, obj、dkey、akey */
@@ -1662,9 +1660,8 @@ done:
 	dbd = dae->dae_dbd;
 	D_ASSERT(dbd != NULL);
 
-	/* Use the dkey_hash for the last modification as the dkey_hash
-	 * for the whole transaction. It will used as the index for DTX
-	 * committable/CoS cache.
+	/*  Use the dkey_hash for the last modification as the dkey_hash for the whole transaction. 
+	    It will used as the index for DTX committable/CoS cache.
 	 */
 	DAE_DKEY_HASH(dae) = dth->dth_dkey_hash;
 

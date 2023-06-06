@@ -66,6 +66,16 @@ struct btr_node {
 	uint32_t			tn_pad_32;
 	/** generation, reserved for COW */
 	uint64_t			tn_gen;
+
+
+    // 1. 如果是叶子节点，tn_child没有使用；
+    //    tn_recs里面存放的是record; btr_record->rec_off存放的是
+    //    vos_krec_df +  vos_krec2csum()  +  vos_krec2key()
+
+	// 2. 如果是中间节点，tn_child存放第0个child
+	//    tn_recs里面存放的是第1.2.3....个child
+
+	
 	/** the first child, it is unused on leaf node */
 	umem_off_t			tn_child;
 	/** records in this node */
@@ -418,17 +428,17 @@ struct btr_instance {
 	/** instance of memory class for the tree */
 	struct umem_instance		 ti_umm;
 	/** Private data for opener */
-	void				*ti_priv;
+	void				        *ti_priv;
 	/**
 	 * The container open handle.
 	 */
-	daos_handle_t			 ti_coh;
+	daos_handle_t			     ti_coh;
 	/** root umem offset */
-	umem_off_t			 ti_root_off;
+	umem_off_t			         ti_root_off;
 	/** root pointer */
-	struct btr_root			*ti_root;
+	struct btr_root			    *ti_root;
 	/** Customized operations for the tree */
-	btr_ops_t			*ti_ops;
+	btr_ops_t			        *ti_ops;
 };
 
 /**

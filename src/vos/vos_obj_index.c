@@ -90,8 +90,8 @@ oi_rec_alloc(struct btr_instance *tins, d_iov_t *key_iov,
 	
 	key = key_iov->iov_buf;
 
-	obj->vo_sync	= 0;
-	obj->vo_id	= *key;
+	obj->vo_sync  = 0;
+	obj->vo_id	  = *key;
 	
 	rc = ilog_create(&tins->ti_umm, &obj->vo_ilog);
 	if (rc != 0) {

@@ -772,7 +772,7 @@ out:
 }
 
 static int
-rebuild_container_scan_cb(daos_handle_t ih, vos_iter_entry_t *entry,
+(0(daos_handle_t ih, vos_iter_entry_t *entry,
 			  vos_iter_type_t type, vos_iter_param_t *iter_param,
 			  void *data, unsigned *acts)
 {

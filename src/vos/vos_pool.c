@@ -357,8 +357,13 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 	memset(pool_df, 0, sizeof(*pool_df));
 
 	// 赋值了vos_pool_df->pd_cont_root: 即cont树的根节点，hdl：container树的操作句柄
-	rc = dbtree_create_inplace(VOS_BTR_CONT_TABLE, 0, VOS_CONT_ORDER, &uma, 
-	         &pool_df->pd_cont_root, &hdl);
+	rc = dbtree_create_inplace(VOS_BTR_CONT_TABLE, 0, 
+	                           // tree order
+	                           VOS_CONT_ORDER,
+	                           &uma,
+	                           // container树的树根节点，存在vos_pool_df中
+	                           &pool_df->pd_cont_root,  
+	                           &hdl);
 	if (rc != 0)
 		goto end;
 
@@ -567,6 +572,7 @@ set_slab_prop(int id, struct pobj_alloc_class_desc *slab)
 		return rc;
 
 	slab->unit_size = *size;
+	
 done:
 	D_ASSERT(slab->unit_size > 0);
 	D_DEBUG(DB_MGMT, "Slab ID:%d, Size:%lu\n", id, slab->unit_size);
@@ -612,14 +618,13 @@ vos_register_slabs(struct umem_attr *uma)
 		if (skip_set)
 			continue;
 
-		rc = pmemobj_ctl_set(uma->uma_pool, "heap.alloc_class.new.desc",
-				     slab);
+		rc = pmemobj_ctl_set(uma->uma_pool, "heap.alloc_class.new.desc", slab);
 		if (rc) {
-			D_ERROR("Failed to register VOS slab %d. rc:%d\n",
-				i, rc);
+			D_ERROR("Failed to register VOS slab %d. rc:%d\n", i, rc);
 			rc = umem_tx_errno(rc);
 			return rc;
 		}
+		
 		D_ASSERT(slab->class_id != 0);
 	}
 

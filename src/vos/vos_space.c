@@ -113,7 +113,7 @@ error:
 int
 vos_space_query(struct vos_pool *pool, struct vos_pool_space *vps, bool slow)
 {
-	struct vos_pool_df	*df = pool->vp_pool_df;
+	struct vos_pool_df	*df   = pool->vp_pool_df;
 	struct vea_attr		*attr = &vps->vps_vea_attr;
 	struct vea_stat		*stat = slow ? &vps->vps_vea_stat : NULL;
 	daos_size_t		 scm_used;
@@ -125,22 +125,18 @@ vos_space_query(struct vos_pool *pool, struct vos_pool_space *vps, bool slow)
 	NVME_SYS(vps) = POOL_NVME_SYS(pool);
 
 	/* Query SCM used space */
-	rc = pmemobj_ctl_get(pool->vp_umm.umm_pool,
-			     "stats.heap.curr_allocated", &scm_used);
+	rc = pmemobj_ctl_get(pool->vp_umm.umm_pool, "stats.heap.curr_allocated", &scm_used);
 	if (rc) {
 		rc = umem_tx_errno(rc);
-		D_ERROR("Query pool:"DF_UUID" SCM space failed. "DF_RC"\n",
-			DP_UUID(pool->vp_id), DP_RC(rc));
+		D_ERROR("Query pool:"DF_UUID" SCM space failed. "DF_RC"\n", DP_UUID(pool->vp_id), DP_RC(rc));
 		return rc;
 	}
 
 	/*
-	 * FIXME: pmemobj_ctl_get() sometimes return an insane large value, it
-	 * could be a PMDK defect.
+	 * FIXME: pmemobj_ctl_get() sometimes return an insane large value, it could be a PMDK defect.
 	 */
 	if (SCM_TOTAL(vps) < scm_used) {
-		D_CRIT("scm_sz:"DF_U64" < scm_used:"DF_U64"\n",
-		       SCM_TOTAL(vps), scm_used);
+		D_CRIT("scm_sz:"DF_U64" < scm_used:"DF_U64"\n", SCM_TOTAL(vps), scm_used);
 		SCM_FREE(vps) = 0;
 	} else {
 		SCM_FREE(vps) = SCM_TOTAL(vps) - scm_used;
@@ -157,17 +153,14 @@ vos_space_query(struct vos_pool *pool, struct vos_pool_space *vps, bool slow)
 	/* Query NVMe free space */
 	rc = vea_query(pool->vp_vea_info, attr, stat);
 	if (rc) {
-		D_ERROR("Query pool:"DF_UUID" NVMe space failed. "DF_RC"\n",
-			DP_UUID(pool->vp_id), DP_RC(rc));
+		D_ERROR("Query pool:"DF_UUID" NVMe space failed. "DF_RC"\n", DP_UUID(pool->vp_id), DP_RC(rc));
 		return rc;
 	}
 
 	D_ASSERT(attr->va_blk_sz != 0);
 	NVME_FREE(vps) = attr->va_blk_sz * attr->va_free_blks;
 
-	D_ASSERTF(NVME_FREE(vps) <= NVME_TOTAL(vps),
-		  "nvme_free:"DF_U64", nvme_sz:"DF_U64", blk_sz:%u\n",
-		  NVME_FREE(vps), NVME_TOTAL(vps), attr->va_blk_sz);
+	D_ASSERTF(NVME_FREE(vps) <= NVME_TOTAL(vps), "nvme_free:"DF_U64", nvme_sz:"DF_U64", blk_sz:%u\n", NVME_FREE(vps), NVME_TOTAL(vps), attr->va_blk_sz);
 	return 0;
 }
 
@@ -205,7 +198,7 @@ estimate_space(struct vos_pool *pool, daos_key_t *dkey, unsigned int iod_nr,
 	daos_recx_t		*recx;
 	uint16_t		 media;
 	daos_size_t		 size, scm, nvme = 0 /* in blk */;
-	int			 i, j;
+	int			     i, j;
 
 	/* Object record */
 	scm = umem_slab_usize(umm, VOS_SLAB_OBJ_DF);
@@ -222,11 +215,11 @@ estimate_space(struct vos_pool *pool, daos_key_t *dkey, unsigned int iod_nr,
 		scm += estimate_space_key(umm, &iod->iod_name);
 
 		csums = vos_csum_at(iods_csums, i);
-		/* Single value */
+		
+/* Single value */
 		if (iod->iod_type == DAOS_IOD_SINGLE) {
 			size = iod->iod_size;
-			media = vos_policy_media_select(pool, iod->iod_type,
-							size, VOS_IOS_GENERIC);
+			media = vos_policy_media_select(pool, iod->iod_type, size, VOS_IOS_GENERIC);
 
 			/* Single value record */
 			if (media == DAOS_MEDIA_SCM) {
@@ -241,20 +234,20 @@ estimate_space(struct vos_pool *pool, daos_key_t *dkey, unsigned int iod_nr,
 			continue;
 		}
 
-		/* Array value */
+/* Array value */
 		for (j = 0; j < iod->iod_nr; j++) {
 			recx = &iod->iod_recxs[j];
 			recx_csum = recx_csum_at(csums, j, iod);
 
 			size = recx->rx_nr * iod->iod_size;
-			media = vos_policy_media_select(pool, iod->iod_type,
-							size, VOS_IOS_GENERIC);
+			media = vos_policy_media_select(pool, iod->iod_type, size, VOS_IOS_GENERIC);
 
 			/* Extent */
 			if (media == DAOS_MEDIA_SCM)
 				scm += size;
 			else if (size != 0)
 				nvme += vos_byte2blkcnt(size);
+			
 			/* EVT desc */
 			scm += umem_slab_usize(umm, VOS_SLAB_EVT_DESC);
 			/* Checksum */
@@ -280,11 +273,11 @@ vos_space_hold(struct vos_pool *pool, uint64_t flags, daos_key_t *dkey,
 
 	rc = vos_space_query(pool, &vps, false);
 	if (rc) {
-		D_ERROR("Query pool:"DF_UUID" space failed. "DF_RC"\n",
-			DP_UUID(pool->vp_id), DP_RC(rc));
+		D_ERROR("Query pool:"DF_UUID" space failed. "DF_RC"\n", DP_UUID(pool->vp_id), DP_RC(rc));
 		return rc;
 	}
 
+    // 预估此次更新操作需要耗费的空间: space_est
 	estimate_space(pool, dkey, iod_nr, iods, iods_csums, &space_est[0]);
 
 	/* if this is a critical update, skip SCM and NVMe sys/held checks */
@@ -300,6 +293,7 @@ vos_space_hold(struct vos_pool *pool, uint64_t flags, daos_key_t *dkey,
 		goto error;
 
 	scm_left -= POOL_SCM_HELD(pool);
+	// 傲腾盘预留空间不足
 	if (scm_left < space_est[DAOS_MEDIA_SCM])
 		goto error;
 
@@ -314,6 +308,7 @@ vos_space_hold(struct vos_pool *pool, uint64_t flags, daos_key_t *dkey,
 	nvme_left -= NVME_SYS(&vps);
 	/* 'NVMe held' has already been excluded from 'NVMe free' */
 
+    // NVME盘预留空间不足
 	if (nvme_left < space_est[DAOS_MEDIA_NVME])
 		goto error;
 
@@ -324,6 +319,7 @@ success:
 	POOL_NVME_HELD(pool)		+= space_hld[DAOS_MEDIA_NVME];
 
 	return 0;
+	
 error:
 	D_ERROR("Pool:"DF_UUID" is full. SCM: free["DF_U64"], sys["DF_U64"], "
 		"hld["DF_U64"], est["DF_U64"] NVMe: free["DF_U64"], "

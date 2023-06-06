@@ -39,7 +39,7 @@ struct dtx_handle {
 			uint32_t		 dth_ver;
 			/** Match dtx_entry::dte_refs. */
 			uint32_t		 dth_refs;
-			/** The DTX participants information. */
+			/** The DTX participants information. (DTX参与者信息)*/
 			struct dtx_memberships	*dth_mbs;
 		};
 	};
@@ -104,11 +104,13 @@ struct dtx_handle {
 	void				*dth_ent;
 	/** The flags, see dtx_entry_flags. */
 	uint32_t			 dth_flags;
+	
 	/** The count of reserved items in the dth_rsrvds array. */
 	uint16_t			 dth_rsrvd_cnt;
 	uint16_t			 dth_deferred_cnt;
 	/** The total sub modifications count. */
-	uint16_t			 dth_modification_cnt; //除了CPD流程会大于1之外，其余写均为1，读为0
+	//除了CPD流程会大于1之外，其余写均为1，读为0
+	uint16_t			 dth_modification_cnt; 
 	/** Modification sequence in the distributed transaction. */
 	uint16_t			 dth_op_seq;
 
@@ -117,16 +119,17 @@ struct dtx_handle {
 	/** The total slots in the dth_oid_array. */
 	uint16_t			 dth_oid_cap;
 	/** If more than one objects are modified, the IDs are reocrded here. */
-	daos_unit_oid_t			*dth_oid_array;
+	daos_unit_oid_t		*dth_oid_array;
 
 	/* Hash of the dkey to be modified if applicable. Per modification. */
 	uint64_t			 dth_dkey_hash;
 
 	struct dtx_rsrvd_uint		 dth_rsrvd_inline;
 	struct dtx_rsrvd_uint		*dth_rsrvds; // 数组的大小是写请求的数量，单个写为1，CPD有可能会大于1
-	void				     **dth_deferred; // 数组的大小是写请求的数量，单个写为1，CPD有可能会大于1
+	void				       **dth_deferred; // 数组的大小是写请求的数量，单个写为1，CPD有可能会大于1
 	/* NVME extents to release */
-	d_list_t			 dth_deferred_nvme;
+	d_list_t			         dth_deferred_nvme;
+	
 	/* Committed or comittable DTX list */
 	d_list_t			 dth_share_cmt_list;
 	/* Aborted DTX list */
@@ -140,9 +143,9 @@ struct dtx_handle {
 
 /* Each sub transaction handle to manage each sub thandle */
 struct dtx_sub_status {
-	struct daos_shard_tgt		dss_tgt;
-	int				dss_result;
-	uint32_t			dss_comp:1;
+	struct daos_shard_tgt		dss_tgt;  // to identify each obj shard's target
+	int				            dss_result;
+	uint32_t			        dss_comp:1;
 };
 
 struct dtx_leader_handle;
@@ -151,25 +154,25 @@ typedef int (*dtx_agg_cb_t)(struct dtx_leader_handle *dlh, int allow_failure);
 /* Transaction handle on the leader node to manage the transaction */
 struct dtx_leader_handle {
 	/* The dtx handle on the leader node */
-	struct dtx_handle		dlh_handle;
+	struct dtx_handle		dlh_handle;     // dtx(dth)
 	/* result for the distribute transaction */
-	int				dlh_result;
+	int				        dlh_result;
 
 	/* The array of the DTX COS entries */
-	uint32_t			dlh_dti_cos_count;
-	struct dtx_id			*dlh_dti_cos;
+	uint32_t			    dlh_dti_cos_count;
+	struct dtx_id		   *dlh_dti_cos;
 
 	/* The future to wait for sub requests to finish. */
-	ABT_future			dlh_future;
+	ABT_future			    dlh_future;
 
 	dtx_agg_cb_t			dlh_agg_cb;
-	int32_t				dlh_allow_failure;
-					/* Normal sub requests have been processed. */
-	uint32_t			dlh_normal_sub_done:1,
-					/* Drop conditional flags when forward RPC. */
-					dlh_drop_cond:1;
+	int32_t				    dlh_allow_failure;
+					        /* Normal sub requests have been processed. */
+	uint32_t			    dlh_normal_sub_done:1,
+					        /* Drop conditional flags when forward RPC. */
+					        dlh_drop_cond:1;
 	/* How many normal sub request. */
-	uint32_t			dlh_normal_sub_cnt;
+	uint32_t			dlh_normal_sub_cnt;  // tgt_cnt - dlh->dlh_delay_sub_cnt(DTF_DELAY_FORWARD)
 	/* How many delay forward sub request. */
 	uint32_t			dlh_delay_sub_cnt;
 	/* The index of the first target that forward sub-request to. */
@@ -177,7 +180,7 @@ struct dtx_leader_handle {
 	/* The count of the targets that forward sub-request to. */
 	uint32_t			dlh_forward_cnt;
 	/* Sub transaction handle to manage the dtx leader */
-	struct dtx_sub_status		*dlh_subs;
+	struct dtx_sub_status		*dlh_subs;    // 有多少个tgt就有多少个子事务
 };
 
 struct dtx_stat {

@@ -286,7 +286,7 @@ typedef struct {
 
 /** attributes to initialize an unified memory class */
 struct umem_attr {
-	umem_class_id_t			 uma_id;
+	umem_class_id_t		uma_id;
 #ifdef DAOS_PMEM_BUILD
 	PMEMobjpool			*uma_pool;
 	/** Slabs of the umem pool */

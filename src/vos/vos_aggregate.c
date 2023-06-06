@@ -1246,8 +1246,7 @@ out:
 }
 
 static int
-fill_segments(daos_handle_t ih, struct agg_merge_window *mw,
-	      unsigned int *acts)
+fill_segments(daos_handle_t ih, struct agg_merge_window *mw, unsigned int *acts)
 {
 	struct agg_io_context	*io = &mw->mw_io_ctxt;
 	struct agg_lgc_seg	    *lgc_seg;
@@ -1275,6 +1274,7 @@ fill_segments(daos_handle_t ih, struct agg_merge_window *mw,
 		io->ic_rsrvd_scm = rsrvd_scm;
 		io->ic_rsrvd_scm->rs_actv_cnt = scm_max;
 	}
+	
 	D_ASSERT(io->ic_rsrvd_scm->rs_actv_at == 0);
 
 	for (i = 0; i < io->ic_seg_cnt; i++) {

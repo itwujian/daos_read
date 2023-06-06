@@ -378,8 +378,8 @@ typedef struct {
 	uint64_t		  iod_flags;
 	
 	/* Number of entries in the #iod_recxs for arrays, should be 1 if single value. */
-	uint32_t		  iod_nr;
-	
+	uint32_t		  iod_nr;   //单个iod里面record的数量
+	 
 	/**
 	 * Array of extents, where each extent defines the index of the first
 	 * record in the extent and the number of records to access. If the

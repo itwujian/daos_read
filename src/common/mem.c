@@ -402,8 +402,7 @@ umem_off_t
 vmem_alloc(struct umem_instance *umm, size_t size, uint64_t flags,
 	   unsigned int type_num)
 {
-	return (uint64_t)((flags & VMEM_FLAG_ZERO) ?
-			  calloc(1, size) : malloc(size));
+	return (uint64_t)((flags & VMEM_FLAG_ZERO) ? calloc(1, size) : malloc(size));
 }
 
 static int

@@ -69,8 +69,7 @@ vos_tree_get_overhead(int alloc_overhead, enum VOS_TREE_CLASS tclass,
 		break;
 	};
 
-	rc = dbtree_overhead_get(alloc_overhead, btr_class, otype, tree_order,
-				 ovhd);
+	rc = dbtree_overhead_get(alloc_overhead, btr_class, otype, tree_order, ovhd);
 out:
 	return rc;
 }

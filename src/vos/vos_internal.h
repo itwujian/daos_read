@@ -299,18 +299,18 @@ struct vos_container {
 
 struct vos_dtx_act_ent {
 	struct vos_dtx_act_ent_df	 dae_base;
-	umem_off_t			 dae_df_off;
+	umem_off_t			         dae_df_off;
 	struct vos_dtx_blob_df		*dae_dbd;
 	/* More DTX records if out of the inlined buffer. */
-	umem_off_t			*dae_records;  /* 存放obj\dkey\akey的ilog根节点的内存地址 */
+	umem_off_t			        *dae_records;  /* 存放obj\dkey\akey的ilog根节点的内存地址 */
 	/* The capacity of dae_records, NOT including the inlined buffer. */
-	int				 dae_rec_cap;
+	int				             dae_rec_cap;
 
 	/* The count of objects that are modified by this DTX. */
-	int				 dae_oid_cnt;
+	int				             dae_oid_cnt;
 
 	/* The single object OID if it is different from 'dae_base::dae_oid'. */
-	daos_unit_oid_t			 dae_oid_inline;
+	daos_unit_oid_t			     dae_oid_inline;
 
 	/* If single object is modified and if it is the same as the
 	 * 'dae_base::dae_oid', then 'dae_oids' points to 'dae_base::dae_oid'.
@@ -647,13 +647,13 @@ vos_dtx_act_reindex(struct vos_container *cont);
 
 enum vos_tree_class {
 	/** the first reserved tree class */
-	VOS_BTR_BEGIN		= DBTREE_VOS_BEGIN,  // = 10
+	VOS_BTR_BEGIN		= DBTREE_VOS_BEGIN,     
 	/** distribution key tree */
-	VOS_BTR_DKEY		= (VOS_BTR_BEGIN + 0),
+	VOS_BTR_DKEY		= (VOS_BTR_BEGIN + 0),    // = 10
 	/** attribute key tree */
-	VOS_BTR_AKEY		= (VOS_BTR_BEGIN + 1),
+	VOS_BTR_AKEY		= (VOS_BTR_BEGIN + 1),    // = 11
 	/** single value + epoch tree */
-	VOS_BTR_SINGV		= (VOS_BTR_BEGIN + 2),
+	VOS_BTR_SINGV		= (VOS_BTR_BEGIN + 2),    // = 12
 	/** object index table */
 	VOS_BTR_OBJ_TABLE	= (VOS_BTR_BEGIN + 3),
 	/** container index table */
@@ -1315,6 +1315,7 @@ enum {
 	VOS_SLAB_EVT_NODE_SM	= 6,
 	VOS_SLAB_MAX		= 7
 };
+	
 D_CASSERT(VOS_SLAB_MAX <= UMM_SLABS_CNT);
 
 static inline umem_off_t

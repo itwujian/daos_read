@@ -4211,8 +4211,9 @@ ds_cpd_handle_one(crt_rpc_t *rpc, struct daos_cpd_sub_head *dcsh,
 			rc = vos_obj_punch(ioc->ioc_vos_coh, dcsr->dcsr_oid,
 				dcsh->dcsh_epoch.oe_value, dth->dth_ver,
 				dcsr->dcsr_api_flags, dkey,
-				dkey != NULL ? dcsr->dcsr_nr : 0, dkey != NULL ?
-				dcsr->dcsr_punch.dcp_akeys : NULL, dth);
+				dkey != NULL ? dcsr->dcsr_nr : 0, 
+				dkey != NULL ? dcsr->dcsr_punch.dcp_akeys : NULL, 
+				dth);
 			if (rc != 0)
 				goto out;
 		}
@@ -4305,8 +4306,7 @@ ds_obj_dtx_follower(crt_rpc_t *rpc, struct obj_io_context *ioc)
 	}
 
 	/* Refuse any modification with old epoch. */
-	if (dcde->dcde_write_cnt != 0 &&
-	    dcsh->dcsh_epoch.oe_value < dss_get_start_epoch())
+	if (dcde->dcde_write_cnt != 0 && dcsh->dcsh_epoch.oe_value < dss_get_start_epoch())
 		D_GOTO(out, rc = -DER_TX_RESTART);
 
 	/* The check for read capa has been done before handling the CPD RPC.
@@ -4380,8 +4380,7 @@ obj_obj_dtx_leader(struct dtx_leader_handle *dlh, void *arg, int idx,
 			struct daos_cpd_sub_head	*dcsh;
 			struct daos_cpd_sub_req		*dcsrs;
 
-			dcde = ds_obj_cpd_get_dcde(dca->dca_rpc,
-						   dca->dca_idx, 0);
+			dcde = ds_obj_cpd_get_dcde(dca->dca_rpc, dca->dca_idx, 0);
 			/* The check for read capa has been done before handling
 			 * the CPD RPC. Here, only need to check the write capa.
 			 */
@@ -4404,7 +4403,7 @@ comp:
 	}
 
 	/* Dispatch CPD RPC and handle sub requests remotely */
-	// 发送消息到非leader节点
+	// 发送DAOS_OBJ_RPC_CPD消息到非leader节点(tgt为idx)执行ds_obj_cpd_handler
 	return ds_obj_cpd_dispatch(dlh, arg, idx, comp_cb);
 }
 
@@ -4474,17 +4473,14 @@ ds_obj_dtx_leader(struct daos_cpd_args *dca)
 
 	dcsh = ds_obj_cpd_get_dcsh(dca->dca_rpc, dca->dca_idx);
 
-	D_DEBUG(DB_IO, "Handling DTX "DF_DTI" on leader, idx %u\n",
-		DP_DTI(&dcsh->dcsh_xid), dca->dca_idx);
+	D_DEBUG(DB_IO, "Handling DTX "DF_DTI" on leader, idx %u\n", DP_DTI(&dcsh->dcsh_xid), dca->dca_idx);
 
 	if (daos_is_zero_dti(&dcsh->dcsh_xid)) {
 		D_ERROR("DTX ID cannot be empty\n");
 		D_GOTO(out, rc = -DER_INVAL);
 	}
 
-	rc = process_epoch(&dcsh->dcsh_epoch.oe_value,
-			   &dcsh->dcsh_epoch.oe_first,
-			   &dcsh->dcsh_epoch.oe_rpc_flags);
+	rc = process_epoch(&dcsh->dcsh_epoch.oe_value, &dcsh->dcsh_epoch.oe_first, &dcsh->dcsh_epoch.oe_rpc_flags);
 	if (rc == PE_OK_LOCAL) {
 		/*
 		 * In this case, writes to local RDGs can use the chosen epoch
@@ -4496,6 +4492,7 @@ ds_obj_dtx_leader(struct daos_cpd_args *dca)
 	D_ASSERT(dcsh->dcsh_epoch.oe_value != 0);
 	D_ASSERT(dcsh->dcsh_epoch.oe_value != DAOS_EPOCH_MAX);
 
+// 重试逻辑
 	if (oci->oci_flags & ORF_RESEND) {
 		dtx_flags |= DTX_RESEND;
 
@@ -4542,9 +4539,10 @@ again:
 		D_GOTO(out, rc = 0);
 	}
 
+
 	dcde = ds_obj_cpd_get_dcde(dca->dca_rpc, dca->dca_idx, 0);
 	dcsrs = ds_obj_cpd_get_dcsr(dca->dca_rpc, dca->dca_idx);
-	tgts = ds_obj_cpd_get_tgts(dca->dca_rpc, dca->dca_idx);
+	tgts = ds_obj_cpd_get_tgts(dca->dca_rpc, dca->dca_idx);   // 获取本次的所有tgt
 	req_cnt = ds_obj_cpd_get_dcsr_cnt(dca->dca_rpc, dca->dca_idx);
 	tgt_cnt = ds_obj_cpd_get_tgt_cnt(dca->dca_rpc, dca->dca_idx);
 
@@ -4552,12 +4550,10 @@ again:
 		D_GOTO(out, rc = -DER_INVAL);
 
 	/* Refuse any modification with old epoch. */
-	if (dcde->dcde_write_cnt != 0 &&
-	    dcsh->dcsh_epoch.oe_value < dss_get_start_epoch())
+	if (dcde->dcde_write_cnt != 0 && dcsh->dcsh_epoch.oe_value < dss_get_start_epoch())
 		D_GOTO(out, rc = -DER_TX_RESTART);
 
-	rc = ds_obj_dtx_leader_prep_handle(dcsh, dcsrs, tgts, tgt_cnt,
-					   req_cnt, dca->dca_ioc, &flags);
+	rc = ds_obj_dtx_leader_prep_handle(dcsh, dcsrs, tgts, tgt_cnt, req_cnt, dca->dca_ioc, &flags);
 	if (rc != 0)
 		goto out;
 
@@ -4574,11 +4570,18 @@ again:
 	else
 		dtx_flags &= ~DTX_PREPARED;
 
-	rc = dtx_leader_begin(dca->dca_ioc->ioc_vos_coh, &dcsh->dcsh_xid,
-			      &dcsh->dcsh_epoch, dcde->dcde_write_cnt,
-			      oci->oci_map_ver, &dcsh->dcsh_leader_oid,
-			      NULL, 0, tgts, tgt_cnt - 1, dtx_flags,
-			      dcsh->dcsh_mbs, &dlh);
+	rc = dtx_leader_begin(dca->dca_ioc->ioc_vos_coh,   // container句柄
+	                      &dcsh->dcsh_xid,             // The DTX identifier.
+			              &dcsh->dcsh_epoch, 
+			              dcde->dcde_write_cnt,        // 子的写请求的数量
+			              oci->oci_map_ver, 
+			              &dcsh->dcsh_leader_oid,       // The object ID is used to elect the DTX leader
+			              NULL, 0, 
+			              tgts,                         // targets for distribute transaction.
+			              tgt_cnt - 1,                  // number of targets.
+			              dtx_flags,
+			              dcsh->dcsh_mbs,               // DTX participants information.
+			              &dlh);                        // 出参:  dtx_leader_handle
 	if (rc != 0)
 		goto out;
 
@@ -4588,6 +4591,8 @@ again:
 	exec_arg.flags = flags;
 
 	/* Execute the operation on all targets */
+	// obj_obj_dtx_leader:  本tgt执行：ds_cpd_handle_one_wrap
+	//                      发送DAOS_OBJ_RPC_CPD消息到事务内的各个tgt执行ds_obj_cpd_handler
 	rc = dtx_leader_exec_ops(dlh, obj_obj_dtx_leader, NULL, 0, &exec_arg);
 
 	/* Stop the distribute transaction */
@@ -4862,6 +4867,7 @@ ds_obj_cpd_handler(crt_rpc_t *rpc)
 	if (rc != 0)
 		goto reply;
 
+// follower执行函数      --->  回响应   --->  结束  
 	if (!leader) {
 		oco->oco_sub_rets.ca_arrays = NULL;
 		oco->oco_sub_rets.ca_count = 0;
@@ -4869,6 +4875,8 @@ ds_obj_cpd_handler(crt_rpc_t *rpc)
 		D_GOTO(reply, rc);
 	}
 
+
+// 0. leader的执行函数
 	D_ALLOC(oco->oco_sub_rets.ca_arrays, sizeof(int32_t) * tx_count);
 	if (oco->oco_sub_rets.ca_arrays == NULL)
 		D_GOTO(reply, rc = -DER_NOMEM);
@@ -4880,6 +4888,7 @@ ds_obj_cpd_handler(crt_rpc_t *rpc)
 	oco->oco_sub_rets.ca_count = tx_count;
 	oco->oco_sub_epochs.ca_count = tx_count;
 
+//  0.1 只有1个cpd事务      --->  ds_obj_dtx_leader 处理单个 ---> 回响应   --->      结束
 	if (tx_count == 1) {
 		struct daos_cpd_args	dca;
 
@@ -4891,6 +4900,9 @@ ds_obj_cpd_handler(crt_rpc_t *rpc)
 
 		D_GOTO(reply, rc = 0);
 	}
+
+
+//	0.1 多个cpd事务      --->   创建ULT循环处理多个dcas，ds_obj_dtx_leader ---> 回响应   --->      结束
 
 	D_ALLOC_ARRAY(dcas, tx_count);
 	if (dcas == NULL)
@@ -4970,8 +4982,10 @@ ds_obj_key2anchor_handler(crt_rpc_t *rpc)
 
 	if (oki->oki_akey.iov_len > 0)
 		akey = &oki->oki_akey;
-	rc = vos_obj_key2anchor(ioc.ioc_vos_coh, oki->oki_oid, &oki->oki_dkey, akey,
-				&oko->oko_anchor);
+
+	// Set the VOS portion of the anchor for a given dkey or akey
+	// oko->oko_anchor: 返回的填充的迭代游标
+	rc = vos_obj_key2anchor(ioc.ioc_vos_coh, oki->oki_oid, &oki->oki_dkey, akey, &oko->oko_anchor);
 
 out:
 	obj_reply_set_status(rpc, rc);
