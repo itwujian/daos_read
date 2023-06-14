@@ -4032,14 +4032,10 @@ ds_cpd_handle_one(crt_rpc_t *rpc, struct daos_cpd_sub_head *dcsh,
 			goto out;
 
 		biods[i] = vos_ioh2desc(iohs[i]);
-		rc = bio_iod_prep(biods[i], BIO_CHK_TYPE_IO,
-				  dcu->dcu_flags & ORF_CPD_BULK ?
-					rpc->cr_ctx : NULL, CRT_BULK_RW);
+		rc = bio_iod_prep(biods[i], BIO_CHK_TYPE_IO, dcu->dcu_flags & ORF_CPD_BULK ? rpc->cr_ctx : NULL, CRT_BULK_RW);
 		if (rc != 0) {
-			D_ERROR("bio_iod_prep failed for obj "DF_UOID
-				", DTX "DF_DTI": "DF_RC"\n",
-				DP_UOID(dcsr->dcsr_oid),
-				DP_DTI(&dcsh->dcsh_xid), DP_RC(rc));
+			D_ERROR("bio_iod_prep failed for obj "DF_UOID", DTX "DF_DTI": "DF_RC"\n",
+				DP_UOID(dcsr->dcsr_oid), DP_DTI(&dcsh->dcsh_xid), DP_RC(rc));
 			goto out;
 		}
 

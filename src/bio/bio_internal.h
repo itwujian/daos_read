@@ -357,29 +357,29 @@ struct bio_blobstore {
 
 /* Per-xstream NVMe context */
 struct bio_xs_context {
-	int			 bxc_tgt_id;
+	int			         bxc_tgt_id;
 	unsigned int		 bxc_blob_rw;		/* inflight blob read/write */
 	struct spdk_thread	*bxc_thread;
 	struct bio_blobstore	*bxc_blobstore;
 	struct spdk_io_channel	*bxc_io_channel;
 	struct bio_dma_buffer	*bxc_dma_buf;
-	d_list_t		 bxc_io_ctxts;
-	unsigned int		 bxc_ready:1,		/* xstream setup finished */
-				 bxc_self_polling;	/* for standalone VOS */
+	d_list_t		         bxc_io_ctxts;
+	unsigned int		     bxc_ready:1,		/* xstream setup finished */
+				             bxc_self_polling;	/* for standalone VOS */
 };
 
 /* Per VOS instance I/O context */
 struct bio_io_context {
-	d_list_t		 bic_link; /* link to bxc_io_ctxts */
+	d_list_t		         bic_link; /* link to bxc_io_ctxts */
 	struct umem_instance	*bic_umem;
-	uint64_t		 bic_pmempool_uuid;
-	struct spdk_blob	*bic_blob;
+	uint64_t		         bic_pmempool_uuid;
+	struct spdk_blob	    *bic_blob;
 	struct bio_xs_context	*bic_xs_ctxt;
 	uint32_t		 bic_inflight_dmas;
 	uint32_t		 bic_io_unit;
 	uuid_t			 bic_pool_id;
-	unsigned int		 bic_opening:1,
-				 bic_closing:1;
+	unsigned int	 bic_opening:1,
+				     bic_closing:1;
 };
 
 /* A contiguous DMA buffer region reserved by certain io descriptor */

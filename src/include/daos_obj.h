@@ -323,11 +323,23 @@ enum {
  *   extent must have the same size.
  */
 
+// record是任意长度原子的blob, 他作为1个整体读取和更新
+// record大小可以随时间变化， 并且是由以下组合键唯一标识:
+//  - 分布键(又名dkey)表示位于同一个storage下面的一组同一位置的tgt数组集合。dkey的大小是任意的。
+//  - 属性键(又名akey)区分各个数组。同样,akey有任意大小。
+//  - 数组内的索引区分单个记录 
+//    索引的范围标识一个连续的记录集，称为extent。文件中的所有记录extent必须有相同的大小。
+
 /**
  * A record extent is a range of contiguous records of the same size inside an
  * array. \a rx_idx is the first array index of the extent and \a rx_nr is the
  * number of records covered by the extent.
  */
+
+// 1个record extent是一个相同大小的连续record的范围数组.
+// rx_idx: extent内第一个record的索引
+// rx_nr： extent内连续record的数量
+
 typedef struct {
 	/** Indice of the first record in the extent */
 	uint64_t	rx_idx;

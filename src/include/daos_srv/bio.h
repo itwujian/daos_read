@@ -639,11 +639,10 @@ enum bio_chunk_type {
 /**
  * Prepare all the SG lists of an io descriptor.
  *
- * For direct accessed SCM IOV, it needs only to convert the PMDK pmemobj
- * offset into direct memory address; For NVMe IOV (or SCM IOV being accessed
- * through DMA buffer, it maps the SPDK blob page offset (or SCM address) to
- * an internally maintained DMA buffer, it also needs fill the buffer for fetch
- * operation.
+ * For direct accessed SCM IOV, it needs only to convert the PMDK pmemobj offset into direct memory address;
+ *
+ * For NVMe IOV (or SCM IOV being accessed through DMA buffer, it maps the SPDK blob page offset (or SCM address) to
+ * an internally maintained DMA buffer, it also needs fill the buffer for fetch operation.
  *
  * \param biod       [IN]	io descriptor
  * \param type       [IN]	chunk type used by this iod
@@ -652,8 +651,7 @@ enum bio_chunk_type {
  *
  * \return			Zero on success, negative value on error
  */
-int bio_iod_prep(struct bio_desc *biod, unsigned int type, void *bulk_ctxt,
-		 unsigned int bulk_perm);
+int bio_iod_prep(struct bio_desc *biod, unsigned int type, void *bulk_ctxt, unsigned int bulk_perm);
 
 /*
  * Post operation after the RDMA transfer or local copy done for the io

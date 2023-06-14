@@ -1648,7 +1648,7 @@ akey_update_recx(daos_handle_t toh,                 // evtree的句柄
 	D_ASSERT(recx->rx_nr > 0);
 	memset(&ent, 0, sizeof(ent));
 	ent.ei_bound = ioc->ic_bound;
-	ent.ei_rect.rc_epc = epoch;
+	ent.ei_rect.rc_epc = epoch;   // ioc->ic_epr.epr_hi;
 	ent.ei_rect.rc_ex.ex_lo = recx->rx_idx;
 	ent.ei_rect.rc_ex.ex_hi = recx->rx_idx + recx->rx_nr - 1;
 	ent.ei_rect.rc_minor_epc = minor_epc;
@@ -1663,6 +1663,7 @@ akey_update_recx(daos_handle_t toh,                 // evtree的句柄
 	// 填充ent.ei_addr：Address of record to insert
 	biov = iod_update_biov(ioc);	
 	ent.ei_addr = biov->bi_addr;
+	
 	/* Don't make this flag persistent */
 	BIO_ADDR_CLEAR_DEDUP(&ent.ei_addr);
 
@@ -1859,7 +1860,8 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh, u
 	} 
 
 // DAOS_IOD_ARRAY
-	for (i = 0; i < iod->iod_nr; i++) {
+// iod->iod_nr：Number of entries in the iod_recxs for arrays
+	for (i = 0; i < iod->iod_nr; i++) {   // 遍历所有的record
 		
 		umem_off_t	umoff = iod_update_umoff(ioc);
 
@@ -1874,6 +1876,7 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh, u
 
 		// 处理record数组中的1条数据  -- evtree
 		// 将这条record记录(iod->iod_recxs[i])更新到evtree树上(toh)
+		// iod->iod_recxs[i]:  要插入的array_value的其中的1个record
 		rc = akey_update_recx(toh, pm_ver, &iod->iod_recxs[i], recx_csum, iod->iod_size, ioc, minor_epc);
 		if (rc == 1) {  // 有新插入，需要聚合
 			ioc->ic_agg_needed = 1;

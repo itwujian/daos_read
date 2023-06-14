@@ -984,8 +984,10 @@ rw_completion(void *cb_arg, int err)
 		mem->mem_tgt_id = xs_ctxt->bxc_tgt_id;
 		spdk_thread_send_msg(owner_thread(mem->mem_bs), bio_media_error, mem);
 	}
+	
 done:
 	if (biod->bd_inflights == 0 && biod->bd_dma_issued)
+		// 切走的线程回调回来之后，执行ABT_eventual_set就唤醒了ABT_eventual_wait后面的函数执行
 		ABT_eventual_set(biod->bd_dma_done, NULL, 0);
 }
 
@@ -1139,15 +1141,22 @@ dma_rw(struct bio_desc *biod)
 		if (rg->brr_media == DAOS_MEDIA_SCM)
 			scm_rw(biod, rg);
 		else
+			// 调用spdk接口执行，在spdk里面注册了回调函数rw_completion
 			nvme_rw(biod, rg);
 	}
 
 	if (xs_ctxt->bxc_self_polling) {
 		D_DEBUG(DB_IO, "Self poll completion\n");
+		// 这个地方由于特殊需求，需要保证当前stream上不能发生ULT的切换，
+		// 因此这里会死等spdk的回调回来
 		xs_poll_completion(xs_ctxt, &biod->bd_inflights, 0);
 	} else {
 		biod->bd_dma_issued = 1;
 		if (biod->bd_inflights != 0)
+			// 由于这个地方会在spdk的线程里面读盘，如果死占着这个ULT，CPU空闲浪费
+			// 所以这个地方ULT切走，别的ULT-B会调用进来占用这个xstream执行
+			// 当spdk的读写盘回调回来之后，调用ABT_eventual_set, 唤醒沉睡的这个ULT-A
+			// 然后将这个ULT-A放到xstream的执行队列里面，等他前面的ULT-B执行完成，在执行ULT-A
 			ABT_eventual_wait(biod->bd_dma_done, NULL);
 	}
 
@@ -1334,8 +1343,7 @@ out:
 }
 
 int
-bio_iod_prep(struct bio_desc *biod, unsigned int type, void *bulk_ctxt,
-	     unsigned int bulk_perm)
+bio_iod_prep(struct bio_desc *biod, unsigned int type, void *bulk_ctxt, unsigned int bulk_perm)
 {
 	struct bio_bulk_args	 bulk_arg;
 	struct bio_dma_buffer	*bdb;

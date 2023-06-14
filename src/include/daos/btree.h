@@ -60,7 +60,7 @@ struct btr_node {
 	/** leaf, root etc */
 	uint16_t			tn_flags;
 	/** number of keys stored in this node */
-	// key的数量，也可以看成是record的数量
+	// 里面存放有多少个record
 	uint16_t			tn_keyn;
 	/** padding bytes */
 	uint32_t			tn_pad_32;
@@ -110,8 +110,9 @@ struct btr_root {
 	/** the actual features of the tree, e.g. hash type, integer key */
 	uint64_t			tr_feats;
 	/** generation, reserved for COW */
-	uint64_t			tr_gen;
+	uint64_t			tr_gen;  // 没用
 	/** pointer to root node (struct btr_node), UMOFF_NULL for empty tree */
+	// 存放了根节点的偏移地址
 	umem_off_t			tr_node;
 };
 
@@ -421,17 +422,13 @@ typedef struct {
 
 } btr_ops_t;
 
-/**
- * Tree instance, it is instantiated while creating or opening a tree.
- */
+/** Tree instance, it is instantiated while creating or opening a tree. */
 struct btr_instance {
 	/** instance of memory class for the tree */
 	struct umem_instance		 ti_umm;
 	/** Private data for opener */
 	void				        *ti_priv;
-	/**
-	 * The container open handle.
-	 */
+	/** The container open handle */
 	daos_handle_t			     ti_coh;
 	/** root umem offset */
 	umem_off_t			         ti_root_off;

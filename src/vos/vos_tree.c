@@ -1216,7 +1216,8 @@ obj_tree_init(struct vos_object *obj)
 		return 0;
 
 	D_ASSERT(obj->obj_df);
-	
+
+	// dkey树还没有创建，这块创建下
 	if (obj->obj_df->vo_tree.tr_class == 0) {
 		
 		uint64_t tree_feats = 0;
@@ -1233,15 +1234,15 @@ obj_tree_init(struct vos_object *obj)
 
         // 此时树还是空树，需要创建根节点
 		rc = dbtree_create_inplace_ex(ta->ta_class, tree_feats, ta->ta_order, vos_obj2uma(obj),
-					                  &obj->obj_df->vo_tree, // 出参：返回的dkey树的根节点
+					                  &obj->obj_df->vo_tree, // 出参：把dkey树的根节点传进去，进行填充
 					                  vos_cont2hdl(obj->obj_cont),
 					                  vos_obj2pool(obj), 
 					                  &obj->obj_toh);       //  出参：返回的dkey树的操作句柄
 	} 
 
+    // 树已经创建好了，根节点已经存在，直接打开
 	else {
 		D_DEBUG(DB_DF, "Open btree for object\n");
-		// 树已经创建好了，根节点已经存在，直接打开
 		rc = dbtree_open_inplace_ex(&obj->obj_df->vo_tree, vos_obj2uma(obj),
 					                vos_cont2hdl(obj->obj_cont), 
 					                vos_obj2pool(obj), 

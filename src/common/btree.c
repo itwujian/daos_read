@@ -83,10 +83,8 @@ struct btr_iterator {
 	unsigned int			 it_collisions;
 };
 
-/**
- * Trace for tree search.
- */
- /* 树的每一层有个trace, 记录为了查找最终节点找的每一层的信息 */
+/** Trace for tree search. */
+/* 树的每一层有个trace, 记录为了查找最终节点找的每一层的信息 */
 struct btr_trace {
 	/** pointer to a tree node */
     /* 当前搜索路径找到的那个节点 */
@@ -654,6 +652,11 @@ btr_rec_copy_hkey(struct btr_context *tcx, struct btr_record *dst_rec,
 	btr_hkey_copy(tcx, &dst_rec->rec_hkey[0], &src_rec->rec_hkey[0]);
 }
 
+
+// btr_node的大小是:
+// btr_node结构体大小 + 里面record的大小(record的数量(树的阶数) * record的大小)
+// btr_record的大小是：
+// btr_record结构体大小 + key的大小(btr_hkey_size_const)
 static inline uint32_t
 btr_node_size(struct btr_context *tcx)
 {
@@ -710,6 +713,9 @@ btr_node_tx_add(struct btr_context *tcx, umem_off_t nd_off)
 }
 
 
+// 用于获取btr_node节点存放的record，叶子非叶子节点都能用
+// 返回btr_node节点的第at个record
+// 这个函数应该多用于叶子节点获取record
 static struct btr_record *
 btr_node_rec_at(struct btr_context *tcx, umem_off_t nd_off, unsigned int at)
 {
@@ -722,7 +728,10 @@ btr_node_rec_at(struct btr_context *tcx, umem_off_t nd_off, unsigned int at)
 	return (struct btr_record *)&addr[btr_rec_size(tcx) * at];
 }
 
-// at是从0开始的，获取的是某节点的第at个孩子
+
+// 用于获取非叶子节点存放的孩子节点地址，会强制检查是否是非叶子节点，叶子节点调进来会core
+// 返回地址偏移
+// 这个函数应该多用于中间节点获取第at个孩子节点的地址
 static umem_off_t
 btr_node_child_at(struct btr_context *tcx, umem_off_t nd_off, unsigned int at)
 {
@@ -737,7 +746,6 @@ btr_node_child_at(struct btr_context *tcx, umem_off_t nd_off, unsigned int at)
 	
 	/* NB: non-leaf node has +1 children than number of keys */
 	// 非叶子节点存放的孩子的数量比key的数量多1个
-	// 非叶子节点存放1个孩子节点，剩余的存放key ????
 	if (at == 0)
 		return nd->tn_child;
 
@@ -945,6 +953,7 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 	rec_dst = btr_node_rec_at(tcx, nd_off, 0);
 
 	// 把btr_rec_alloc中填充的record内容拷贝到btr_node的record数组中(tn_recs)
+	// 1表示拷贝1个
 	btr_rec_copy(tcx, rec_dst, rec, 1);
 
 	if (btr_has_tx(tcx)) {
@@ -967,8 +976,8 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 
 	btr_trace_set(tcx, 0, nd_off, 0);
 	//  即：
-	//	tcx->tc_trace[level].tr_node = nd_off;
-	//  tcx->tc_trace[level].tr_at = 0;
+	//	tcx->tc_trace[0].tr_node = nd_off;
+	//  tcx->tc_trace[0].tr_at = 0;
 	
 	return 0;
 }
@@ -976,14 +985,12 @@ btr_root_start(struct btr_context *tcx, struct btr_record *rec)
 /**
  * Add a new root to the tree, then insert \a rec to the new root.
  *
- * \param tcx	[IN]	Tree operation context.
- * \param off_left [IN]
- *			the original root, it is left child for the new root.
- * \param rec	[IN]	The record to be inserted to the new root.
+ * \param tcx	[IN]	 Tree operation context.
+ * \param off_left [IN]  the original root, it is left child for the new root.
+ * \param rec	[IN]	 The record to be inserted to the new root.
  */
 int
-btr_root_grow(struct btr_context *tcx, umem_off_t off_left,
-	      struct btr_record *rec)
+btr_root_grow(struct btr_context *tcx, umem_off_t off_left, struct btr_record *rec)
 {
 	struct btr_root		*root;
 	struct btr_node		*nd;
@@ -997,6 +1004,7 @@ btr_root_grow(struct btr_context *tcx, umem_off_t off_left,
 
 	D_DEBUG(DB_TRACE, "Grow the tree depth to %d\n", root->tr_depth + 1);
 
+    // 为新根申请偏移地址
 	rc = btr_node_alloc(tcx, &nd_off);
 	if (rc != 0) {
 		D_DEBUG(DB_TRACE, "Failed to allocate new root\n");
@@ -1005,16 +1013,32 @@ btr_root_grow(struct btr_context *tcx, umem_off_t off_left,
 
 	/* the left child is the old root */
 	D_ASSERT(btr_node_is_root(tcx, off_left));
+
+	// 取消原来的根off_left作为树根的地位
 	btr_node_unset(tcx, off_left, BTR_NODE_ROOT);
 
+    // 将新申请的树根nd_off设置树根的标记
 	btr_node_set(tcx, nd_off, BTR_NODE_ROOT);
+
+	// 获取树根的第0个record
 	rec_dst = btr_node_rec_at(tcx, nd_off, 0);
+
+	// 将要插入的这个record的内容拷贝到树根的第0个record
+	// 新根的第0个record存放右孩子的偏移地址
 	btr_rec_copy(tcx, rec_dst, rec, 1);
 
+    // 新生成的树根的第一个孩子就是分裂后的左孩子，也就是原来的树根
 	nd = btr_off2ptr(tcx, nd_off);
+
+	// 新根的tn_child存放左孩子的偏移地址
+	// 这样这个新根就变成了中间节点，里面存放老根分裂后的孩子节点的地址
 	nd->tn_child	= off_left;
+	
+	// 为什么赋值为1, 根节点的这个值就是1？
 	nd->tn_keyn	= 1;
 
+    // at = 0; 表示是在分裂节点左边插入的，即：新的record插入到了原来的btr_node(left_right)
+    // at = 1; 表示是在分裂节点右边插入的，即：新的record插入到了新分配的btr_node(off_right)
 	at = !btr_node_is_equal(tcx, off_left, tcx->tc_trace->tr_node);
 
 	/* replace the root offset, increase tree level */
@@ -1027,11 +1051,17 @@ btr_root_grow(struct btr_context *tcx, umem_off_t off_left,
 		}
 	}
 
+    // tcx->btr_instance中记录的root改变指向，指向新生成的root
 	root->tr_node = nd_off;
 	root->tr_depth++;
 
 	btr_context_set_depth(tcx, root->tr_depth);
+
+	//	tcx->tc_trace[0].tr_node = nd_off;
+	//  tcx->tc_trace[0].tr_at = at;
+	//  当前的搜搜位置变成了这个新根的第at个位置
 	btr_trace_set(tcx, 0, nd_off, at);
+	
 	return 0;
 }
 
@@ -1100,6 +1130,8 @@ btr_check_availability(struct btr_context *tcx, struct btr_check_alb *alb)
 	}
 }
 
+// 将record(rec)插入到trace->tr_node下面的第trace->tr_at的位置上
+// 注意：这里就是将record的内容rec拷贝到node->recs[at]数组上去
 static void
 btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace, struct btr_record *rec)
 {
@@ -1145,11 +1177,11 @@ btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace, struc
 
 
 //   场景1.   trace->tr_at == nd->tn_keyn
-//          说明当前查找访问的trace层的record就是最后最后1个key, 那么直接再后面追加写(record插入结尾)
+//          说明当前查找访问的trace层的record就是最后1个, 那么直接再后面追加写(record插入结尾)
 //   场景2. trace->tr_at != nd->tn_keyn
 //          说明当前查找访问的trace层的record是中间的某个key，后面的往前搬移1个，新的record查入at后面(record插入中间)
 
-    // 找到搜索路径下的那个record - rec_a
+    // 找到搜索路径下的那个record
 	rec_a = btr_node_rec_at(tcx, trace->tr_node, trace->tr_at);
 
 	if (reuse) {
@@ -1160,11 +1192,16 @@ btr_node_insert_rec_only(struct btr_context *tcx, struct btr_trace *trace, struc
 		if (trace->tr_at != nd->tn_keyn) {
 			struct btr_record *rec_b;
 			rec_b = btr_node_rec_at(tcx, trace->tr_node, trace->tr_at + 1);
+		    // rec_b: dst
+		    // rec_a: src
+		    // 将从trace->tr_at个record开始拷贝，拷贝到trace->tr_at + 1的位置，
+		    // 总计挪动(nd->tn_keyn - trace->tr_at)个位置
 			btr_rec_move(tcx, rec_b, rec_a, nd->tn_keyn - trace->tr_at);
 		}
 		nd->tn_keyn++;
 	}
 
+    // dst: rec_a;  src: rec
 	btr_rec_copy(tcx, rec_a, rec, 1);
 }
 
@@ -1181,9 +1218,11 @@ btr_split_at(struct btr_context *tcx, int level,
 	int		  split_at;
 	bool	  left;
 
-	split_at = order / 2;
+	split_at = order / 2;  //在中间进行分裂
 
+    // 是否是在当前找到节点的左边插入
 	left = (trace->tr_at < split_at);
+	
 	if (!btr_node_is_leaf(tcx, off_left))
 		split_at -= left;
 
@@ -1207,8 +1246,8 @@ btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace, stru
 	struct btr_record	*rec_dst;
 	struct btr_node		*nd_left;
 	struct btr_node		*nd_right;
-	umem_off_t		     off_left;
-	umem_off_t		     off_right;
+	umem_off_t		     off_left;   // 左孩子也就是当前搜索的node的偏移地址
+	umem_off_t		     off_right;  // 新申请的右孩子(node)的偏移地址
 	char			     hkey_buf[DAOS_HKEY_MAX];
 	int			         split_at;
 	int			         level;
@@ -1218,81 +1257,126 @@ btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace, stru
 
 	D_ASSERT(trace >= tcx->tc_trace);
 	
-	level = trace - tcx->tc_trace; // 这两个相减为啥是level啊
-	
+	level = trace - tcx->tc_trace; // 获取当前搜索的是第几层
+
+	// 当前搜索到的要在这个node后面插入，这个node就是分裂后的左孩子
 	off_left = trace->tr_node;
 
+    // 重新申请1个btr_node作为分裂后的右孩子
 	rc = btr_node_alloc(tcx, &off_right);
 	if (rc != 0)
 		return rc;
 
+    // 搜索路径找到的那个要插入的节点，是否是叶子，是叶子要把新申请的右孩子也置为叶子节点
+    // 要插入的那个节点在这次分裂之后变成了左孩子
 	leaf = btr_node_is_leaf(tcx, off_left);
 	if (leaf)
 		btr_node_set(tcx, off_right, BTR_NODE_LEAF);
 
+    // split_at表示是在哪个位置分裂成2个的，从split_at位置开始(含)后面的这些rec都挪到了新生成的右孩子里面
+    // 同时设置了tcx->tc_trace
+    // 知道当前要插入的位置是在分裂节点的左边还是右边
+    // 然后更新tcx->tc_trace[level]
+    // tcx->tc_trace[level].tr_node = nd_off;
+	// tcx->tc_trace[level].tr_at = at;
 	split_at = btr_split_at(tcx, level, off_left, off_right);
 
+    // 读取左孩子的最后1个record的起始地址(该地址上存放了已经写入的record)
 	rec_src = btr_node_rec_at(tcx, off_left, split_at);
+	// 读取右孩子的第1个record的起始地址(该地址是新申请的，还没有写入东西)
 	rec_dst = btr_node_rec_at(tcx, off_right, 0);
 
+    // 读取左孩子的btr_node
 	nd_left	 = btr_off2ptr(tcx, off_left);
+	// 读取右孩子的btr_node
 	nd_right = btr_off2ptr(tcx, off_right);
 
+    // 更新左右孩子的btr_node存放的key的数量(中间节点)或者record的数量(叶子节点)
 	nd_right->tn_keyn = nd_left->tn_keyn - split_at;
 	nd_left->tn_keyn  = split_at;
 
+    // 要分裂的那个node是叶子，那就需要把record移动部分到右孩子(node)里面btr_node->tn_recs
 	if (leaf) {
 		D_DEBUG(DB_TRACE, "Splitting leaf node\n");
 
+        // 从左孩子(原始的要分裂的节点)的最后1个record开始拷贝
+        // 拷贝至最后1个record, 把这些record拷贝到新申请的右孩子btr_node的
+        // record里面
 		btr_rec_copy(tcx, rec_dst, rec_src, nd_right->tn_keyn);
+
+		// 把参数带下来的新record插入到trace->tr_node下面的第trace->tr_at的位置上
+		// 这里参数rec作为record的写入使命已经完成。
 		btr_node_insert_rec_only(tcx, trace, rec);
 
-		/* insert the right node and the first key of the right
-		 * node to its parent
-		 */
+		/* insert the right node and the first key of the right node to its parent */
+		// direct_key: 新插入的这个rec的rec_node存放右孩子的节点地址
 		if (btr_is_direct_key(tcx))
 			rec->rec_node[0] = off_right;
+		// 非direct_key: 新插入的这个rec的rec_haskey存放右孩子的rec_haskey
 		else
 			btr_rec_copy_hkey(tcx, rec, rec_dst);
+
+		// 结束
 		goto bubble_up;
 	}
 
 	
 	/* non-leaf */
+// 中间节点分裂的场景：
+    // 判断下新插入的rec是不是插到了新生成的右节点的孩子
 	right = btr_node_is_equal(tcx, trace->tr_node, off_right);
+	// 新record是右孩子的第一个节点
 	if (trace->tr_at == 0 && right) {
 		/* the new record is the first one on the right node */
 		D_DEBUG(DB_TRACE, "Bubble up the new key\n");
+
+	    // 非叶子节点的tn_child存放第一个孩子的地址，因为rec就是要插入的节点
+	    // 并且rec是插入到分裂后的右节点的第一个孩子，所以这里直接赋值
 		nd_right->tn_child = rec->rec_off;
+
+		// 从左孩子(原始的要分裂的节点)的最后1个record开始拷贝
+        // 拷贝至最后1个record, 把这些record拷贝到新申请的右孩子btr_node的
+        // record里面
 		btr_rec_copy(tcx, rec_dst, rec_src, nd_right->tn_keyn);
 		goto bubble_up;
 	}
 
 	D_DEBUG(DB_TRACE, "Bubble up the 1st key of the right node\n");
 
+// 要么rec是插到了老节点转换后的左节点；要么插入的位置是新生成的右节点的非第一个孩子
+
+    // 设置右节点的第一个孩子，是分裂后的split_at的那个地址
 	nd_right->tn_child = rec_src->rec_off;
+
 	/* btr_split_at should ensure the right node has more than one record,
 	 * because the first record of the right node will bubble up.
 	 * (@src_rec[0] is this record at this point)
 	 */
 	D_ASSERT(nd_right->tn_keyn > 1 || right);
+	
 	nd_right->tn_keyn--;
-	/* insertion point has to be shifted if the new record is going to
-	 * be inserted to the right node.
+	
+	/* insertion point has to be shifted if the new record is going to be inserted to the right node.
 	 */
+	// 如果要是新的record插到了分裂后的左节点，right=0， 那么在做节点的插入位置trace->tr_at不变
+	// 如果要是新的record插到了分裂后的右节点，right=1， 那么在右节点的插入位置变成了trace->tr_at-1
 	trace->tr_at -= right;
 
 	/* Copy from @rec_src[1] because @rec_src[0] will bubble up.
 	 * NB: call btr_rec_at instead of using array index, see btr_record.
-	 */
-	btr_rec_copy(tcx, rec_dst, btr_rec_at(tcx, rec_src, 1),
-		     nd_right->tn_keyn);
+	 */
+
+	//  rec_src = btr_node_rec_at(tcx, off_left, split_at);
+	//  把分裂前的节点的split_at位置后面的nd_right->tn_keyn个record拷贝到btr_node_rec_at(tcx, off_right, 0);
+	//  这里参数的1，是让rec_src跳过split_at这个record, 因为split_at这个record已经存到了nd_right->child里面
+	btr_rec_copy(tcx, rec_dst, btr_rec_at(tcx, rec_src, 1), nd_right->tn_keyn);
 
 	/* backup it because the below btr_node_insert_rec_only may
 	 * overwrite it.
 	 */
 	btr_hkey_copy(tcx, &hkey_buf[0], &rec_src->rec_hkey[0]);
 
+    // 在修正后的插入位置上插入rec
 	btr_node_insert_rec_only(tcx, trace, rec);
 
 	btr_hkey_copy(tcx, &rec->rec_hkey[0], &hkey_buf[0]);
@@ -1300,10 +1384,19 @@ btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace, stru
  bubble_up:
 	D_DEBUG(DB_TRACE, "left keyn %d, right keyn %d\n", nd_left->tn_keyn, nd_right->tn_keyn);
 
+    // 新插入的这个record的rec_off被赋值成右孩子的node的偏移地址
+    // 如果分裂的node是叶子节点，briect_key:
+    // 上面的逻辑还进行这个赋值： rec->rec_node[0] = off_right;
 	rec->rec_off = off_right;
+	
 	if (level == 0)
+		// 当前rec要插入的这一层就是树根了，也就是说off_left是树根，那么意思就是树根要进行分裂
+		// 生成新的根， 这个时候的rec已经转变成了新的身份，里面存放了右孩子的node的偏移地址
+		// 新生成这个新根是中间节点，child存放的是左孩子的地址，recs[0]放的是rec,也就是右孩子的地址
 		rc = btr_root_grow(tcx, off_left, rec);
 	else
+		// 当前rec要插入的这一层不是树根
+		// 将当前的这个rec插入到上1层搜索的trnode->at下
 		rc = btr_node_insert_rec(tcx, trace - 1, rec);
 
 	return rc;
@@ -1431,6 +1524,7 @@ btr_cmp(struct btr_context *tcx, umem_off_t nd_off,
 	}
 
 	rec = btr_node_rec_at(tcx, nd_off, at);	
+	
 	if (btr_is_direct_key(tcx)) {
 		/* For direct keys, resolve the offset in the record */
 		if (!btr_node_is_leaf(tcx, nd_off))
@@ -1445,6 +1539,7 @@ btr_cmp(struct btr_context *tcx, umem_off_t nd_off,
 			cmp = btr_key_cmp(tcx, rec, key);
 		}
 	}
+	
 	D_ASSERT((cmp & (BTR_CMP_LT | BTR_CMP_GT)) != 0 || cmp == BTR_CMP_EQ || cmp == BTR_CMP_ERR);
 	D_ASSERT((cmp & (BTR_CMP_LT | BTR_CMP_GT)) != (BTR_CMP_LT | BTR_CMP_GT));
 
@@ -1504,7 +1599,7 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc, uint32_t intent
 		goto out;
 	}
 
-    // 拿到根节点的偏移地址
+    // 拿到存放真实根节点的偏移地址
 	nd_off = tcx->tc_tins.ti_root->tr_node;
 
 	for (start = end = 0, level = 0, next_level = true; ; ) {
@@ -1513,8 +1608,8 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc, uint32_t intent
 			next_level = false;
 			
 			start = 0;
-			nd	  = btr_off2ptr(tcx, nd_off);  // 拿到根节点
-			end	  = nd->tn_keyn - 1;           // 拿到btrnode中最后1个record的位置
+			nd	  = btr_off2ptr(tcx, nd_off);  // 拿到真实根节点
+			end	  = nd->tn_keyn - 1;           // 拿到真实根节点btrnode中最后1个record的位置
 
 			D_DEBUG(DB_TRACE, "Probe level %d, node "DF_X64" keyn %d\n", level, nd_off, end + 1);
 		}
@@ -1547,18 +1642,19 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc, uint32_t intent
 			continue;
 		}
 
-        // 当前节点是叶子节点，直接退出了
+        // 当前查找的节点是叶子节点，直接退出了
 		if (btr_node_is_leaf(tcx, nd_off))
 			break;
 
-		/* NB: cmp is BTR_CMP_LT or BTR_CMP_EQ means search the record
-		 * in the right child, otherwise it is in the left child.
-		 */
+		/* NB: cmp is BTR_CMP_LT or BTR_CMP_EQ means search the record in the right child, otherwise it is in the left child. */
+		// 这个地方的设计很巧妙：只要上面的比较结果不是大于(传入的key小于或等于record中存储的key，说明当前比较发生在右孩子)， 如果是大于说明比较是发生在左孩子
+		// 如果cmp & BTR_CMP_GT at不变； 如果cmp &  BTR_CMP_LT or BTR_CMP_EQ at = at + 1;
 		at += !(cmp & BTR_CMP_GT);
 		btr_trace_set(tcx, level, nd_off, at);
 		btr_trace_debug(tcx, &tcx->tc_trace[level], "probe child\n");
 
 		/* Search the next level. */
+		// 读取中间节点的孩子节点的地址
 		nd_off = btr_node_child_at(tcx, nd_off, at);
 		next_level = true;
 		level++;
@@ -2098,8 +2194,7 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 // record的内容构造开始
 	rec = &rec_buf.rb_rec;
 
-	// 填充record中的key
-	// 生成btr_record的key
+	// 生成btr_record的hashedkey, direct key和uint key无需处理
 	btr_hkey_gen(tcx, key, &rec->rec_hkey[0]);
 
     // for example: ktr_rec_alloc\cont_df_rec_alloc\
@@ -2116,7 +2211,7 @@ btr_insert(struct btr_context *tcx, d_iov_t *key, d_iov_t *val, d_iov_t *val_out
 		rec_str = btr_rec_string(tcx, rec, true, str, BTR_PRINT_BUF);
 
 	if (tcx->tc_depth != 0) {
-		// 
+
 		struct btr_trace *trace;
 		/* trace for the leaf */
 	    // trace 找到搜索路径的最后1层
@@ -3400,7 +3495,7 @@ dbtree_create_inplace(unsigned int tree_class, // vos_tree_class 树的具体类
 int
 dbtree_create_inplace_ex(unsigned int tree_class, uint64_t tree_feats,
 			 unsigned int tree_order, struct umem_attr *uma,
-			 struct btr_root *root,     // 出参： 待创建树的根节点
+			 struct btr_root *root,     // 出参： 填充dkey树的根节点
 			 daos_handle_t coh, void *priv, 
 			 daos_handle_t *toh)        // 出参： 创建树的操作句柄
 {
@@ -3417,7 +3512,7 @@ dbtree_create_inplace_ex(unsigned int tree_class, uint64_t tree_feats,
 		return -DER_NO_PERM;
 	}
 
-    // 赋值btr_context
+    // 赋值btr_context， 出参：tcx
 	rc = btr_context_create(BTR_ROOT_NULL, root, tree_class, tree_feats, tree_order, uma, coh, priv, &tcx);
 	if (rc != 0)
 		return rc;
