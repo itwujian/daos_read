@@ -400,6 +400,7 @@ compound_free(struct vea_space_info *vsi, struct vea_free_extent *vfe, unsigned 
 
 	/* Add to in-memory free extent tree */
 	D_ASSERT(daos_handle_is_valid(vsi->vsi_free_btr));
+	
 	d_iov_set(&key, &dummy.ve_ext.vfe_blk_off, sizeof(dummy.ve_ext.vfe_blk_off));
 	d_iov_set(&val, &dummy, sizeof(dummy));
 	d_iov_set(&val_out, NULL, 0);

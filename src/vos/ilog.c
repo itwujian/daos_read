@@ -930,9 +930,11 @@ ilog_modify(daos_handle_t loh, const struct ilog_id *id_in, const daos_epoch_ran
 		
 		tmp.lr_magic = ilog_ver_inc(lctx);
 		tmp.lr_ts_idx = root->lr_ts_idx; 
+		
 		// 这个地方赋值之后ilog_tree->it_embedded就会改为非0
 		tmp.lr_id = *id_in;
 		D_ASSERTF(id_in->id_epoch != 0, "epoch "DF_U64" opc %d\n", id_in->id_epoch, opc);
+		
 		// 会增加ilog的版本号，将tmp中的信息拷贝置rooot中
 		// 将tmp的值赋值给root后，那么root->ilog_tree->it_embedded就会!=0
 		// 那么这个root再次添加的时候就会走下面的分支

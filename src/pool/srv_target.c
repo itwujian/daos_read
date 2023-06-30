@@ -159,8 +159,7 @@ gc_ult(void *arg)
 	struct dss_module_info	*dmi = dss_get_module_info();
 	int			 rc;
 
-	D_DEBUG(DB_MGMT, DF_UUID"[%d]: GC ULT started\n",
-		DP_UUID(child->spc_uuid), dmi->dmi_tgt_id);
+	D_DEBUG(DB_MGMT, DF_UUID"[%d]: GC ULT started\n", DP_UUID(child->spc_uuid), dmi->dmi_tgt_id);
 
 	if (child->spc_gc_req == NULL)
 		goto out;
@@ -168,9 +167,7 @@ gc_ult(void *arg)
 	while (!dss_ult_exiting(child->spc_gc_req)) {
 		rc = vos_gc_pool(child->spc_hdl, -1, gc_rate_ctl, (void *)child);
 		if (rc < 0)
-			D_ERROR(DF_UUID"[%d]: GC pool run failed. "DF_RC"\n",
-				DP_UUID(child->spc_uuid), dmi->dmi_tgt_id,
-				DP_RC(rc));
+			D_ERROR(DF_UUID"[%d]: GC pool run failed. "DF_RC"\n", DP_UUID(child->spc_uuid), dmi->dmi_tgt_id, DP_RC(rc));
 
 		if (dss_ult_exiting(child->spc_gc_req))
 			break;
@@ -181,9 +178,9 @@ gc_ult(void *arg)
 		else
 			sched_req_sleep(child->spc_gc_req, 10UL * 1000);
 	}
+	
 out:
-	D_DEBUG(DB_MGMT, DF_UUID"[%d]: GC ULT stopped\n",
-		DP_UUID(child->spc_uuid), dmi->dmi_tgt_id);
+	D_DEBUG(DB_MGMT, DF_UUID"[%d]: GC ULT stopped\n", DP_UUID(child->spc_uuid), dmi->dmi_tgt_id);
 }
 
 static int
@@ -284,7 +281,7 @@ static int
 pool_child_add_one(void *varg)
 {
 	struct pool_child_lookup_arg   *arg = varg;
-	struct pool_tls		       *tls = pool_tls_get();
+	struct pool_tls		           *tls = pool_tls_get();
 	struct ds_pool_child	       *child;
 	struct dss_module_info	       *info = dss_get_module_info();
 	char			       *path;
@@ -311,12 +308,12 @@ pool_child_add_one(void *varg)
 		goto out_free;
 	}
 
-	rc = ds_mgmt_tgt_file(arg->pla_uuid, VOS_FILE, &info->dmi_tgt_id,
-			      &path);
+	rc = ds_mgmt_tgt_file(arg->pla_uuid, VOS_FILE, &info->dmi_tgt_id, &path);
 	if (rc != 0)
 		goto out_metrics;
 
 	D_ASSERT(child->spc_metrics[DAOS_VOS_MODULE] != NULL);
+	
 	rc = vos_pool_open_metrics(path, arg->pla_uuid, VOS_POF_EXCL | VOS_POF_EXTERNAL_FLUSH,
 				   child->spc_metrics[DAOS_VOS_MODULE], &child->spc_hdl);
 
@@ -329,8 +326,7 @@ pool_child_add_one(void *varg)
 	child->spc_map_version = arg->pla_map_version;
 	child->spc_ref = 1; /* 1 for the list */
 
-	rc = ABT_eventual_create(sizeof(child->spc_ref),
-				 &child->spc_ref_eventual);
+	rc = ABT_eventual_create(sizeof(child->spc_ref), &child->spc_ref_eventual);
 	if (rc != ABT_SUCCESS) {
 		rc = dss_abterr2der(rc);
 		goto out_vos;

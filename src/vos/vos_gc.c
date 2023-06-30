@@ -815,8 +815,7 @@ gc_reclaim_pool(struct vos_pool *pool, int *credits, bool *empty_ret)
 /**
  * Initialize garbage bins for a pool.
  *
- * NB: there is no need to free garbage bins, because destroy pool will free
- * them for free.
+ * NB: there is no need to free garbage bins, because destroy pool will free them for free.
  */
 int
 gc_init_pool(struct umem_instance *umm, struct vos_pool_df *pd)
@@ -826,10 +825,10 @@ gc_init_pool(struct umem_instance *umm, struct vos_pool_df *pd)
 	int		size;
 	int		rc;
 
-	D_DEBUG(DB_IO, "Init garbage bins for pool="DF_UUID"\n",
-		DP_UUID(pd->pd_id));
+	D_DEBUG(DB_IO, "Init garbage bins for pool="DF_UUID"\n", DP_UUID(pd->pd_id));
 
 	for (i = 0; i < GC_MAX; i++) {
+		
 		struct vos_gc_bin_df *bin = &pd->pd_gc_bins[i];
 
 		size = offsetof(struct vos_gc_bag_df, bag_items[gc_bag_size]);
@@ -1129,20 +1128,19 @@ vos_gc_yield(void *arg)
 
 /** public API to reclaim space for a opened pool */
 int
-vos_gc_pool(daos_handle_t poh, int credits, int (*yield_func)(void *arg),
-	    void *yield_arg)
+vos_gc_pool(daos_handle_t poh, int credits, int (*yield_func)(void *arg), void *yield_arg)
 {
-	struct vos_pool		*pool = vos_hdl2pool(poh);
-	struct vos_tls		*tls  = vos_tls_get();
-	struct vos_gc_param	 param;
-	uint32_t		 nr_flushed = 0;
-	int			 rc = 0, total = 0;
+	struct vos_pool		 *pool = vos_hdl2pool(poh);
+	struct vos_tls		 *tls  = vos_tls_get();
+	struct vos_gc_param	  param;
+	uint32_t		      nr_flushed = 0;
+	int			          rc = 0, total = 0;
 
 	D_ASSERT(daos_handle_is_valid(poh));
 
-	param.vgc_yield_func	= yield_func;
-	param.vgc_yield_arg	= yield_arg;
-	param.vgc_credits	= GC_CREDS_TIGHT;
+	param.vgc_yield_func   = yield_func;
+	param.vgc_yield_arg	   = yield_arg;
+	param.vgc_credits	   = GC_CREDS_TIGHT;
 
 	/* To accelerate flush on container destroy done */
 	if (!gc_have_pool(pool)) {

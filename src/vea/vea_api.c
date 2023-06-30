@@ -36,16 +36,16 @@ erase_md(struct umem_instance *umem, struct vea_space_df *md)
 	}
 }
 
-/*
- * Initialize the space tracking information on SCM and the header of the
- * block device.
+
+/* Initialize the space tracking information on SCM and the header of the block device.
  */
 int
 vea_format(struct umem_instance *umem, struct umem_tx_stage_data *txd,
-	   struct vea_space_df *md, uint32_t blk_sz, // VOS_BLK_SZ(4K:bytes)
-	   uint32_t hdr_blks,    // VOS_BLOB_HDR_BLKS(1)
-	   uint64_t capacity, vea_format_callback_t cb, void *cb_data,
-	   bool force)
+	   struct vea_space_df *md,  // pool上关联的vea的元数据盘管理结构
+	   uint32_t blk_sz,          // VOS_BLK_SZ(4K:bytes)
+	   uint32_t hdr_blks,        // VOS_BLOB_HDR_BLKS(1)
+	   uint64_t capacity,        // scm_size
+	   vea_format_callback_t cb, void *cb_data, bool force)
 {
 	struct vea_free_extent free_ext;
 	struct umem_attr       uma;
@@ -87,10 +87,8 @@ vea_format(struct umem_instance *umem, struct umem_tx_stage_data *txd,
 	// 预留hdr_blks为头部
 	tot_blks -= hdr_blks;
 
-	/*
-	 * Extent block count is represented by uint32_t, make sure the
-	 * largest extent won't overflow.
-	 */
+
+	/* Extent block count is represented by uint32_t, make sure the largest extent won't overflow. */
 	if (tot_blks > UINT32_MAX) {
 		D_ERROR("Capacity "DF_U64" is too large.\n", capacity);
 		return -DER_INVAL;
@@ -241,20 +239,17 @@ vea_load(struct umem_instance *umem, struct umem_tx_stage_data *txd,
 	memset(&uma, 0, sizeof(uma));
 	uma.uma_id = UMEM_CLASS_VMEM;
 	/* Create in-memory free extent tree */
-	rc = dbtree_create(DBTREE_CLASS_IFV, BTR_FEAT_DIRECT_KEY, VEA_TREE_ODR, &uma, NULL,
-			   &vsi->vsi_free_btr);
+	rc = dbtree_create(DBTREE_CLASS_IFV, BTR_FEAT_DIRECT_KEY, VEA_TREE_ODR, &uma, NULL, &vsi->vsi_free_btr);
 	if (rc != 0)
 		goto error;
 
 	/* Create in-memory extent vector tree */
-	rc = dbtree_create(DBTREE_CLASS_IFV, BTR_FEAT_DIRECT_KEY, VEA_TREE_ODR, &uma, NULL,
-			   &vsi->vsi_vec_btr);
+	rc = dbtree_create(DBTREE_CLASS_IFV, BTR_FEAT_DIRECT_KEY, VEA_TREE_ODR, &uma, NULL, &vsi->vsi_vec_btr);
 	if (rc != 0)
 		goto error;
 
 	/* Create in-memory aggregation tree */
-	rc = dbtree_create(DBTREE_CLASS_IFV, BTR_FEAT_DIRECT_KEY, VEA_TREE_ODR, &uma, NULL,
-			   &vsi->vsi_agg_btr);
+	rc = dbtree_create(DBTREE_CLASS_IFV, BTR_FEAT_DIRECT_KEY, VEA_TREE_ODR, &uma, NULL,  &vsi->vsi_agg_btr);
 	if (rc != 0)
 		goto error;
 
@@ -265,6 +260,7 @@ vea_load(struct umem_instance *umem, struct umem_tx_stage_data *txd,
 
 	*vsip = vsi;
 	return 0;
+	
 error:
 	vea_unload(vsi);
 	return rc;

@@ -35,8 +35,10 @@ struct vos_key_info {
 };
 
 static inline int
-key_iter_fetch_helper(struct vos_obj_iter *oiter, struct vos_rec_bundle *rbund, d_iov_t *keybuf,
-		      daos_anchor_t *anchor)
+key_iter_fetch_helper(struct vos_obj_iter *oiter, 
+                               struct vos_rec_bundle *rbund,  // 出参 -- record -- krec
+                               d_iov_t *keybuf,               // 出参 -- key
+		                       daos_anchor_t *anchor)
 {
 	d_iov_t			 kiov;
 	d_iov_t			 riov;
@@ -55,9 +57,12 @@ key_iter_fetch_helper(struct vos_obj_iter *oiter, struct vos_rec_bundle *rbund, 
 
 /** This callback is invoked only if the tree is not empty */
 static int
-empty_tree_check(daos_handle_t ih, vos_iter_entry_t *entry,
-		 vos_iter_type_t type, vos_iter_param_t *param, void *cb_arg,
-		 unsigned int *acts)
+empty_tree_check(daos_handle_t ih, 
+                        vos_iter_entry_t *entry,   // 一个迭代查询回来的akey的叶子节点信息
+		                vos_iter_type_t type, 
+		                vos_iter_param_t *param,
+		                void *cb_arg,
+		                unsigned int *acts)
 {
 	struct vos_iterator	    *iter;
 	struct vos_obj_iter	    *oiter;
@@ -90,6 +95,7 @@ empty_tree_check(daos_handle_t ih, vos_iter_entry_t *entry,
 	D_ASSERT(key_iov.iov_len == entry->ie_key.iov_len);
 	D_ASSERT(((char *)key_iov.iov_buf)[0] == ((char *)entry->ie_key.iov_buf)[0]);
 	D_ASSERT(((char *)key_iov.iov_buf)[key_iov.iov_len - 1] == ((char *)entry->ie_key.iov_buf)[key_iov.iov_len - 1]);
+	
 	umm = vos_obj2umm(kinfo->ki_obj);
 	rc = umem_tx_add_ptr(umm, kinfo->ki_known_key, sizeof(*(kinfo->ki_known_key)));
 	if (rc != 0)
@@ -118,8 +124,12 @@ tree_is_empty(struct vos_object *obj, umem_off_t *known_key, daos_handle_t toh,
 	 *  to be allocated at an 8 byte alignment so the low order bit is available to mark it as
 	 *  punched.
 	 */
+
+//  树非空：known_key为非0非1的值
+
 	if (*known_key != UMOFF_NULL && (*known_key & 0x1) == 0)
 		return 0;
+
 
 	kinfo.ki_obj = obj;
 	kinfo.ki_known_key = known_key;
@@ -141,6 +151,7 @@ tree_is_empty(struct vos_object *obj, umem_off_t *known_key, daos_handle_t toh,
 	if (kinfo.ki_non_empty)
 		return 0;
 
+
 	/** Start from beginning one more time.  It will iterate until it sees the first thing it saw */
 
 	// 首次迭代判空
@@ -149,6 +160,7 @@ tail:
 
 	if (rc < 0)
 		return rc;
+	
     // 树是非空的，直接回去了
 	if (kinfo.ki_non_empty)
 		return 0;
@@ -269,6 +281,7 @@ key_punch(struct vos_object *obj, daos_epoch_t epoch, daos_epoch_t bound,
 	if (!akeys)
 		goto punch_dkey;
 
+    // toh返回的是akey树的句柄
 	rc = key_tree_prepare(obj, obj->obj_toh, VOS_BTR_DKEY,
 			      dkey, SUBTR_CREATE, DAOS_INTENT_PUNCH,
 			      &krec, &toh, ts_set);
@@ -291,6 +304,8 @@ key_punch(struct vos_object *obj, daos_epoch_t epoch, daos_epoch_t bound,
 	rbund.rb_tclass	= VOS_BTR_AKEY;
 	for (i = 0; i < akey_nr; i++) {
 		rbund.rb_iov = &akeys[i];
+		// 在上面key_tree_prepare返回的akey树的句柄toh上查找akey(akeys[i])
+		// 这个Krec是dkey的krec
 		rc = key_tree_punch(obj, toh, epoch, bound, &akeys[i], &riov,
 				            flags, ts_set, &krec->kr_known_akey, 
 				            &info->ki_dkey, &info->ki_akey);
@@ -710,9 +725,12 @@ out:
 }
 
 static int
-key_iter_ilog_check(struct vos_krec_df *krec, struct vos_obj_iter *oiter,
-		    vos_iter_type_t type, daos_epoch_range_t *epr,
-		    bool check_existence, struct vos_ts_set *ts_set)
+key_iter_ilog_check(struct vos_krec_df *krec, 
+                             struct vos_obj_iter *oiter,
+		                     vos_iter_type_t type, 
+		                     daos_epoch_range_t *epr,
+		                     bool check_existence, 
+		                     struct vos_ts_set *ts_set)
 {
 	struct umem_instance	*umm;
 	int			 rc;
@@ -720,10 +738,14 @@ key_iter_ilog_check(struct vos_krec_df *krec, struct vos_obj_iter *oiter,
 	umm = vos_obj2umm(oiter->it_obj);
 
 	// 查询krec->kr_ilog上查询ilog信息，填入vos_obj_iter->it_ilog_info
-	rc = vos_ilog_fetch(umm, vos_cont2hdl(oiter->it_obj->obj_cont),
-			    vos_iter_intent(&oiter->it_iter), &krec->kr_ilog,
-			    oiter->it_epr.epr_hi, oiter->it_iter.it_bound,
-			    &oiter->it_punched, NULL, &oiter->it_ilog_info);
+	rc = vos_ilog_fetch(umm, 
+	                   vos_cont2hdl(oiter->it_obj->obj_cont),  // container handle
+			           vos_iter_intent(&oiter->it_iter),       // intent
+			           &krec->kr_ilog,                         // 入参数据  ilog
+			           oiter->it_epr.epr_hi, 
+			           oiter->it_iter.it_bound,
+			           &oiter->it_punched, NULL,
+			           &oiter->it_ilog_info);                 // 出参： 查询到的ilog
 
 	if (rc != 0)
 		goto out;
@@ -796,38 +818,53 @@ fail:
  */
 
 static int
-key_iter_fill(struct vos_krec_df *krec, struct vos_obj_iter *oiter, bool check_existence,
-	      vos_iter_entry_t *ent)
+key_iter_fill(struct vos_krec_df *krec,   // 找到的那个record里面存的
+                    struct vos_obj_iter *oiter,
+                    bool check_existence,
+	                vos_iter_entry_t *ent)
 {
 	daos_epoch_range_t	epr = {0, DAOS_EPOCH_MAX};
 	uint32_t		ts_type;
 	int			rc;
 
 	if (oiter->it_iter.it_type == VOS_ITER_AKEY) {
+		
 		if (krec->kr_bmap & KREC_BF_EVT) {
+			// akey存放的是evtree, 写入子迭代器的类型
 			ent->ie_child_type = VOS_ITER_RECX;
 		} else if (krec->kr_bmap & KREC_BF_BTR) {
+		    // akey存放的是svtree
 			ent->ie_child_type = VOS_ITER_SINGLE;
 		} else {
 			ent->ie_child_type = VOS_ITER_NONE;
 		}
+		
 		ts_type = VOS_TS_TYPE_AKEY;
-	} else {
+	} 
+
+	else {
+		// dkey进来，子迭代器是akey
 		ent->ie_child_type = VOS_ITER_AKEY;
 		ts_type = VOS_TS_TYPE_DKEY;
 	}
 
-	rc = key_iter_ilog_check(krec, oiter, oiter->it_iter.it_type, &epr,
-				 check_existence, NULL);
+	rc = key_iter_ilog_check(krec, oiter, oiter->it_iter.it_type, &epr, check_existence, NULL);
+	
 	if (rc == -DER_NONEXIST)
 		return VOS_ITER_CB_SKIP;
+	
 	if (rc != 0) {
+		
 		if (!oiter->it_iter.it_show_uncommitted || rc != -DER_INPROGRESS)
 			return rc;
+		
 		/** Mark the entry as uncommitted but return it to the iterator */
 		ent->ie_vis_flags = VOS_IT_UNCOMMITTED;
+		
 	} else {
+		
 		ent->ie_vis_flags = VOS_VIS_FLAG_VISIBLE;
+		
 		if (oiter->it_ilog_info.ii_create == 0) {
 			/* The key has no visible subtrees so mark it covered */
 			ent->ie_vis_flags = VOS_VIS_FLAG_COVERED;
@@ -837,44 +874,52 @@ key_iter_fill(struct vos_krec_df *krec, struct vos_obj_iter *oiter, bool check_e
 	ent->ie_epoch = epr.epr_hi;
 	ent->ie_punch = oiter->it_ilog_info.ii_next_punch;
 	ent->ie_obj_punch = oiter->it_obj->obj_ilog_info.ii_next_punch;
+	
 	vos_ilog_last_update(&krec->kr_ilog, ts_type, &ent->ie_last_update);
 
 	return 0;
 }
 
 static int
-key_iter_fetch(struct vos_obj_iter *oiter, vos_iter_entry_t *ent,
-	       daos_anchor_t *anchor, bool check_existence, uint32_t flags)
+key_iter_fetch(struct vos_obj_iter *oiter, 
+                     vos_iter_entry_t *ent,
+	                 daos_anchor_t *anchor, 
+	                 bool check_existence,   // true
+	                 uint32_t flags)
 {
 
-	uint64_t		 start_seq;
-	vos_iter_desc_t		 desc;
+	uint64_t		         start_seq;
+	vos_iter_desc_t		     desc;
 	struct vos_rec_bundle	 rbund;
-	struct vos_krec_df	*krec;
-	struct dtx_handle	*dth;
-	uint64_t		 feats;
-	uint32_t		 ts_type;
-	unsigned int		 acts;
-	int			 rc;
+	struct vos_krec_df	    *krec;
+	struct dtx_handle	    *dth;
+	uint64_t		         feats;
+	uint32_t		         ts_type;
+	unsigned int		     acts;
+	int	rc;
 
+    // 读取搜索路径上的最后1层的那个record的key和vos_krec_df
 	rc = key_iter_fetch_helper(oiter, &rbund, &ent->ie_key, anchor);
-	D_ASSERTF(check_existence || rc != -DER_NONEXIST,
-		  "Iterator should probe before fetch\n");
+	
+	D_ASSERTF(check_existence || rc != -DER_NONEXIST,  "Iterator should probe before fetch\n");
 	if (rc != 0)
 		return rc;
 
 	D_ASSERT(rbund.rb_krec);
 	krec = rbund.rb_krec;
 
-	if (check_existence && oiter->it_iter.it_filter_cb != NULL &&
-	    (flags & VOS_ITER_PROBE_AGAIN) == 0) {
+    // it_filter_cb大多数场景为NULL，只有聚合非NULL， 这个if进入的场景不多
+	if (check_existence && oiter->it_iter.it_filter_cb != NULL && (flags & VOS_ITER_PROBE_AGAIN) == 0) {
+		
 		desc.id_type = oiter->it_iter.it_type;
 		desc.id_key = ent->ie_key;
 		desc.id_parent_punch = oiter->it_punched.pr_epc;
+		
 		if (krec->kr_bmap & KREC_BF_BTR)
 			feats = dbtree_feats_get(&krec->kr_btr);
 		else
 			feats = evt_feats_get(&krec->kr_evt);
+		
 		if (!vos_feats_agg_time_get(feats, &desc.id_agg_write)) {
 			if (desc.id_type == VOS_ITER_DKEY)
 				ts_type = VOS_TS_TYPE_DKEY;
@@ -884,26 +929,32 @@ key_iter_fetch(struct vos_obj_iter *oiter, vos_iter_entry_t *ent,
 		}
 
 		acts = 0;
+		
 		start_seq = vos_sched_seq();
+		
 		dth = vos_dth_get();
 		if (dth != NULL)
 			vos_dth_set(NULL);
-		rc = oiter->it_iter.it_filter_cb(vos_iter2hdl(&oiter->it_iter), &desc,
-						 oiter->it_iter.it_filter_arg,
-						 &acts);
+		
+		rc = oiter->it_iter.it_filter_cb(vos_iter2hdl(&oiter->it_iter), &desc, oiter->it_iter.it_filter_arg, &acts);
+		
 		if (dth != NULL)
 			vos_dth_set(dth);
+		
 		if (rc != 0)
 			return rc;
+		
 		if (start_seq != vos_sched_seq())
 			acts |= VOS_ITER_CB_YIELD;
-		if (acts & (VOS_ITER_CB_EXIT | VOS_ITER_CB_ABORT | VOS_ITER_CB_RESTART |
-			    VOS_ITER_CB_DELETE | VOS_ITER_CB_YIELD))
+		
+		if (acts & (VOS_ITER_CB_EXIT | VOS_ITER_CB_ABORT | VOS_ITER_CB_RESTART |  VOS_ITER_CB_DELETE | VOS_ITER_CB_YIELD))
 			return acts;
+		
 		if (acts & VOS_ITER_CB_SKIP)
 			return VOS_ITER_CB_SKIP;
 	}
 
+    // 填充ent
 	return key_iter_fill(krec, oiter, check_existence, ent);
 }
 
@@ -979,12 +1030,13 @@ static int
 key_iter_match(struct vos_obj_iter *oiter, vos_iter_entry_t *ent, daos_anchor_t *anchor,
 	       uint32_t flags)
 {
-	struct vos_object	*obj = oiter->it_obj;
-	daos_epoch_range_t	*epr = &oiter->it_epr;
-	struct vos_ilog_info	 info;
-	daos_handle_t		 toh;
-	int			 rc;
+	struct vos_object	   *obj = oiter->it_obj;
+	daos_epoch_range_t	   *epr = &oiter->it_epr;
+	struct vos_ilog_info	info;
+	daos_handle_t		    toh;
+	int	rc;
 
+    // 填充ent
 	rc = key_iter_fetch(oiter, ent, anchor, true, flags);
 	if (rc != 0) {
 		VOS_TX_TRACE_FAIL(rc, "Failed to fetch the entry: "DF_RC"\n", DP_RC(rc));
@@ -1056,10 +1108,11 @@ retry:
 		if (rc == 0)
 			goto retry;
 	}
-	D_ASSERT(rc <= 0 || (rc & (VOS_ITER_CB_EXIT | VOS_ITER_CB_DELETE | VOS_ITER_CB_YIELD |
-				   VOS_ITER_CB_ABORT)) != 0);
-	VOS_TX_TRACE_FAIL(rc, "match failed, rc="DF_RC"\n",
-			  DP_RC(rc));
+	
+	D_ASSERT(rc <= 0 || (rc & (VOS_ITER_CB_EXIT | VOS_ITER_CB_DELETE | VOS_ITER_CB_YIELD | VOS_ITER_CB_ABORT)) != 0);
+	
+	VOS_TX_TRACE_FAIL(rc, "match failed, rc="DF_RC"\n", DP_RC(rc));
+	
 	return rc;
 }
 
@@ -1069,11 +1122,14 @@ key_iter_probe(struct vos_obj_iter *oiter, daos_anchor_t *anchor, uint32_t flags
 	int	next_opc;
 	int	rc;
 
+    // flag传0， next_opc找到大于等于的那个record, BTR_PROBE_GT只找那个大的
 	next_opc = (flags & VOS_ITER_PROBE_NEXT) ? BTR_PROBE_GT : BTR_PROBE_GE;
+	
 	rc = dbtree_iter_probe(oiter->it_hdl,
-			       vos_anchor_is_zero(anchor) ? BTR_PROBE_FIRST : next_opc,
-			       vos_iter_intent(&oiter->it_iter),
-			       NULL, anchor);
+			               vos_anchor_is_zero(anchor) ? BTR_PROBE_FIRST : next_opc,
+			               vos_iter_intent(&oiter->it_iter),
+			               NULL,    // NULL for no key
+			               anchor);
 	if (rc)
 		D_GOTO(out, rc);
 
@@ -1593,42 +1649,45 @@ static int vos_obj_iter_fini(struct vos_iterator *vitr);
 
 /** prepare an object content iterator */
 int
-vos_obj_iter_prep(vos_iter_type_t type, vos_iter_param_t *param,
-		  struct vos_iterator **iter_pp,
-		  struct vos_ts_set *ts_set)
+vos_obj_iter_prep(vos_iter_type_t type, 
+                          vos_iter_param_t *param,
+		                  struct vos_iterator **iter_pp,  // 返回的带出参数
+		                  struct vos_ts_set *ts_set)
 {
-	struct vos_obj_iter	*oiter;
+	struct vos_obj_iter	    *oiter;
 	struct vos_container	*cont;
-	struct dtx_handle	*dth = vos_dth_get();
-	daos_epoch_t		 bound;
-	int			 rc;
+	struct dtx_handle	    *dth = vos_dth_get();
+	daos_epoch_t		     bound;
+	int	rc;
 
 	D_ALLOC_PTR(oiter);
 	if (oiter == NULL)
 		return -DER_NOMEM;
 
-	bound = dtx_is_valid_handle(dth) ? dth->dth_epoch_bound :
-		param->ip_epr.epr_hi;
+	bound = dtx_is_valid_handle(dth) ? dth->dth_epoch_bound : param->ip_epr.epr_hi;
+	
 	oiter->it_iter.it_bound = MAX(bound, param->ip_epr.epr_hi);
 	oiter->it_iter.it_filter_cb = param->ip_filter_cb;
 	oiter->it_iter.it_filter_arg = param->ip_filter_arg;
+	
 	vos_ilog_fetch_init(&oiter->it_ilog_info);
+	
 	oiter->it_iter.it_type = type;
 	oiter->it_epr = param->ip_epr;
 	oiter->it_epc_expr = param->ip_epc_expr;
 
 	oiter->it_flags = param->ip_flags;
 	oiter->it_recx = param->ip_recx;
+	
 	if (param->ip_flags & VOS_IT_FOR_PURGE)
 		oiter->it_iter.it_for_purge = 1;
 	if (param->ip_flags & VOS_IT_FOR_DISCARD)
 		oiter->it_iter.it_for_discard = 1;
 	if (param->ip_flags & VOS_IT_FOR_MIGRATION)
 		oiter->it_iter.it_for_migration = 1;
+	
 	if (param->ip_flags == VOS_IT_KEY_TREE) {
-		/** Prepare the iterator from an already open tree handle.   See
-		 *  vos_iterate_key
-		 */
+		/** Prepare the iterator from an already open tree handle.   See  vos_iterate_key */
 		D_ASSERT(type == VOS_ITER_DKEY || type == VOS_ITER_AKEY);
 		oiter->it_obj = param->ip_dkey.iov_buf;
 		rc = prepare_key_from_toh(oiter, param->ip_hdl);
@@ -1971,19 +2030,19 @@ vos_obj_iter_fetch(struct vos_iterator *iter, vos_iter_entry_t *it_entry,
 	struct vos_obj_iter *oiter = vos_iter2oiter(iter);
 
 	switch (iter->it_type) {
-	default:
-		D_ASSERT(0);
-		return -DER_INVAL;
+		default:
+			D_ASSERT(0);
+			return -DER_INVAL;
 
-	case VOS_ITER_DKEY:
-	case VOS_ITER_AKEY:
-		return key_iter_fetch(oiter, it_entry, anchor, false, 0);
+		case VOS_ITER_DKEY:
+		case VOS_ITER_AKEY:
+			return key_iter_fetch(oiter, it_entry, anchor, false, 0);
 
-	case VOS_ITER_SINGLE:
-		return singv_iter_fetch(oiter, it_entry, anchor);
+		case VOS_ITER_SINGLE:
+			return singv_iter_fetch(oiter, it_entry, anchor);
 
-	case VOS_ITER_RECX:
-		return recx_iter_fetch(oiter, it_entry, anchor);
+		case VOS_ITER_RECX:
+			return recx_iter_fetch(oiter, it_entry, anchor);
 	}
 }
 

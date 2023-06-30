@@ -1222,7 +1222,8 @@ btr_split_at(struct btr_context *tcx, int level,
 
     // 是否是在当前找到节点的左边插入
 	left = (trace->tr_at < split_at);
-	
+
+	// 非叶子节点分裂，如果新插入的在左边，split_at - 1 
 	if (!btr_node_is_leaf(tcx, off_left))
 		split_at -= left;
 
@@ -1281,7 +1282,7 @@ btr_node_split_and_insert(struct btr_context *tcx, struct btr_trace *trace, stru
 	// tcx->tc_trace[level].tr_at = at;
 	split_at = btr_split_at(tcx, level, off_left, off_right);
 
-    // 读取左孩子的最后1个record的起始地址(该地址上存放了已经写入的record)
+    // 读取源节点在分裂处的record的起始地址(该地址上存放了已经写入的record)
 	rec_src = btr_node_rec_at(tcx, off_left, split_at);
 	// 读取右孩子的第1个record的起始地址(该地址是新申请的，还没有写入东西)
 	rec_dst = btr_node_rec_at(tcx, off_right, 0);
@@ -1642,14 +1643,18 @@ btr_probe(struct btr_context *tcx, dbtree_probe_opc_t probe_opc, uint32_t intent
 			continue;
 		}
 
-        // 当前查找的节点是叶子节点，直接退出了
+// 当前查找的节点nd_off是叶子节点，直接退出了 --  找到那个叶子节点才退出， 除比较失败外唯一的退出
 		if (btr_node_is_leaf(tcx, nd_off))
 			break;
-
+		
+// 如果当前查找的节点nd_off是中间节点，那么还要
 		/* NB: cmp is BTR_CMP_LT or BTR_CMP_EQ means search the record in the right child, otherwise it is in the left child. */
-		// 这个地方的设计很巧妙：只要上面的比较结果不是大于(传入的key小于或等于record中存储的key，说明当前比较发生在右孩子)， 如果是大于说明比较是发生在左孩子
-		// 如果cmp & BTR_CMP_GT at不变； 如果cmp &  BTR_CMP_LT or BTR_CMP_EQ at = at + 1;
+		
 		at += !(cmp & BTR_CMP_GT);
+
+		// 1. 当前位置at上存储的那个record的key <= 传入的key, 说明当前找小了，要往后找， 即at + 1
+		// 2. 当前位置at上存储的那个record的key >             传入的key,    说明当前找大了，at不变
+		// 设置这一层的查找结果(node,at)
 		btr_trace_set(tcx, level, nd_off, at);
 		btr_trace_debug(tcx, &tcx->tc_trace[level], "probe child\n");
 
@@ -1707,6 +1712,7 @@ again:
 			goto out;
 
 		case BTR_PROBE_EQ:
+			// 就是要找那个相等的，实际找到的那个就是相等的, at值不变
 			if (cmp == BTR_CMP_EQ) {
 				rc = btr_check_availability(tcx, &alb);
 				if (rc != PROBE_RC_UNAVAILABLE)
@@ -1716,10 +1722,12 @@ again:
 				 * reused for the follow-on insert if applicable.
 				 */
 			} else {
-				/* Point at the first key which is larger than the
-				 * probed one, this if for the follow-on insert if
-				 * applicable.
-				 */
+				/* Point at the first key which is larger than the probed one, this if for the follow-on insert if applicable. */
+				 
+				// 就是要找那个相等的， 但是实际的比较结果不相等
+				// cmp is BTR_CMP_GT， 说明当前的record的值比传入的参数值要大， at + 0
+				// cmp is BTR_CMP_LT， 说明当前的record的值比传入的参数值要小， at + 1
+				// 这个地方at的返回值是比要找到的那个值在大的第一个位置
 				btr_trace_set(tcx, level, nd_off, at + !(cmp & BTR_CMP_GT));
 			}
 
@@ -3962,6 +3970,7 @@ dbtree_iter_probe(daos_handle_t ih, dbtree_probe_opc_t opc, uint32_t intent,
 			break;
 	}
 
+    // PROBE_RC_NONE: 
 	itr->it_state = BTR_ITR_READY;
 	return 0;
 }
@@ -4053,10 +4062,12 @@ dbtree_iter_fetch(daos_handle_t ih, d_iov_t *key,
 	if (rc != 0)
 		return rc;
 
+    // 读取找到的最后1层的那个record.
 	rec = btr_trace2rec(tcx, tcx->tc_depth - 1);
 	if (rec == NULL)
 		return -DER_AGAIN; /* invalid cursor */
 
+    // 读取record(rec)上的key和value
 	rc = btr_rec_fetch(tcx, rec, key, val);
 	if (rc)
 		return rc;

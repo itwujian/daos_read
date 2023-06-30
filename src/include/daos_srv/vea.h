@@ -85,18 +85,18 @@ struct vea_unmap_context {
 
 /* Free space tracking information on SCM */
 struct vea_space_df {
-	uint32_t	vsd_magic;
-	uint32_t	vsd_compat;
+	uint32_t	     vsd_magic;
+	uint32_t	     vsd_compat;
 	/* Block size, 4k bytes by default */
-	uint32_t	vsd_blk_sz;
+	uint32_t	     vsd_blk_sz;
 	/* Reserved blocks for the block device header */
-	uint32_t	vsd_hdr_blks;
+	uint32_t	     vsd_hdr_blks;
 	/* Block device capacity */
-	uint64_t	vsd_tot_blks;
+	uint64_t	     vsd_tot_blks;
 	/* Free extent tree, sorted by offset */
-	struct btr_root	vsd_free_tree;
+	struct btr_root	 vsd_free_tree;
 	/* Allocated extent vector tree, for non-contiguous allocation */
-	struct btr_root	vsd_vec_tree;
+	struct btr_root	 vsd_vec_tree;
 };
 
 /* VEA attributes */

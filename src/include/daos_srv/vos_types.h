@@ -410,7 +410,7 @@ typedef struct {
 	/** epoch logic expression for the iterator. */
 	vos_it_epc_expr_t	ip_epc_expr;
 	/** filter callback for object/key (vos_iterate only) */
-	vos_iter_filter_cb_t	ip_filter_cb;
+	vos_iter_filter_cb_t	ip_filter_cb;  // 只有cont_ec_aggregate_cb和vos_aggregate使用了，其余为空
 	/** filter callback argument (vos_iterate only) */
 	void			*ip_filter_arg;
 	/** flags for for iterator */

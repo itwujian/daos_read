@@ -18,8 +18,7 @@ compound_vec_alloc(struct vea_space_info *vsi, struct vea_ext_vector *vec)
 }
 
 static int
-compound_alloc(struct vea_space_info *vsi, struct vea_free_extent *vfe,
-	       struct vea_entry *entry)
+compound_alloc(struct vea_space_info *vsi, struct vea_free_extent *vfe, struct vea_entry *entry)
 {
 	struct vea_free_extent	*remain;
 	d_iov_t			 key;

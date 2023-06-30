@@ -146,9 +146,10 @@ out:
 }
 
 int
-vos_iter_prepare(vos_iter_type_t type, vos_iter_param_t *param,
-		 daos_handle_t *ih, // 返回的vos_iterator的操作句柄，即vos_iterator的内存地址
-		 struct dtx_handle *dth)
+vos_iter_prepare(vos_iter_type_t type, 
+                        vos_iter_param_t *param,
+		                daos_handle_t *ih, // 返回的vos_iterator的操作句柄，即vos_iterator的内存地址
+		                struct dtx_handle *dth)
 {
 	struct vos_iter_dict	*dict;
 	struct vos_iterator	    *iter;
@@ -231,13 +232,13 @@ vos_iter_prepare(vos_iter_type_t type, vos_iter_param_t *param,
 
 	D_ASSERT(iter->it_type == type);
 
-	iter->it_dth		= dth;
-	iter->it_ops		= dict->id_ops;  //操作集
-	iter->it_state		= VOS_ITS_NONE;
-	iter->it_ref_cnt	= 1;
-	iter->it_parent		= NULL;
-	iter->it_from_parent	= 0;
-	iter->it_ts_set		= ts_set;
+	iter->it_dth		  = dth;
+	iter->it_ops		  = dict->id_ops;  //操作集
+	iter->it_state		  = VOS_ITS_NONE;
+	iter->it_ref_cnt	  = 1;
+	iter->it_parent		  = NULL;
+	iter->it_from_parent  = 0;
+	iter->it_ts_set		  = ts_set;
 
 	*ih = vos_iter2hdl(iter);
 out:
@@ -384,8 +385,9 @@ vos_iter_next(daos_handle_t ih, daos_anchor_t *anchor)
 }
 
 int
-vos_iter_fetch(daos_handle_t ih, vos_iter_entry_t *it_entry,
-	       daos_anchor_t *anchor)
+vos_iter_fetch(daos_handle_t ih, 
+                     vos_iter_entry_t *it_entry,
+	                 daos_anchor_t *anchor)
 {
 	struct vos_iterator *iter = vos_hdl2iter(ih);
 	struct dtx_handle   *old;
@@ -522,35 +524,35 @@ set_reprobe(vos_iter_type_t type, unsigned int acts,
 	bool sorted;
 
 	switch (type) {
-	case VOS_ITER_SINGLE:
-		if (yield || delete)
-			anchors->ia_reprobe_sv = 1;
-		/* fallthrough */
-	case VOS_ITER_RECX:
-		sorted = flags & VOS_IT_RECX_VISIBLE;
-		/* evtree only need reprobe on yield for unsorted iteration */
-		if (!sorted && yield && (type == VOS_ITER_RECX))
-			anchors->ia_reprobe_ev = 1;
-		/* fallthrough */
-	case VOS_ITER_AKEY:
-		if (yield || (delete && (type == VOS_ITER_AKEY)))
-			anchors->ia_reprobe_akey = 1;
-		/* fallthrough */
-	case VOS_ITER_DKEY:
-		if (yield || (delete && (type == VOS_ITER_DKEY)))
-			anchors->ia_reprobe_dkey = 1;
-		/* fallthrough */
-	case VOS_ITER_OBJ:
-		if (yield || (delete && (type == VOS_ITER_OBJ)))
-			anchors->ia_reprobe_obj = 1;
-		/* fallthrough */
-	case VOS_ITER_COUUID:
-		if (yield || (delete && (type == VOS_ITER_COUUID)))
-			anchors->ia_reprobe_co = 1;
-		break;
-	default:
-		D_ASSERTF(false, "invalid iter type %d\n", type);
-		break;
+		case VOS_ITER_SINGLE:
+			if (yield || delete)
+				anchors->ia_reprobe_sv = 1;
+			/* fallthrough */
+		case VOS_ITER_RECX:
+			sorted = flags & VOS_IT_RECX_VISIBLE;
+			/* evtree only need reprobe on yield for unsorted iteration */
+			if (!sorted && yield && (type == VOS_ITER_RECX))
+				anchors->ia_reprobe_ev = 1;
+			/* fallthrough */
+		case VOS_ITER_AKEY:
+			if (yield || (delete && (type == VOS_ITER_AKEY)))
+				anchors->ia_reprobe_akey = 1;
+			/* fallthrough */
+		case VOS_ITER_DKEY:
+			if (yield || (delete && (type == VOS_ITER_DKEY)))
+				anchors->ia_reprobe_dkey = 1;
+			/* fallthrough */
+		case VOS_ITER_OBJ:
+			if (yield || (delete && (type == VOS_ITER_OBJ)))
+				anchors->ia_reprobe_obj = 1;
+			/* fallthrough */
+		case VOS_ITER_COUUID:
+			if (yield || (delete && (type == VOS_ITER_COUUID)))
+				anchors->ia_reprobe_co = 1;
+			break;
+		default:
+			D_ASSERTF(false, "invalid iter type %d\n", type);
+			break;
 	}
 }
 
@@ -560,34 +562,34 @@ need_reprobe(vos_iter_type_t type, struct vos_iter_anchors *anchors)
 	bool reprobe;
 
 	switch (type) {
-	case VOS_ITER_OBJ:
-		reprobe = anchors->ia_reprobe_obj;
-		anchors->ia_reprobe_obj = 0;
-		break;
-	case VOS_ITER_DKEY:
-		reprobe = anchors->ia_reprobe_dkey;
-		anchors->ia_reprobe_dkey = 0;
-		break;
-	case VOS_ITER_AKEY:
-		reprobe = anchors->ia_reprobe_akey;
-		anchors->ia_reprobe_akey = 0;
-		break;
-	case VOS_ITER_RECX:
-		reprobe = anchors->ia_reprobe_ev;
-		anchors->ia_reprobe_ev = 0;
-		break;
-	case VOS_ITER_SINGLE:
-		reprobe = anchors->ia_reprobe_sv;
-		anchors->ia_reprobe_sv = 0;
-		break;
-	case VOS_ITER_COUUID:
-		reprobe = anchors->ia_reprobe_co;
-		anchors->ia_reprobe_co = 0;
-		break;
-	default:
-		D_ASSERTF(false, "invalid iter type %d\n", type);
-		reprobe = false;
-		break;
+		case VOS_ITER_OBJ:
+			reprobe = anchors->ia_reprobe_obj;
+			anchors->ia_reprobe_obj = 0;
+			break;
+		case VOS_ITER_DKEY:
+			reprobe = anchors->ia_reprobe_dkey;
+			anchors->ia_reprobe_dkey = 0;
+			break;
+		case VOS_ITER_AKEY:
+			reprobe = anchors->ia_reprobe_akey;
+			anchors->ia_reprobe_akey = 0;
+			break;
+		case VOS_ITER_RECX:
+			reprobe = anchors->ia_reprobe_ev;
+			anchors->ia_reprobe_ev = 0;
+			break;
+		case VOS_ITER_SINGLE:
+			reprobe = anchors->ia_reprobe_sv;
+			anchors->ia_reprobe_sv = 0;
+			break;
+		case VOS_ITER_COUUID:
+			reprobe = anchors->ia_reprobe_co;
+			anchors->ia_reprobe_co = 0;
+			break;
+		default:
+			D_ASSERTF(false, "invalid iter type %d\n", type);
+			reprobe = false;
+			break;
 	}
 	return reprobe;
 }
@@ -614,16 +616,24 @@ enum {
 };
 
 static int
-advance_stage(vos_iter_type_t type, unsigned int acts, vos_iter_param_t *param,
-	      struct vos_iter_anchors *anchors, daos_anchor_t *anchor, int *stage,
-	      int next_stage, uint32_t *probe_flags)
+advance_stage(vos_iter_type_t type, 
+                    unsigned int acts,    // iop_probe返回的值
+                    vos_iter_param_t *param,
+	                struct vos_iter_anchors *anchors, 
+	                daos_anchor_t *anchor, 
+	                int *stage,
+	                int next_stage, 
+	                uint32_t *probe_flags)
 {
 	int	rc = ITER_CONTINUE;
 
 	if (acts & VOS_ITER_CB_EXIT)
 		D_GOTO(out, rc = ITER_EXIT);
 
+    // 如果acts & VOS_ITER_CB_YIELD    或者    VOS_ITER_CB_DELETE
+    // 需要在anchors设置reprobe标记
 	set_reprobe(type, acts, anchors, param->ip_flags);
+	
 	if (acts & VOS_ITER_CB_ABORT)
 		D_GOTO(out, rc = ITER_ABORT);
 
@@ -634,7 +644,6 @@ advance_stage(vos_iter_type_t type, unsigned int acts, vos_iter_param_t *param,
 		D_GOTO(out, rc = ITER_PROBE);
 	}
 
-    // 大部分场景：无需聚合或则有聚合触发了删除
 	if (acts & (VOS_ITER_CB_SKIP | VOS_ITER_CB_DELETE)) {
 		*probe_flags = VOS_ITER_PROBE_NEXT;
 		*stage = VOS_ITER_STAGE_FILTER;
@@ -642,12 +651,15 @@ advance_stage(vos_iter_type_t type, unsigned int acts, vos_iter_param_t *param,
 	} else {
 		*probe_flags = VOS_ITER_PROBE_AGAIN;
 		*stage = next_stage;
+		// VOS_ITER_CB_NONE
+		// 妈的，这个地方rc = ITER_CONTINUE
 	}
 
 	if (need_reprobe(type, anchors)) {
 		D_ASSERT(!daos_anchor_is_zero(anchor) && !daos_anchor_is_eof(anchor));
 		rc = ITER_PROBE;
 	}
+	
 out:
 	return rc;
 }
@@ -694,11 +706,15 @@ vos_iter_cb(vos_iter_cb_t iter_cb, daos_handle_t ih, vos_iter_entry_t *iter_ent,
  * cb(\a arg) for each entry.
  */
 static int
-vos_iterate_internal(vos_iter_param_t *param, vos_iter_type_t type,
-		     bool recursive, bool show_uncommitted,
-		     struct vos_iter_anchors *anchors,
-		     vos_iter_cb_t pre_cb, vos_iter_cb_t post_cb, void *arg,
-		     struct dtx_handle *dth)
+vos_iterate_internal(vos_iter_param_t *param, 
+                              vos_iter_type_t type,      //  VOS_ITER_DKEY  or  VOS_ITER_AKEY
+		                      bool recursive,            //  false
+		                      bool show_uncommitted,     // true
+		                      struct vos_iter_anchors *anchors,   // 新申请的内存
+		                      vos_iter_cb_t pre_cb,      //  回调   -- empty_tree_check
+		                      vos_iter_cb_t post_cb,     //  NULL
+		                      void *arg,                 //  处理的参数      --  vos_key_info
+		                      struct dtx_handle *dth)
 {
 	daos_anchor_t		 *anchor = NULL;
 	struct vos_iterator	 *iter;
@@ -750,6 +766,7 @@ vos_iterate_internal(vos_iter_param_t *param, vos_iter_type_t type,
 	
 probe:
 	rc = vos_iter_probe_ex(ih, anchor, probe_flags);
+	
 	if (rc < 0) {
 		if (rc == -DER_NONEXIST || rc == -DER_AGAIN) {
 			daos_anchor_set_eof(anchor);
@@ -764,9 +781,10 @@ probe:
 		rc = advance_stage(type, rc, param, anchors, anchor, &stage, stage, &probe_flags);
 
 		// 根据rc的返回值(ITER_EXIT/...)来判断走哪个goto标签
-		// ITER_ABORT/ITER_NEXT : next
-		// ITER_PROBE :           probe
-		// ITER_EXIT:             out
+		// ITER_NEXT :                  next
+		// ITER_PROBE :                 probe
+		// ITER_EXIT:                   out
+		// ITER_ABORT/ITER_CONTINUE ：   走下面的while
 		JUMP_TO_STAGE(rc, next, probe, out);
 	}
 
@@ -880,9 +898,15 @@ out:
  * Iterate a VOS key tree based on an open tree handle.
  */
 int
-vos_iterate_key(struct vos_object *obj, daos_handle_t toh, vos_iter_type_t type,
-		const daos_epoch_range_t *epr, bool ignore_inprogress,
-		vos_iter_cb_t cb, void *arg, struct dtx_handle *dth, daos_anchor_t *anchor)
+vos_iterate_key(struct vos_object *obj,
+                       daos_handle_t toh,      //  打开的dkey or akey树的句柄
+                       vos_iter_type_t type,   //  VOS_ITER_DKEY  or  VOS_ITER_AKEY
+		               const daos_epoch_range_t *epr,
+		               bool ignore_inprogress,  //  true
+		               vos_iter_cb_t cb,        // 迭代完成后的回调     --empty_tree_check 
+		               void *arg,               // 回调需要处理的参数
+		               struct dtx_handle *dth, 
+		               daos_anchor_t *anchor)   // 可选的迭代开始的游标， NULL从头开始
 {
 	struct vos_iter_anchors	*anchors = NULL;
 	vos_iter_param_t	     param   = {0};

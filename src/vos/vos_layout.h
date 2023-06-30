@@ -52,6 +52,7 @@ struct vos_gc_bin_df {
 };
 
 struct vos_gc_bag_df {
+	
 	/** index of the first item in FIFO */
 	uint16_t		bag_item_first;
 	/** index of the last item in FIFO */
@@ -62,12 +63,13 @@ struct vos_gc_bag_df {
 	uint16_t		bag_pad16;
 	/** next GC bag chained on vos_gc_bin_df */
 	umem_off_t		bag_next;
+	
 	struct vos_gc_item {
 		/* address of the item to be freed */
 		umem_off_t		it_addr;
 		/** Reserved, argument for GC_VEA/BIO (e.g. size of extent) */
 		uint64_t		it_args;
-	}			bag_items[0];
+	} bag_items[0];
 };
 
 enum vos_gc_type {
@@ -136,12 +138,15 @@ struct vos_pool_df {
 	uint64_t				pd_cont_nr;
 	/** offset for the btree of the dedup table (placeholder) */
 	umem_off_t				pd_dedup;
+	
 	/** Typed PMEMoid pointer for the container index table */
 	// container树的根节点
 	struct btr_root			pd_cont_root;
 	/** Free space tracking for NVMe device */
+	
 	// vea的内存盘数据结构
 	struct vea_space_df		pd_vea_df;
+	
 	/** GC bins for container/object/dkey... */
 	struct vos_gc_bin_df	pd_gc_bins[GC_MAX];
 };
@@ -323,6 +328,10 @@ struct vos_krec_df {
 			struct btr_root			kr_btr; // dkey树里面存的akey树的树根
 			                                // akey树里面村的sv-tree(single-tree)树的根
 			/** Offset of known existing akey */
+
+			// 1. key_tree_punch: 如果kr_known_akey这个偏移和dkey或者akey的ktr_df的值相等，置kr_known_akey为0x1
+			// 2. tree_is_empty:
+			// 3. 子树为空的，kr_known_akey置为0； 子树非空的，kr_known_akey置为ktr_df；
 			umem_off_t			kr_known_akey;
 		};
 		/** evtree root, which is only used by akey */

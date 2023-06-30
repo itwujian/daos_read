@@ -535,24 +535,28 @@ vos_ilog_punch_(struct vos_container *cont, struct ilog_df *ilog,
 
 	if (rc == -DER_NONEXIST)
 		return -DER_NONEXIST;
+	
 	if (rc != 0) {
-		D_ERROR("Could not update ilog %p at "DF_X64": "DF_RC"\n",
-			ilog, epr->epr_hi, DP_RC(rc));
+		D_ERROR("Could not update ilog %p at "DF_X64": "DF_RC"\n", ilog, epr->epr_hi, DP_RC(rc));
 		return rc;
 	}
 
 	rc = vos_ilog_update_check(info, &max_epr);
 	if (rc == -DER_NONEXIST)
 		return -DER_NONEXIST;
+	
 	if (rc != 0) {
 		D_ERROR("Check failed: "DF_RC"\n", DP_RC(rc));
 		return rc;
 	}
+	
 	if (!leaf)
 		return 0;
 
 punch_log:
+
 	vos_ilog_desc_cbs_init(&cbs, vos_cont2hdl(cont));
+	
 	rc = ilog_open(vos_cont2umm(cont), ilog, &cbs, &loh);
 	if (rc != 0) {
 		D_ERROR("Could not open incarnation log: "DF_RC"\n", DP_RC(rc));
