@@ -451,9 +451,7 @@ csum_copy_inline(int type, vos_iter_entry_t *ent, struct ds_obj_enum_arg *arg,
 		orig_data_len = ent->ie_orig_recx.rx_nr * ent->ie_rsize;
 		ent_to_verify.ie_recx = ent->ie_orig_recx;
 		ent_to_verify.ie_biov.bi_data_len = orig_data_len;
-		ent_to_verify.ie_biov.bi_addr.ba_off -=
-			ent->ie_recx.rx_idx -
-			ent->ie_orig_recx.rx_idx;
+		ent_to_verify.ie_biov.bi_addr.ba_off -= ent->ie_recx.rx_idx - ent->ie_orig_recx.rx_idx;
 
 		D_ALLOC(data_to_verify.iov_buf, orig_data_len);
 		if (data_to_verify.iov_buf == NULL)

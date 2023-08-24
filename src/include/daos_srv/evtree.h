@@ -292,15 +292,15 @@ enum evt_feats {
 /* Information about record to insert */
 struct evt_entry_in {
 	/** Extent to insert */
-	struct evt_rect		ei_rect;
+	struct evt_rect		  ei_rect;
 	/** checksum of entry */
-	struct dcs_csum_info	ei_csum;
+	struct dcs_csum_info  ei_csum;
 	/** epoch uncertainty boundary */
-	daos_epoch_t		ei_bound;
+	daos_epoch_t		  ei_bound;
 	/** pool map version */
 	uint32_t		ei_ver;
 	/** number of bytes per record, zero for punch */
-	uint32_t		ei_inob;
+	uint32_t		ei_inob;    //  iod->iod_sizeS
 	/** Address of record to insert */
 	bio_addr_t		ei_addr;
 };

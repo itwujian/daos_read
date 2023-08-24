@@ -1153,8 +1153,7 @@ pool_query_space(uuid_t pool_uuid, struct daos_pool_space *x_ps)
 
 	/* Exclude the sys reserved space before reporting to user */
 	if (SCM_FREE(vps) > SCM_SYS(vps))
-		x_ps->ps_space.s_free[DAOS_MEDIA_SCM] =
-				SCM_FREE(vps) - SCM_SYS(vps);
+		x_ps->ps_space.s_free[DAOS_MEDIA_SCM] = SCM_FREE(vps) - SCM_SYS(vps);
 	else
 		x_ps->ps_space.s_free[DAOS_MEDIA_SCM] = 0;
 

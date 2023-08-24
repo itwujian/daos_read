@@ -2098,14 +2098,14 @@ exec:
 	/* The ones without DELAY flag will be skipped when scan the targets array. */
 	dlh->dlh_forward_cnt = dlh->dlh_normal_sub_cnt + dlh->dlh_delay_sub_cnt;
 
-	rc = dss_ult_create(dtx_leader_exec_ops_ult, &ult_arg, DSS_XS_IOFW,
-			            dss_get_module_info()->dmi_tgt_id, DSS_DEEP_STACK_SZ, NULL);
+	rc = dss_ult_create(dtx_leader_exec_ops_ult, &ult_arg, DSS_XS_IOFW, dss_get_module_info()->dmi_tgt_id, DSS_DEEP_STACK_SZ, NULL);
 	if (rc != 0) {
 		D_ERROR("ult create failed (4): "DF_RC"\n", DP_RC(rc));
 		ABT_future_free(&dlh->dlh_future);
 		goto out;
 	}
 
+    // 等待所有的都回来dtx
 	remote_rc = dtx_leader_wait(dlh);
 	if (remote_rc != 0 && remote_rc != allow_failure)
 		rc = remote_rc;

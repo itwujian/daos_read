@@ -41,14 +41,15 @@ enum BIO_FLAG {
 };
 
 typedef struct {
-	/*
-	 * Byte offset within PMDK pmemobj pool for SCM;
-	 * Byte offset within SPDK blob for NVMe.
-	 */
+	
+	/* Byte offset within PMDK pmemobj pool for SCM;
+	 * Byte offset within SPDK blob for NVMe. */
 	uint64_t	ba_off;
+	
 	/* DAOS_MEDIA_SCM or DAOS_MEDIA_NVME */
 	uint8_t		ba_type;
 	uint8_t		ba_pad1;
+
 	/* See BIO_FLAG enum */
 	uint16_t	ba_flags;
 	uint32_t	ba_pad2;

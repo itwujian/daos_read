@@ -114,6 +114,9 @@ D_CASSERT(sizeof(((struct dtx_cf_rec_bundle *)0)->dcrb_rank) +
 
 uint32_t dtx_rpc_helper_thd;
 
+
+
+// 单个的响应回来，只有DTX_REFRESH消息有特殊的处理
 static void
 dtx_req_cb(const struct crt_cb_info *cb_info)
 {
@@ -131,17 +134,24 @@ dtx_req_cb(const struct crt_cb_info *cb_info)
 		goto out;
 
 	dout = crt_reply_get(req);
+
+	// dtx_commit消息的发送后回的响应，没有特殊处理的，do_misc
 	if (dra->dra_opc == DTX_COMMIT) {
 		*dra->dra_committed += dout->do_misc;
 		D_GOTO(out, rc = dout->do_status);
 	}
 
 	if (dout->do_status != 0 || dra->dra_opc != DTX_REFRESH)
+		// 非DTX_REFRESH的消息这里直接就出去了，不在走下面
 		D_GOTO(out, rc = dout->do_status);
+
+// 走到这里要求：dout->do_status == 0 && dra->dra_opc == DTX_REFRESH
 
 	if (din->di_dtx_array.ca_count != dout->do_sub_rets.ca_count)
 		D_GOTO(out, rc = -DER_PROTO);
 
+//  只有DTX_REFRESH消息会走下面
+//  要求所有的DTX_REFRESH消息都回来了，然后获取每1个的执行结果
 	for (i = 0; i < dout->do_sub_rets.ca_count; i++) {
 		struct dtx_share_peer	*dsp;
 		int			*ret;
@@ -155,14 +165,16 @@ dtx_req_cb(const struct crt_cb_info *cb_info)
 		ret = (int *)dout->do_sub_rets.ca_arrays + i;
 
 		switch (*ret) {
+			
 			case DTX_ST_PREPARED:
-				// dtx_refresh消息从别的节点查询回来，有节点还没有prepared,则挂链
+				// dtx_refresh消息从主节点查询回来，节点还没有committable则挂链
 				/* Not committable yet. */
 				if (dra->dra_act_list != NULL)
 					d_list_add_tail(&dsp->dsp_link, dra->dra_act_list);
 				else
 					dtx_dsp_free(dsp);
 				break;
+				
 			case DTX_ST_COMMITTABLE:
 				/*
 				 * Committable, will be committed soon.
@@ -172,18 +184,26 @@ dtx_req_cb(const struct crt_cb_info *cb_info)
 				/* Has been committed on leader, we may miss related
 				 * commit request, so let's commit it locally.
 				 */
+
+			    // 主告诉我其余节点都已经提交了，我也提交把，嘛法哎，主说了算
 				rc1 = vos_dtx_commit(dra->dra_cont->sc_hdl, &dsp->dsp_xid, 1, NULL);
-				if (rc1 < 0 && rc1 != -DER_NONEXIST &&
-				    dra->dra_cmt_list != NULL)
+			
+				if (rc1 < 0 && rc1 != -DER_NONEXIST && dra->dra_cmt_list != NULL)
+					// 糟了，我提交失败了，那就入链表把：dra->dra_cmt_list
 					d_list_add_tail(&dsp->dsp_link, dra->dra_cmt_list);
 				else
 					dtx_dsp_free(dsp);
+				
 				break;
+				
 			case DTX_ST_CORRUPTED:
+				// 有些兄弟伙的副本信息丢失了，那就不能用了
 				/* The DTX entry is corrupted. */
 				dtx_dsp_free(dsp);
 				D_GOTO(out, rc = -DER_DATA_LOSS);
+			
 			case -DER_TX_UNCERTAIN:
+				// 主上的dtx信息不存在了
 				/* Related DTX entry on leader does not exist. We do not know whether it has
 				 * been aborted or committed (then removed by DTX aggregation). Then mark it
 				 * as 'orphan' that will be handled via some special DAOS tools in future.
@@ -197,6 +217,7 @@ dtx_req_cb(const struct crt_cb_info *cb_info)
 				D_ERROR("Hit uncertain leaked DTX "DF_DTI", mark it as orphan: "DF_RC"\n", DP_DTI(&dsp->dsp_xid), DP_RC(rc1));
 				dtx_dsp_free(dsp);
 				D_GOTO(out, rc = -DER_TX_UNCERTAIN);
+				
 			case -DER_NONEXIST:
 				/* The leader does not have related DTX info, we may miss related DTX abort
 				 * request, let's abort it locally.
@@ -208,13 +229,14 @@ dtx_req_cb(const struct crt_cb_info *cb_info)
 				else
 					dtx_dsp_free(dsp);
 				break;
+				
 			case -DER_INPROGRESS:
-				rc1 = vos_dtx_check(dra->dra_cont->sc_hdl, &dsp->dsp_xid,
-						    NULL, NULL, NULL, NULL, false);
+				rc1 = vos_dtx_check(dra->dra_cont->sc_hdl, &dsp->dsp_xid, NULL, NULL, NULL, NULL, false);
 				dtx_dsp_free(dsp);
 				if (rc1 != DTX_ST_COMMITTED && rc1 != DTX_ST_ABORTED && rc != -DER_NONEXIST)
 					D_GOTO(out, rc = *ret);
 				break;
+				
 			default:
 				dtx_dsp_free(dsp);
 				D_GOTO(out, rc = *ret);
@@ -238,14 +260,16 @@ out:
 static int
 dtx_req_send(struct dtx_req_rec *drr, daos_epoch_t epoch)
 {
-	struct dtx_req_args	*dra = drr->drr_parent;
-	crt_rpc_t		*req;
-	crt_endpoint_t		 tgt_ep;
-	crt_opcode_t		 opc;
-	struct dtx_in		*din = NULL;
-	int			 rc;
+	struct dtx_req_args	 *dra = drr->drr_parent;
+	crt_rpc_t		     *req;
+	crt_endpoint_t		  tgt_ep;
+	crt_opcode_t		  opc;
+	struct dtx_in		 *din = NULL;
+	int	rc;
 
 	tgt_ep.ep_grp = NULL;
+
+	// 发送的消息的接收端(group, rank, tgt)
 	tgt_ep.ep_rank = drr->drr_rank;
 	tgt_ep.ep_tag = daos_rpc_tag(DAOS_REQ_TGT, drr->drr_tag);
 
@@ -269,11 +293,13 @@ dtx_req_send(struct dtx_req_rec *drr, daos_epoch_t epoch)
 		}
 
 		if (dra->dra_opc == DTX_REFRESH && DAOS_FAIL_CHECK(DAOS_DTX_RESYNC_DELAY)) {
+			// DTX_REFRESH消息设置3秒的超时时间
 			rc = crt_req_set_timeout(req, 3);
 			D_ASSERTF(rc == 0, "crt_req_set_timeout failed: %d\n", rc);
 		}
 
         // dtx_req_cb, 消息发送后，等待对端接收replay后的回调，即:收到response的处理函数
+        // 消息的真实发送
 		rc = crt_req_send(req, dtx_req_cb, drr);
 	}
 
@@ -289,6 +315,7 @@ dtx_req_send(struct dtx_req_rec *drr, daos_epoch_t epoch)
 	return rc;
 }
 
+// 汇总所有的响应结果时，DTX_CHECK消息处理特殊
 static void
 dtx_req_list_cb(void **args)
 {
@@ -335,16 +362,18 @@ dtx_req_list_cb(void **args)
 	} 
 	
 	else {
-		
+		// 遍历所有的子请求
 		for (i = 0; i < dra->dra_length; i++) {
 			drr = args[i];
+			
 			if (dra->dra_result == 0 || dra->dra_result == -DER_NONEXIST)
 				dra->dra_result = drr->drr_result;
 		}
 
 		drr = args[0];
-		D_CDEBUG(dra->dra_result < 0 && dra->dra_result != -DER_NONEXIST && dra->dra_result != -DER_INPROGRESS, DLOG_ERR, DB_TRACE, "DTX req for opc %x ("DF_DTI") %s, count %d: %d.\n",
-			 dra->dra_opc, DP_DTI(drr->drr_dti), dra->dra_result < 0 ? "failed" : "succeed", dra->dra_length, dra->dra_result);
+		D_CDEBUG(dra->dra_result < 0 && dra->dra_result != -DER_NONEXIST && dra->dra_result != -DER_INPROGRESS, DLOG_ERR, DB_TRACE, 
+			"DTX req for opc %x ("DF_DTI") %s, count %d: %d.\n", dra->dra_opc, DP_DTI(drr->drr_dti), 
+			dra->dra_result < 0 ? "failed" : "succeed", dra->dra_length, dra->dra_result);
 	}
 }
 
@@ -369,7 +398,7 @@ dtx_req_list_send(struct dtx_req_args *dra, crt_opcode_t opc, int *committed, d_
 		  struct ds_cont_child *cont, d_list_t *cmt_list,
 		  d_list_t *abt_list, d_list_t *act_list)
 {
-	ABT_future		 future;
+	ABT_future		    future;
 	struct dtx_req_rec	*drr;
 	int			 rc;
 	int			 i = 0;
@@ -396,14 +425,19 @@ dtx_req_list_send(struct dtx_req_args *dra, crt_opcode_t opc, int *committed, d_
 	D_DEBUG(DB_TRACE, "DTX req for opc %x, future %p start.\n", opc, future);
 	
 	dra->dra_future = future;
-	
+
+	// 遍历待发送链表:head, 里面是1个个的drr(dtx_req_rec)
 	d_list_for_each_entry(drr, head, drr_link) {
+	
 		drr->drr_parent = dra;
 		drr->drr_result = 0;
 
+        // unlikely表示这个分支判断为false的概率更大，执行else的概率更高
+        // 写这个的目的是把这个程序的预取告诉CPU，CPU也会预取else的指令，提升CPU的性能
 		if (unlikely(opc == DTX_COMMIT && i == 0 && DAOS_FAIL_CHECK(DAOS_DTX_FAIL_COMMIT)))
 			rc = dtx_req_send(drr, 1);
 		else
+			// dtx消息发送
 			rc = dtx_req_send(drr, epoch);
 		
 		if (rc != 0) {
@@ -966,6 +1000,7 @@ dtx_refresh_internal(struct ds_cont_child *cont, int *check_count,
 	struct dtx_share_peer	*tmp;
 	struct dtx_req_rec	    *drr;
 	struct dtx_req_args	     dra;
+	
 	d_list_t		 head;
 	d_list_t		 self;
 	d_rank_t		 myrank;
@@ -977,8 +1012,11 @@ dtx_refresh_internal(struct ds_cont_child *cont, int *check_count,
 
 	D_INIT_LIST_HEAD(&head);
 	D_INIT_LIST_HEAD(&self);
+
+	// 获取当前的rank号
 	crt_group_rank(NULL, &myrank);
 
+    // 1. 遍历 dth->dth_share_tbd_list 链表, 该链表里面存放的是1个个的dtx_share_peer
 	d_list_for_each_entry_safe(dsp, tmp, check_list, dsp_link) {
 		count = 0;
 		drop = false;
@@ -995,6 +1033,8 @@ dtx_refresh_internal(struct ds_cont_child *cont, int *check_count,
 		}
 
 again:
+        // 2. 获取当前dsp中的tgt(The first UPIN target is the leader of the DTX)
+        //    哪个tgt是当前dtx的leader
 		rc = dtx_leader_get(pool, dsp->dsp_mbs, &target);
 		if (rc < 0) {
 			/**
@@ -1012,11 +1052,15 @@ again:
 			goto next;
 		}
 
+
 		/* If current server is the leader, then two possible cases:
 		 *
 		 * 1. In DTX resync, the status may be resolved sometime later.
 		 * 2. The DTX resync is done, but failed to handle related DTX.
 		 */
+
+		//  如果当前发起dtx_refresh的就是dtx leader(rank号一致，tgt一致)，这个dsp从检查链表中摘除，不处理
+		//  这个地方还和dtx_resync相关， 主要关联性是啥???????
 		if (myrank == target->ta_comp.co_rank && dss_get_module_info()->dmi_tgt_id == target->ta_comp.co_index) {
 			d_list_del(&dsp->dsp_link);
 			d_list_add_tail(&dsp->dsp_link, &self);
@@ -1025,11 +1069,14 @@ again:
 			continue;
 		}
 
-		/* Usually, we will not elect in-rebuilding server as DTX
-		 * leader. But we may be blocked by the ABT_rwlock_rdlock,
-		 * then pool map may be refreshed during that. Let's retry
-		 * to find out the new leader.
+
+		/* Usually, we will not elect in-rebuilding server as DTX leader. 
+		   But we may be blocked by the ABT_rwlock_rdlock, then pool map may be refreshed during that. 
+		   Let's retry to find out the new leader.
 		 */
+
+		// 通常情况下，我们不会选到非PO_COMP_ST_UP和非PO_COMP_ST_UPIN状态的leader_tgt; 因为有锁可能会找到
+		// 一旦找到的leader_tgt就不是PO_COMP_ST_UP和PO_COMP_ST_UPIN状态的，重新找
 		if (target->ta_comp.co_status != PO_COMP_ST_UP && target->ta_comp.co_status != PO_COMP_ST_UPIN) {
 			if (unlikely(++count % 10 == 3))
 				D_WARN("Get stale DTX leader %u/%u (st: %x) for "DF_DTI" %d times, maybe dead loop\n",
@@ -1038,21 +1085,23 @@ again:
 			goto again;
 		}
 
+        // 这里可以确保找到的leader_tgt是UP或UP_IN才走的下来
 		if (dsp->dsp_mbs->dm_flags & DMF_CONTAIN_LEADER && dsp->dsp_mbs->dm_tgts[0].ddt_id == target->ta_comp.co_id)
 			flags = DRF_INITIAL_LEADER;
 		else
 			flags = 0;
 
+        // 同一个充当dtx leader的tgt存放在同一个dtx_req_rec下面
 		d_list_for_each_entry(drr, &head, drr_link) {
-			if (drr->drr_rank == target->ta_comp.co_rank &&
-			    drr->drr_tag == target->ta_comp.co_index) {
-				drr->drr_dti[drr->drr_count] = dsp->dsp_xid;
+			if (drr->drr_rank == target->ta_comp.co_rank && drr->drr_tag == target->ta_comp.co_index) {
+				drr->drr_dti[drr->drr_count] = dsp->dsp_xid;  // dtx_id
 				drr->drr_flags[drr->drr_count] = flags;
 				drr->drr_cb_args[drr->drr_count++] = dsp;
 				goto next;
 			}
 		}
 
+// 申请 dtx_req_rec *drr内存;
 		D_ALLOC_PTR(drr);
 		if (drr == NULL)
 			D_GOTO(out, rc = -DER_NOMEM);
@@ -1078,35 +1127,50 @@ again:
 			D_GOTO(out, rc = -DER_NOMEM);
 		}
 
-		drr->drr_rank = target->ta_comp.co_rank;
-		drr->drr_tag = target->ta_comp.co_index;
-		drr->drr_count = 1;
+		drr->drr_rank = target->ta_comp.co_rank;   // leader_rank
+		drr->drr_tag = target->ta_comp.co_index;   // leader_tgtid
+		drr->drr_count = 1;   
 		drr->drr_dti[0] = dsp->dsp_xid;
 		drr->drr_flags[0] = flags;
 		drr->drr_cb_args[0] = dsp;
-		d_list_add_tail(&drr->drr_link, &head);
+		
+		d_list_add_tail(&drr->drr_link, &head);   // 入新的临时链head
 		len++;
 
 next:
-		d_list_del_init(&dsp->dsp_link);
+		d_list_del_init(&dsp->dsp_link);   // 链表操作没有搞懂？？
+		
 		if (drop)
 			dtx_dsp_free(dsp);
 		if (--(*check_count) == 0)
 			break;
 	}
 
+
+// check list链表遍历完成；都按照dtx的leader塞到了head的新的临时链表中
 	if (len > 0) {
-		rc = dtx_req_list_send(&dra, DTX_REFRESH, NULL, &head, len,
-				       pool->sp_uuid, cont->sc_uuid, 0, cont,
-				       cmt_list, abt_list, act_list);
+		// 发送消息，dra为出参， 消息是DTX_REFRESH
+		rc = dtx_req_list_send(&dra, 
+		                       DTX_REFRESH,   //DTX_REFRESH
+		                       NULL, &head, 
+		                       len,   // 链表中drr的个数
+				               pool->sp_uuid, cont->sc_uuid, 
+				               0,    // epoch
+				               cont,
+				               cmt_list, 
+				               abt_list, 
+				               act_list);
+
+        //  发送成功，在这里等
 		if (rc == 0)
-			rc = dtx_req_wait(&dra);
+			rc = dtx_req_wait(&dra); // rc: 汇总各个节点的执行结果
 
 		if (rc != 0)
 			goto out;
 	}
 
-	/* Handle the entries whose leaders are on current server. */
+/* Handle the entries whose leaders are on current server. */
+// 处理那些当前节点就是主的dtx
 	d_list_for_each_entry_safe(dsp, tmp, &self, dsp_link) {
 		struct dtx_entry	dte;
 
@@ -1117,6 +1181,7 @@ next:
 		dte.dte_refs = 1;
 		dte.dte_mbs = dsp->dsp_mbs;
 
+        // 调用dtx_check
 		rc = dtx_status_handle_one(cont, &dte, dsp->dsp_epoch, NULL, NULL);
 		switch (rc) {
 			case DSHR_NEED_COMMIT: {
@@ -1162,14 +1227,15 @@ next:
 	rc = 0;
 
 out:
-	while ((drr = d_list_pop_entry(&head, struct dtx_req_rec,
-				       drr_link)) != NULL) {
+	// 处理完毕，释放临时链表head
+	while ((drr = d_list_pop_entry(&head, struct dtx_req_rec, drr_link)) != NULL) {
 		D_FREE(drr->drr_cb_args);
 		D_FREE(drr->drr_dti);
 		D_FREE(drr->drr_flags);
 		D_FREE(drr);
 	}
 
+   // 释放自己就是主的链表
 	while ((dsp = d_list_pop_entry(&self, struct dtx_share_peer, dsp_link)) != NULL)
 		dtx_dsp_free(dsp);
 
@@ -1187,8 +1253,8 @@ out:
  */
 
 // 由于异步批量提交的语义，就会导致dtx的状态在leader和非leader上不同。
-// leader上当然知道dtx是否提交了，但是非leader却不知道集群内的事务情况。
-// dtx_refresh用于非leader向leader查询dtx状态，用于某些特定场景
+// leader上当然知道dtx是否提交了，但是非leader却不知道集群内的dtx是否还在prepare。
+// dtx_refresh用于非leader向leader查询dtx是否已经commit了，
 			 
 int
 dtx_refresh(struct dtx_handle *dth, struct ds_cont_child *cont)
@@ -1198,24 +1264,28 @@ dtx_refresh(struct dtx_handle *dth, struct ds_cont_child *cont)
 	if (DAOS_FAIL_CHECK(DAOS_DTX_NO_RETRY))
 		return -DER_IO;
 
-	rc = dtx_refresh_internal(cont, &dth->dth_share_tbd_count,
-				  &dth->dth_share_tbd_list,
-				  &dth->dth_share_cmt_list,
-				  &dth->dth_share_abt_list,
-				  &dth->dth_share_act_list, true);
 
-	/* If we can resolve the DTX status, then return -DER_AGAIN
-	 * to the caller that will retry related operation locally.
-	 */
+    // 遍历dth_share_tbd_list链表， 输出cmt/abt/act链表
+	rc = dtx_refresh_internal(cont,            //  ds_cont_child
+	              &dth->dth_share_tbd_count,   //  DTX list cont
+				  &dth->dth_share_tbd_list,    //  DTX list to be checked
+				  &dth->dth_share_cmt_list,    //  Committed or comittable DTX list 
+				  &dth->dth_share_abt_list,    //  Aborted DTX list
+				  &dth->dth_share_act_list,    //  Active DTX list
+				  true);                       //  失败了是否就结束退出
+				                               //  (1.dtx_refresh函数为true 2.dtx_cleanup为false)
+
+	/* If we can resolve the DTX status, then return -DER_AGAIN to the caller that will retry related operation locally. */
 	if (rc == 0) {
+		
 		D_ASSERT(dth->dth_share_tbd_count == 0);
 
 		if (dth->dth_aborted) {
-			rc = -DER_CANCELED;
+			rc = -DER_CANCELED;  // 1018: Operation canceled
 		} else {
 			vos_dtx_cleanup(dth, false);
 			dtx_handle_reinit(dth);
-			rc = -DER_AGAIN;
+			rc = -DER_AGAIN;    // 1013:  Try again
 		}
 	}
 

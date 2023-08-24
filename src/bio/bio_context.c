@@ -848,11 +848,10 @@ bio_write_blob_hdr(struct bio_io_context *ioctxt, struct bio_blob_hdr *bio_bh)
 
 	bio_addr_set(&addr, dev_type, off);
 
-	/*
-	 * Set all BIO-related members of blob header.
-	 */
+	// Set all BIO-related members of blob header.
 	bio_bh->bbh_magic = BIO_BLOB_HDR_MAGIC;
 	bio_bh->bbh_vos_id = (uint32_t)ioctxt->bic_xs_ctxt->bxc_tgt_id;
+	
 	/* Query per-server metadata to get blobID for this pool:target */
 	rc = smd_pool_get_blob(bio_bh->bbh_pool, bio_bh->bbh_vos_id, &blob_id);
 	if (rc) {

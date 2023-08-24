@@ -47,10 +47,8 @@ vos_space_sys_init(struct vos_pool *pool)
 	daos_size_t	scm_tot = pool->vp_pool_df->pd_scm_sz;
 	daos_size_t	nvme_tot = pool->vp_pool_df->pd_nvme_sz;
 
-	POOL_SCM_SYS(pool) =
-		get_frag_overhead(scm_tot, DAOS_MEDIA_SCM, pool->vp_small);
-	POOL_NVME_SYS(pool) =
-		get_frag_overhead(nvme_tot, DAOS_MEDIA_NVME, pool->vp_small);
+	POOL_SCM_SYS(pool) = get_frag_overhead(scm_tot, DAOS_MEDIA_SCM, pool->vp_small);
+	POOL_NVME_SYS(pool) = get_frag_overhead(nvme_tot, DAOS_MEDIA_NVME, pool->vp_small);
 
 	gc_reserve_space(&pool->vp_space_sys[0]);
 	agg_reserve_space(&pool->vp_space_sys[0]);
@@ -60,15 +58,13 @@ vos_space_sys_init(struct vos_pool *pool)
 		POOL_NVME_SYS(pool) = 0;
 
 	if ((POOL_SCM_SYS(pool) * 2) > scm_tot) {
-		D_WARN("Disable SCM space reserving for tiny pool:"DF_UUID" "
-		       "sys["DF_U64"] > tot["DF_U64"]\n",
+		D_WARN("Disable SCM space reserving for tiny pool:"DF_UUID" sys["DF_U64"] > tot["DF_U64"]\n",
 		       DP_UUID(pool->vp_id), POOL_SCM_SYS(pool), scm_tot);
 		POOL_SCM_SYS(pool) = 0;
 	}
 
 	if ((POOL_NVME_SYS(pool) * 2) > nvme_tot) {
-		D_WARN("Disable NVMe space reserving for tiny Pool:"DF_UUID" "
-		       "sys["DF_U64"] > tot["DF_U64"]\n",
+		D_WARN("Disable NVMe space reserving for tiny Pool:"DF_UUID" sys["DF_U64"] > tot["DF_U64"]\n",
 		       DP_UUID(pool->vp_id), POOL_NVME_SYS(pool), nvme_tot);
 		POOL_NVME_SYS(pool) = 0;
 	}

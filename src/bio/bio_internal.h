@@ -420,19 +420,19 @@ struct bio_desc {
 	/* DMA buffers reserved by this io descriptor */
 	struct bio_rsrvd_dma	 bd_rsrvd;
 	/* Report blob i/o completion */
-	ABT_eventual		 bd_dma_done;
+	ABT_eventual		     bd_dma_done;
 	/* Inflight SPDK DMA transfers */
-	unsigned int		 bd_inflights;
-	int			 bd_result;
-	unsigned int		 bd_chk_type;
-	unsigned int		 bd_type;
+	unsigned int		     bd_inflights;
+	int			             bd_result;
+	unsigned int		     bd_chk_type;
+	unsigned int		     bd_type;
 	/* Flags */
 	unsigned int		 bd_buffer_prep:1,
-				 bd_dma_issued:1,
-				 bd_retry:1,
-				 bd_rdma:1,
-				 bd_copy_dst:1,
-				 bd_in_fifo:1;
+				         bd_dma_issued:1,
+				         bd_retry:1,
+				         bd_rdma:1,
+				         bd_copy_dst:1,
+				         bd_in_fifo:1;
 	/* Cached bulk handles being used by this IOD */
 	struct bio_bulk_hdl    **bd_bulk_hdls;
 	unsigned int		 bd_bulk_max;

@@ -167,6 +167,7 @@ dtx_inprogress(struct vos_dtx_act_ent *dae, struct dtx_handle *dth,
 	mbs->dm_data_size = DAE_MBS_DSIZE(dae);
 	mbs->dm_flags = DAE_MBS_FLAGS(dae);
 	mbs->dm_dte_flags = DAE_FLAGS(dae);
+	
 	if (DAE_MBS_DSIZE(dae) <= sizeof(DAE_MBS_INLINE(dae))) {
 		memcpy(mbs->dm_data, DAE_MBS_INLINE(dae), DAE_MBS_DSIZE(dae));
 	} else {
@@ -626,6 +627,9 @@ do_dtx_rec_release(struct umem_instance *umm, struct vos_container *cont,
 	return rc;
 }
 
+
+// 1. 调用者： vos_dtx_commit_one/vos_dtx_abort
+// 2. 遍历释放 dae->dae_records/DAE_REC_INLINE   ->  do_dtx_rec_release
 static int
 dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae, bool abort)
 {
@@ -692,8 +696,8 @@ dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae, bool ab
 
 		dbd->dbd_count--;
 	} else {
-		struct vos_cont_df	*cont_df = cont->vc_cont_df;
-		umem_off_t		 dbd_off;
+		struct vos_cont_df	    *cont_df = cont->vc_cont_df;
+		umem_off_t		        dbd_off;
 		struct vos_dtx_blob_df	*tmp;
 
 		dbd_off = umem_ptr2off(umm, dbd);
@@ -739,8 +743,9 @@ dtx_rec_release(struct vos_container *cont, struct vos_dtx_act_ent *dae, bool ab
 //  主要干的事情：
 //  1. 用dti为key,在active树上找到dae
 //  2. 用dae中的值构造dce,然后将dce插入committed树上
-//  3. ilog的话删掉dae中对应的record
-//     evtree,svtree置committed
+//  3. ilog的话删掉dae中对应的record            ->  dtx_ilog_rec_release
+//     evtree,svtree置committed         ->  在dae->record数组中记录了svtree和evtree的叶子节点的地址； svtree是vos_irec_df,evtree是desc
+//                                         这里拿到这个地址就可以直接把这个record的状态改成commit还是abort  
 static int
 vos_dtx_commit_one(struct vos_container *cont, struct dtx_id *dti, daos_epoch_t epoch,
 		   daos_epoch_t cmt_time, struct vos_dtx_cmt_ent **dce_p,
@@ -793,6 +798,7 @@ vos_dtx_commit_one(struct vos_container *cont, struct dtx_id *dti, daos_epoch_t 
 		 * from the active table, just remove it again.
 		 */
 		if (dae->dae_committed) {
+			// 如果已经提交了，删除active树上的record, 删除container里面记录的dtx->array数组
 			rc = dbtree_delete(cont->vc_dtx_active_hdl, BTR_PROBE_BYPASS, &kiov, &dae);
 			if (rc == 0) {
 				dtx_act_ent_cleanup(cont, dae, NULL, false);
@@ -1016,7 +1022,8 @@ vos_dtx_alloc(struct vos_dtx_blob_df *dbd, struct dtx_handle *dth)
 // key-ilog: 将obj、dkey、akey的ilog的根节点作为record写入dae->dae_records或dae->dae_base.dae_rec_inline
 static int
 vos_dtx_append(struct dtx_handle *dth, 
-                     umem_off_t record, /* ilog的根节点作为record传入, obj、dkey、akey */
+                     umem_off_t record,    /* ilog的根节点作为record传入, obj、dkey、akey */   
+                                           // evtree的evt_desc作为record传入
                      uint32_t type)
 {
 	struct vos_dtx_act_ent		*dae = dth->dth_ent;
@@ -1052,7 +1059,9 @@ vos_dtx_append(struct dtx_handle *dth,
 		rec = &dae->dae_records[DAE_REC_CNT(dae) - DTX_INLINE_REC_CNT];
 	}
 
+    // 在dae->dae_records数组的后面存放record的地址信息
 	*rec = record;
+	
 	dtx_type2umoff_flag(rec, type);
 
 	/* The rec_cnt on-disk value will be refreshed via vos_dtx_prepared() */
@@ -1431,6 +1440,7 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 
     // dth_need_validation: 只有leader在dtx_iter_fetch时会置为true
     // 如果需要校验但是还没有校验，进行一把校验
+    // 主要就是查找active树和commt树来获取dtx的提交状态
 	if (dth->dth_need_validation && !dth->dth_verified) {
 		rc = vos_dtx_validation(dth);
 		switch (rc) {
@@ -1493,6 +1503,7 @@ vos_dtx_register_record(struct umem_instance *umm, umem_off_t record,
 		dth->dth_active = 1;
 	}
 
+    // 这里的主要作用就是在dae->dae_records中塞入record的内存地址
 	rc = vos_dtx_append(dth, record, type);
 	if (rc == 0) {
 		/* Incarnation log entry implies a share */
@@ -1512,7 +1523,9 @@ out:
 /* The caller has started PMDK transaction. */
 void
 vos_dtx_deregister_record(struct umem_instance *umm, daos_handle_t coh,
-			  uint32_t entry, daos_epoch_t epoch, umem_off_t record)
+			                         uint32_t entry,       //    DAE_LID
+			                         daos_epoch_t epoch,   //    entry, epoch 在cont->vc_dtx_array查找对应的dae
+			                         umem_off_t record)    //    释放掉dae->record[]中这个的record
 {
 	struct vos_container		*cont;
 	struct vos_dtx_act_ent		*dae;

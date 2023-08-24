@@ -150,7 +150,8 @@ dtx_handler(crt_rpc_t *rpc)
 
 	rc = ds_cont_child_lookup(din->di_po_uuid, din->di_co_uuid, &cont);
 	if (rc != 0) {
-		D_ERROR("Failed to locate pool="DF_UUID" cont="DF_UUID" for DTX rpc %u: rc = "DF_RC"\n", DP_UUID(din->di_po_uuid), DP_UUID(din->di_co_uuid), opc, DP_RC(rc));
+		D_ERROR("Failed to locate pool="DF_UUID" cont="DF_UUID" for DTX rpc %u: rc = "DF_RC"\n", 
+			DP_UUID(din->di_po_uuid), DP_UUID(din->di_co_uuid), opc, DP_RC(rc));
 		goto out;
 	}
 
@@ -238,6 +239,7 @@ dtx_handler(crt_rpc_t *rpc)
 			if (count == 0)
 				D_GOTO(out, rc = 0);
 
+            // 不能大于4个?????
 			if (count > DTX_REFRESH_MAX)
 				D_GOTO(out, rc = -DER_PROTO);
 
@@ -259,10 +261,13 @@ dtx_handler(crt_rpc_t *rpc)
 			flags = din->di_flags.ca_arrays;
 
 			for (i = 0, rc1 = 0; i < count; i++) {
+				
 				ptr = (int *)dout->do_sub_rets.ca_arrays + i;
 				dtis = (struct dtx_id *)din->di_dtx_array.ca_arrays + i;
-			
+
+				// core function
 				*ptr = vos_dtx_check(cont->sc_hdl, dtis, NULL, &vers[i], &mbs[i], &dcks[i], true);
+				
 				if (*ptr == -DER_NONEXIST && !(flags[i] & DRF_INITIAL_LEADER)) {
 					struct dtx_stat		stat = { 0 };
 
@@ -286,6 +291,8 @@ dtx_handler(crt_rpc_t *rpc)
 					*ptr = DTX_ST_PREPARED;
 				}
 
+                // 其实这里是统计的commitbale的数量
+                // dae->dae_committable || DAE_FLAGS(dae) & DTE_PARTIAL_COMMITTED
 				if (mbs[i] != NULL)
 					rc1++;
 			}
@@ -312,7 +319,9 @@ out:
 	if (likely(dpm != NULL))
 		d_tm_inc_counter(dpm->dpm_total[opc], 1);
 
+// Commit the DTX after replied the original refresh request to avoid further query the same DTX.
 	if (opc == DTX_REFRESH && rc1 > 0) {
+		
 		struct dtx_entry	 dtes[DTX_REFRESH_MAX] = { 0 };
 		struct dtx_entry	*pdte[DTX_REFRESH_MAX] = { 0 };
 		int			 j;

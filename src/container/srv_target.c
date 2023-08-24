@@ -771,22 +771,17 @@ cont_child_stop(struct ds_cont_child *cont_child)
 {
 	struct ds_cont_hdl	*hdl;
 
-	while ((hdl = d_list_pop_entry(&cont_child->sc_open_hdls,
-				       struct ds_cont_hdl, sch_link)) != NULL) {
-		D_DEBUG(DB_MD, "Force closing container open handle "DF_UUID"/"DF_UUID"\n",
-			DP_UUID(cont_child->sc_uuid), DP_UUID(hdl->sch_uuid));
+	while ((hdl = d_list_pop_entry(&cont_child->sc_open_hdls, struct ds_cont_hdl, sch_link)) != NULL) {
+		D_DEBUG(DB_MD, "Force closing container open handle "DF_UUID"/"DF_UUID"\n", DP_UUID(cont_child->sc_uuid), DP_UUID(hdl->sch_uuid));
 
+	    //
 		cont_close_hdl(hdl->sch_uuid);
 	}
 
-	/* Some ds_cont_child will only created by ds_cont_child_lookup().
-	 * never be started at all
-	 */
+	/* Some ds_cont_child will only created by ds_cont_child_lookup(). never be started at all */
 	if (cont_child_started(cont_child)) {
-		D_DEBUG(DB_MD, DF_CONT"[%d]: Stopping container\n",
-			DP_CONT(cont_child->sc_pool->spc_uuid,
-				cont_child->sc_uuid),
-			dss_get_module_info()->dmi_tgt_id);
+		
+		D_DEBUG(DB_MD, DF_CONT"[%d]: Stopping container\n", DP_CONT(cont_child->sc_pool->spc_uuid, cont_child->sc_uuid), dss_get_module_info()->dmi_tgt_id);
 
 		cont_child->sc_stopping = 1;
 		d_list_del_init(&cont_child->sc_link);
@@ -795,6 +790,7 @@ cont_child_stop(struct ds_cont_child *cont_child)
 
 		/* cont_stop_agg() may yield */
 		cont_stop_agg(cont_child);
+		
 		ds_cont_child_put(cont_child);
 	}
 }
@@ -1074,8 +1070,7 @@ cont_destroy_wait(struct ds_pool_child *child, uuid_t co_uuid)
 	struct sched_req_attr	 attr;
 	struct sched_request	*req;
 
-	D_DEBUG(DB_MD, DF_CONT": wait container destroy\n",
-		DP_CONT(child->spc_uuid, co_uuid));
+	D_DEBUG(DB_MD, DF_CONT": wait container destroy\n", DP_CONT(child->spc_uuid, co_uuid));
 
 	D_ASSERT(child != NULL);
 	sched_req_attr_init(&attr, SCHED_REQ_FETCH, &child->spc_uuid);
@@ -1093,65 +1088,65 @@ cont_destroy_wait(struct ds_pool_child *child, uuid_t co_uuid)
 	}
 	sched_req_put(req);
 
-	D_DEBUG(DB_MD, DF_CONT": container destroy done\n",
-		DP_CONT(child->spc_uuid, co_uuid));
+	D_DEBUG(DB_MD, DF_CONT": container destroy done\n", DP_CONT(child->spc_uuid, co_uuid));
 #endif
 }
 
 /*
- * Called via dss_collective() to destroy the ds_cont object as well as the vos
- * container.
+ * Called via dss_collective() to destroy the ds_cont object as well as the vos container.
  */
 static int
 cont_child_destroy_one(void *vin)
 {
-	struct dsm_tls		       *tls = dsm_tls_get();
+	struct dsm_tls		           *tls = dsm_tls_get();
 	struct cont_tgt_destroy_in     *in = vin;
 	struct ds_pool_child	       *pool;
-	int				rc, retry_cnt = 0;
+	int	 rc, retry_cnt = 0;
 
+    // 1. 拿着pool_id在pool_tls->dt_pool_list链表上找到ds_pool_child
 	pool = ds_pool_child_lookup(in->tdi_pool_uuid);
 	if (pool == NULL)
 		D_GOTO(out, rc = -DER_NO_HDL);
 
 	while (1) {
+		
 		struct ds_cont_child *cont;
 
-		rc = cont_child_lookup(tls->dt_cont_cache, in->tdi_uuid,
-				       in->tdi_pool_uuid, false /* create */,
-				       &cont);
+        // 2. 拿着cont_id找到ds_cont_child
+		rc = cont_child_lookup(tls->dt_cont_cache, in->tdi_uuid, in->tdi_pool_uuid, false /* create */,  &cont);
 		if (rc == -DER_NONEXIST)
 			break;
+		
 		if (rc != 0)
 			D_GOTO(out_pool, rc);
 
+        // 3. 如果还有open的，那么就不能删除，返回busy
 		if (cont->sc_open > 0) {
-			D_ERROR(DF_CONT": Container is still in open(%d)\n",
-				DP_CONT(cont->sc_pool->spc_uuid,
-					cont->sc_uuid), cont->sc_open);
+			D_ERROR(DF_CONT": Container is still in open(%d)\n", DP_CONT(cont->sc_pool->spc_uuid, cont->sc_uuid), cont->sc_open);
 			cont_child_put(tls->dt_cont_cache, cont);
 			rc = -DER_BUSY;
 			goto out_pool;
 		}
 
+        // 4. 干的事情不少，要仔细看看
 		cont_child_stop(cont);
 
+        // 5. 如果还有dtx resyn的要等resync结束
 		ABT_mutex_lock(cont->sc_mutex);
 		if (cont->sc_dtx_resyncing)
 			ABT_cond_wait(cont->sc_dtx_resync_cond, cont->sc_mutex);
 		ABT_mutex_unlock(cont->sc_mutex);
 
 		/* Make sure checksum scrubbing has stopped */
+		// 6. 等check sum结束
 		ABT_mutex_lock(cont->sc_mutex);
 		if (cont->sc_scrubbing) {
 			sched_req_wakeup(cont->sc_pool->spc_scrubbing_req);
 			ABT_cond_wait(cont->sc_scrub_cond, cont->sc_mutex);
 		}
 		ABT_mutex_unlock(cont->sc_mutex);
-		/*
-		 * If this is the last user, ds_cont_child will be removed from
-		 * hash & freed on put.
-		 */
+		
+		/* If this is the last user, ds_cont_child will be removed from hash & freed on put. */
 		cont_child_put(tls->dt_cont_cache, cont);
 
 		retry_cnt++;
@@ -1161,8 +1156,7 @@ cont_child_destroy_one(void *vin)
 		} /* else: resync should have completed, try again */
 	}
 
-	D_DEBUG(DB_MD, DF_CONT": destroying vos container\n",
-		DP_CONT(pool->spc_uuid, in->tdi_uuid));
+	D_DEBUG(DB_MD, DF_CONT": destroying vos container\n", DP_CONT(pool->spc_uuid, in->tdi_uuid));
 
 	rc = vos_cont_destroy(pool->spc_hdl, in->tdi_uuid);
 	if (rc == -DER_NONEXIST) {
@@ -1171,8 +1165,7 @@ cont_child_destroy_one(void *vin)
 		 * the container has never been opened */
 		rc = 0;
 	} else if (rc) {
-		D_ERROR(DF_CONT": destroy vos container failed "DF_RC"\n",
-			DP_CONT(pool->spc_uuid, in->tdi_uuid), DP_RC(rc));
+		D_ERROR(DF_CONT": destroy vos container failed "DF_RC"\n", DP_CONT(pool->spc_uuid, in->tdi_uuid), DP_RC(rc));
 	} else {
 		/* Wakeup GC ULT */
 		sched_req_wakeup(pool->spc_gc_req);
@@ -1194,8 +1187,7 @@ ds_cont_tgt_destroy(uuid_t pool_uuid, uuid_t cont_uuid)
 
 	rc = ds_pool_lookup(pool_uuid, &pool);
 	if (rc != 0) {
-		D_DEBUG(DB_MD, DF_UUID" lookup pool failed: %d\n",
-			DP_UUID(pool_uuid), rc);
+		D_DEBUG(DB_MD, DF_UUID" lookup pool failed: %d\n", DP_UUID(pool_uuid), rc);
 		return -DER_NO_HDL;
 	}
 
@@ -1203,12 +1195,13 @@ ds_cont_tgt_destroy(uuid_t pool_uuid, uuid_t cont_uuid)
 	uuid_copy(in.tdi_uuid, cont_uuid);
 
 	cont_iv_entry_delete(pool->sp_iv_ns, pool_uuid, cont_uuid);
+	
 	ds_pool_put(pool);
 
 	rc = dss_thread_collective(cont_child_destroy_one, &in, 0);
 	if (rc)
-		D_ERROR(DF_UUID"/"DF_UUID" container child destroy failed: %d\n",
-			DP_UUID(pool_uuid), DP_UUID(cont_uuid), rc);
+		D_ERROR(DF_UUID"/"DF_UUID" container child destroy failed: %d\n", DP_UUID(pool_uuid), DP_UUID(cont_uuid), rc);
+	
 	return rc;
 }
 
@@ -1219,13 +1212,14 @@ ds_cont_tgt_destroy_handler(crt_rpc_t *rpc)
 	struct cont_tgt_destroy_out    *out = crt_reply_get(rpc);
 	int				rc = 0;
 
-	D_DEBUG(DB_MD, DF_CONT": handling rpc %p\n",
-		DP_CONT(in->tdi_pool_uuid, in->tdi_uuid), rpc);
+	D_DEBUG(DB_MD, DF_CONT": handling rpc %p\n", DP_CONT(in->tdi_pool_uuid, in->tdi_uuid), rpc);
 
 	rc = ds_cont_tgt_destroy(in->tdi_pool_uuid, in->tdi_uuid);
+	
 	out->tdo_rc = (rc == 0 ? 0 : 1);
-	D_DEBUG(DB_MD, DF_CONT ": replying rpc: %p %d " DF_RC "\n",
-		DP_CONT(in->tdi_pool_uuid, in->tdi_uuid), rpc, out->tdo_rc, DP_RC(rc));
+	
+	D_DEBUG(DB_MD, DF_CONT ": replying rpc: %p %d " DF_RC "\n", DP_CONT(in->tdi_pool_uuid, in->tdi_uuid), rpc, out->tdo_rc, DP_RC(rc));
+	
 	crt_reply_send(rpc);
 }
 

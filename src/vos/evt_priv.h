@@ -119,6 +119,7 @@ evt_off2node(struct evt_context *tcx, umem_off_t offset)
  * \param[IN]	tcx	Tree context
  * \param[IN]	offset	The offset in the umem pool
  */
+// 读取evtree的叶子节点上的1个entry里面的evt_desc
 static inline struct evt_desc *
 evt_off2desc(struct evt_context *tcx, umem_off_t offset)
 {
@@ -487,13 +488,14 @@ evt_node_is_root(struct evt_context *tcx, struct evt_node *node)
 }
 
 /** Return the rectangle at the offset of @at */
+// 读取返回evt_node的第at个entry
 static inline struct evt_node_entry *
-evt_node_entry_at(struct evt_context *tcx, struct evt_node *node,
-		  unsigned int at)
+evt_node_entry_at(struct evt_context *tcx,  // 用来强判断一定要是叶子
+                          struct evt_node *node,    // evt_node
+		                  unsigned int at)          // 第几个entry
 {
 	/** Intermediate nodes have no entries */
 	D_ASSERT(evt_node_is_leaf(tcx, node));
-
 	return &node->tn_rec[at];
 }
 

@@ -302,7 +302,8 @@ struct vos_dtx_act_ent {
 	umem_off_t			         dae_df_off;
 	struct vos_dtx_blob_df		*dae_dbd;
 	/* More DTX records if out of the inlined buffer. */
-	umem_off_t			        *dae_records;  /* 存放obj\dkey\akey的ilog根节点的内存地址 */
+	umem_off_t			        *dae_records;  /* 存放obj\dkey\akey的ilog根节点的内存地址 */  
+	                                           /* 如果是evtree，存放的是evt_desc的地址 */
 	/* The capacity of dae_records, NOT including the inlined buffer. */
 	int				             dae_rec_cap;
 

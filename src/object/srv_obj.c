@@ -1398,11 +1398,17 @@ obj_local_rw_internal(crt_rpc_t *rpc, struct obj_io_context *ioc,
 		if (orw->orw_flags & ORF_EC)
 			cond_flags |= VOS_OF_EC;
 
-		rc = vos_update_begin(ioc->ioc_vos_coh, orw->orw_oid,
-			      orw->orw_epoch, cond_flags, dkey,
-			      orw->orw_nr, iods, iod_csums,
-			      ioc->ioc_coc->sc_props.dcp_dedup_size,
-			      &ioh, dth);
+		rc = vos_update_begin(ioc->ioc_vos_coh,
+		                      orw->orw_oid,       // objId
+			                  orw->orw_epoch,
+			                  cond_flags, dkey,
+			                  orw->orw_nr,       // aky的数量(即：iod的数量)
+			                  iods,              // 客户端带下来所有akey(iod)的数据(orw->orw_iod_array.oia_iods), 
+			                                     // 每一个akey(iod)里面可能有1个record,也可能有多个record
+			                  iod_csums,
+			                  ioc->ioc_coc->sc_props.dcp_dedup_size,
+			                  &ioh,
+			                  dth);
 		if (rc) {
 			D_ERROR(DF_UOID" Update begin failed: "DF_RC"\n", DP_UOID(orw->orw_oid), DP_RC(rc));
 			goto out;

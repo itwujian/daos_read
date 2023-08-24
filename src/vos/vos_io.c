@@ -26,14 +26,14 @@ struct vos_io_context {
 	/** The epoch bound including uncertainty */
 	daos_epoch_t		 ic_bound;
 	daos_epoch_range_t	 ic_epr;
-	daos_unit_oid_t		 ic_oid;     // object id
+	daos_unit_oid_t		 ic_oid;            // object id
 	struct vos_container	*ic_cont;
-	daos_iod_t		        *ic_iods;   // 存放所有iod的数组
-	struct dcs_iod_csums	*ic_iod_csums;
+	daos_iod_t		        *ic_iods;      // 存放所有客户端iod(akey)的数据
+	struct dcs_iod_csums	*ic_iod_csums; 
 	/** reference on the object */
 	struct vos_object	    *ic_obj;
 	/** BIO descriptor, has ic_iod_nr SGLs */
-	struct bio_desc		    *ic_biod;    // vos_ioc_create
+	struct bio_desc		    *ic_biod;    // vos_ioc_create分配的空间
 	struct vos_ts_set	    *ic_ts_set;
 	/** Checksums for bio_iovs in \ic_biod */
 	struct dcs_ci_list	     ic_csum_list;
@@ -52,7 +52,7 @@ struct vos_io_context {
 	struct vos_rsrvd_scm	*ic_rsrvd_scm;    
 	
 	/** reserved offsets for SCM update */
-	// 内存盘上分配的存放offset的数组，每个record都有(reserve_space)，数组大小：record的数量*u64
+	// 内存盘上分配的存放offset的数组，每个record都有(reserve_space)，数组大小：record的数量
 	umem_off_t		        *ic_umoffs;   
 	// ic_umoffs数组的cnt
 	unsigned int		     ic_umoffs_cnt;   
@@ -64,7 +64,7 @@ struct vos_io_context {
 
 	
 	/** number DAOS IO descriptors */
-	unsigned int		 ic_iod_nr;  // iod的数量，也就是akey的数量
+	unsigned int		 ic_iod_nr;        // iod的数量，也就是akey的数量
 	/** deduplication threshold size */
 	uint32_t		     ic_dedup_th;
 	/** dedup entries to be inserted after transaction done */
@@ -540,17 +540,20 @@ vos_ioc_reserve_init(struct vos_io_context *ioc, struct dtx_handle *dth)
 {
 	struct vos_rsrvd_scm	*scm;
 	size_t	size;
-	int		total_acts = 0;  
+	int		total_acts = 0;  // 当前这次写操作里面所有的record的个数
 	int		i;
 
     // 读操作不用，直接返回
 	if (!ioc->ic_update)
 		return 0;
 
+    // 获取到所有akey里面的所有record的数量
 	for (i = 0; i < ioc->ic_iod_nr; i++) {
+
+	    // 取出每一个iod也就是每一个akey
 		daos_iod_t *iod = &ioc->ic_iods[i];
 
-	    // 获取到所有akey里面的所有record的数量
+	    // 获取单个akey里面的record的数量
 		total_acts += iod->iod_nr;
 	}
 
@@ -732,6 +735,7 @@ vos_ioc_create(daos_handle_t coh, daos_unit_oid_t oid, bool read_only,
 		int iov_nr = iods[i].iod_nr;
 		struct bio_sglist *bsgl;
 
+        // 简单校验上客户端下发的iod数据类型是否匹配
 		if ((iods[i].iod_type == DAOS_IOD_SINGLE && iov_nr != 1) || (iov_nr == 0 && iods[i].iod_recxs != NULL)) {
 			D_ERROR("Invalid iod_nr=%d, iod_type %d.\n", iov_nr, iods[i].iod_type);
 			rc = -DER_IO_INVAL;
@@ -1601,6 +1605,8 @@ akey_update_single(daos_handle_t toh, // sv-tree的句柄
 	D_ASSERT(!UMOFF_IS_NULL(umoff));
 
 	D_ASSERT(ioc->ic_iov_at == 0);
+
+	// 从ioc中找到biov
 	biov = iod_update_biov(ioc);
 
 	tree_rec_bundle2iov(&rbund, &riov);
@@ -1618,6 +1624,7 @@ akey_update_single(daos_handle_t toh, // sv-tree的句柄
 	rbund.rb_off		= umoff;
 	rbund.rb_ver		= pm_ver;
 
+    // 将这次的操作产生的元数据插入到sv-tree树中(k(epoch, minor_epc), v(riov(rbund)))
 	rc = dbtree_update(toh, &kiov, &riov);
 	if (rc != 0)
 		D_ERROR("Failed to update subtree: "DF_RC"\n", DP_RC(rc));
@@ -1631,12 +1638,13 @@ akey_update_single(daos_handle_t toh, // sv-tree的句柄
  * Update a record extent.
  * See comment of vos_recx_fetch for explanation of @off_p.
  */
+ // 处理iod_recxs数组中的其中1个extent
 static int
 akey_update_recx(daos_handle_t toh,                 // evtree的句柄 
                        uint32_t pm_ver, 
-                       daos_recx_t *recx,           // 要插入的array_value的其中的1个record
+                       daos_recx_t *recx,           // 要插入的array_value的其中1个extent
 		               struct dcs_csum_info *csum,  // record对应的csum
-		               daos_size_t rsize,           // record size of the array
+		               daos_size_t rsize,           // record size of the array:  iod->iod_size
 		               struct vos_io_context *ioc,
 		               uint16_t minor_epc)
 {
@@ -1647,6 +1655,7 @@ akey_update_recx(daos_handle_t toh,                 // evtree的句柄
 
 	D_ASSERT(recx->rx_nr > 0);
 	memset(&ent, 0, sizeof(ent));
+	
 	ent.ei_bound = ioc->ic_bound;
 	ent.ei_rect.rc_epc = epoch;   // ioc->ic_epr.epr_hi;
 	ent.ei_rect.rc_ex.ex_lo = recx->rx_idx;
@@ -1658,7 +1667,7 @@ akey_update_recx(daos_handle_t toh,                 // evtree的句柄
 	if (csum != NULL)
 		ent.ei_csum = *csum;
 	
-	ioc->ic_io_size += recx->rx_nr * rsize;
+	ioc->ic_io_size += recx->rx_nr * rsize;  // 本次写入的数据量大小：extent内record的数量*1个record的大小
 
 	// 填充ent.ei_addr：Address of record to insert
 	biov = iod_update_biov(ioc);	
@@ -1861,7 +1870,7 @@ akey_update(struct vos_io_context *ioc, uint32_t pm_ver, daos_handle_t ak_toh, u
 
 // DAOS_IOD_ARRAY
 // iod->iod_nr：Number of entries in the iod_recxs for arrays
-	for (i = 0; i < iod->iod_nr; i++) {   // 遍历所有的record
+	for (i = 0; i < iod->iod_nr; i++) {   // 遍历iod_recxs数组中的其中1个extent(这个extent里面有多个record)
 		
 		umem_off_t	umoff = iod_update_umoff(ioc);
 
@@ -2081,6 +2090,7 @@ reserve_space(struct vos_io_context *ioc, uint16_t media, daos_size_t size, uint
 		umem_off_t	umoff;
 
 		umoff = vos_reserve_scm(ioc->ic_cont, ioc->ic_rsrvd_scm, size);
+	    //  正常流程这里应该就回了
 		if (!UMOFF_IS_NULL(umoff)) {
 			ioc->ic_umoffs[ioc->ic_umoffs_cnt] = umoff;
 			ioc->ic_umoffs_cnt++;
@@ -2140,6 +2150,8 @@ iod_reserve(struct vos_io_context *ioc, struct bio_iov *biov)
 }
 
 /* Reserve single value record on specified media */
+// size： 当前这个akey上所有的record的大小
+// iod->iod_size : iod->iod_recxs[i].rx_nr * iod->iod_size
 static int
 vos_reserve_single(struct vos_io_context *ioc, uint16_t media, 
                            daos_size_t size)  
@@ -2166,7 +2178,8 @@ vos_reserve_single(struct vos_io_context *ioc, uint16_t media,
 	// 小的没有对齐的部分和vos_irec_df一起存在SCM上，使用vos_irec_df->ir_body可以引用到
 	 
 	// size: iod->iod_size
-	// scm_size = vos_size_round(csum->cs_len) + sizeof(struct vos_irec_df) + iod->iod_size/0;
+	// 写在scm上 = vos_size_round(csum->cs_len) + sizeof(struct vos_irec_df) + iod->iod_size;
+	// 写在NVME上 = vos_size_round(csum->cs_len) + sizeof(struct vos_irec_df) + 0;
 	scm_size = (media == DAOS_MEDIA_SCM) ? vos_recx2irec_size(size, value_csum) : vos_recx2irec_size(0, value_csum);
 
     //在内存盘上申请offset后存入ioc->ic_umoffs， off为出参，是本次申请的内存盘地址offset
@@ -2202,6 +2215,7 @@ vos_reserve_single(struct vos_io_context *ioc, uint16_t media,
 		payload_addr = vos_irec2data(irec);
 		D_ASSERT(payload_addr >= (char *)irec);
 		off = umoff + (payload_addr - (char *)irec); // 为啥？
+		// 这个off是偏移到了vos_irec_df的ir_body[]存完了checksum的位置后，难道是存储的小于4K的数据的地址？？？
 	} 
 
 //  3. NVME
@@ -2268,6 +2282,7 @@ vos_reserve_recx(struct vos_io_context *ioc, uint16_t media, daos_size_t size,
 		D_ERROR("Reserve recx failed. "DF_RC"\n", DP_RC(rc));
 		return rc;
 	}
+	
 done:
 	bio_addr_set(&biov.bi_addr, media, off);
 	bio_iov_set_len(&biov, size);
@@ -2282,7 +2297,7 @@ akey_update_begin(struct vos_io_context *ioc)
 	struct dcs_csum_info	*iod_csums = vos_csum_at(ioc->ic_iod_csums, ioc->ic_sgl_at);
 	struct dcs_csum_info	*recx_csum;
 
-	// 取出每一个iod
+	// 取出每一个iod(即:akey)
 	daos_iod_t *iod = &ioc->ic_iods[ioc->ic_sgl_at];
 	int i, rc;
 
@@ -2295,7 +2310,7 @@ akey_update_begin(struct vos_io_context *ioc)
 // single value: iod->iod_nr = 1, size大小iod->iod_size, 使用的树是sv-tree
 // array value:  iod->iod_nr = record数量, size大小number个iod->iod_size, 使用的树是ev-tree
 
-// 循环处理iod中的所有record，如果valuse是single, 那iod->iod_nr=1
+// 循环处理iod(即akey)的所有record，如果valuse是single, 那iod->iod_nr=1
 	for (i = 0; i < iod->iod_nr; i++) {
 		
 		daos_size_t size;
@@ -2411,8 +2426,7 @@ update_cancel(struct vos_io_context *ioc)
 	}
 
 	/* Abort dedup entries */
-	vos_dedup_process(vos_cont2pool(ioc->ic_cont), &ioc->ic_dedup_entries,
-			  true /* abort */);
+	vos_dedup_process(vos_cont2pool(ioc->ic_cont), &ioc->ic_dedup_entries, true /* abort */);
 }
 
 int
@@ -2879,11 +2893,13 @@ vos_obj_copy(struct vos_io_context *ioc, d_sg_list_t *sgls,
 	int rc;
 
 	D_ASSERT(sgl_nr == ioc->ic_iod_nr);
+	
 	rc = bio_iod_prep(ioc->ic_biod, BIO_CHK_TYPE_IO, NULL, 0);
 	if (rc)
 		return rc;
 
 	rc = bio_iod_copy(ioc->ic_biod, sgls, sgl_nr);
+	
 	rc = bio_iod_post(ioc->ic_biod, rc);
 
 	return rc;
@@ -2976,14 +2992,15 @@ vos_obj_fetch_ex(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 	uint32_t	vos_flags = flags | fetch_flags;
 	int		rc;
 
-	rc = vos_fetch_begin(coh, oid, epoch, dkey, iod_nr, iods,
-			     vos_flags, NULL, &ioh, dth);
+    // vos_ioc_create -> vos_obj_hold  -> dkey_fetch   -> akey_fetch   ->  akey_fetch_single/akey_fetch_recx
+    // 把从sv-tree/ev-tree上读到的value值塞到ioc->ic_biod中对应的位置上
+	rc = vos_fetch_begin(coh, oid, epoch, dkey, iod_nr, iods, vos_flags, NULL, &ioh, dth);
 	if (rc) {
-		VOS_TX_TRACE_FAIL(rc, "Cannot fetch "DF_UOID": "DF_RC"\n",
-				  DP_UOID(oid), DP_RC(rc));
+		VOS_TX_TRACE_FAIL(rc, "Cannot fetch "DF_UOID": "DF_RC"\n", DP_UOID(oid), DP_RC(rc));
 		return rc;
 	}
 
+    // 如果不是只获取iod的大小
 	if (!size_fetch) {
 		struct vos_io_context *ioc = vos_ioh2ioc(ioh);
 		int i, j;
@@ -2999,10 +3016,12 @@ vos_obj_fetch_ex(daos_handle_t coh, daos_unit_oid_t oid, daos_epoch_t epoch,
 			}
 		}
 
+        // 调用spdk的接口进行读
+        // 应该是拿着ioc->ic_biod里面记录的元数据的偏移地址到盘上读数据，都上来的数据存放在sgls的出参上。
+        // 读的操作可能在SCM上(小于4K的数据)，可能在NVME上(大于4K的数据)
 		rc = vos_obj_copy(ioc, sgls, iod_nr);
 		if (rc)
-			D_ERROR("Copy "DF_UOID" failed "DF_RC"\n",
-				DP_UOID(oid), DP_RC(rc));
+			D_ERROR("Copy "DF_UOID" failed "DF_RC"\n", DP_UOID(oid), DP_RC(rc));
 	}
 
 	rc = vos_fetch_end(ioh, NULL, rc);

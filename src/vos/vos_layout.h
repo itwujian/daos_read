@@ -182,11 +182,11 @@ struct vos_dtx_cmt_ent_df {
 /** Active DTX entry on-disk layout in both SCM and DRAM. */
 struct vos_dtx_act_ent_df {
 	/** The DTX identifier. */
-	struct dtx_id			dae_xid;
+	struct dtx_id		dae_xid;
 	/** The epoch# for the DTX. */
-	daos_epoch_t			dae_epoch;
+	daos_epoch_t		dae_epoch;
 	/** The identifier of the modified object (shard). */
-	daos_unit_oid_t			dae_oid;
+	daos_unit_oid_t		dae_oid;
 	/** The hashed dkey if applicable. */
 	uint64_t			dae_dkey_hash;
 	/** The allocated local id for the DTX entry */
@@ -217,7 +217,7 @@ struct vos_dtx_act_ent_df {
 	 */
 	struct dtx_daos_target		dae_mbs_inline[2];
 	/** The offset for the dtx mbs if out of inline. */
-	umem_off_t			dae_mbs_off;
+	umem_off_t			        dae_mbs_off;
 };
 
 struct vos_dtx_blob_df {
@@ -354,7 +354,7 @@ struct vos_irec_df {
 	/** pool map version */
 	uint32_t			ir_ver;
 	/** The DTX entry in SCM. */
-	uint32_t			ir_dtx;
+	uint32_t			ir_dtx;    // DAE_LID或者是commited,abort
 	/** Minor epoch */
 	uint16_t			ir_minor_epc;
 	/** padding bytes */
@@ -369,7 +369,7 @@ struct vos_irec_df {
 	/** external payload address */
 	bio_addr_t			ir_ex_addr;  // 存储在NVME上的地址
 	/** placeholder for the key checksum & internal value */
-	char				ir_body[0];  // 存储在SCM上的地址
+	char				ir_body[0]; 
 };
 
 /**

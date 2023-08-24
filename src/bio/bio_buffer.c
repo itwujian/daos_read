@@ -248,8 +248,7 @@ bio_iod_sgl(struct bio_desc *biod, unsigned int idx)
 {
 	struct bio_sglist	*bsgl = NULL;
 
-	D_ASSERTF(idx < biod->bd_sgl_cnt, "Invalid sgl index %d/%d\n",
-		  idx, biod->bd_sgl_cnt);
+	D_ASSERTF(idx < biod->bd_sgl_cnt, "Invalid sgl index %d/%d\n", idx, biod->bd_sgl_cnt);
 
 	bsgl = &biod->bd_sgls[idx];
 	D_ASSERT(bsgl != NULL);
@@ -413,41 +412,37 @@ copy_one(struct bio_desc *biod, struct bio_iov *biov, void *data)
 	sgl = &arg->ca_sgls[arg->ca_sgl_idx];
 
 	while (arg->ca_iov_idx < sgl->sg_nr) {
+		
 		d_iov_t *iov;
 		ssize_t nob, buf_len;
 
 		iov = &sgl->sg_iovs[arg->ca_iov_idx];
-		buf_len = (biod->bd_type == BIO_IOD_TYPE_UPDATE) ?
-					iov->iov_len : iov->iov_buf_len;
+		buf_len = (biod->bd_type == BIO_IOD_TYPE_UPDATE) ? iov->iov_len : iov->iov_buf_len;
 
 		if (buf_len <= arg->ca_iov_off) {
-			D_ERROR("Invalid iov[%d] "DF_U64"/"DF_U64" %d\n",
-				arg->ca_iov_idx, arg->ca_iov_off,
-				buf_len, biod->bd_type);
+			D_ERROR("Invalid iov[%d] "DF_U64"/"DF_U64" %d\n", arg->ca_iov_idx, arg->ca_iov_off, buf_len, biod->bd_type);
 			return -DER_INVAL;
 		}
 
 		if (iov->iov_buf == NULL) {
-			D_ERROR("Invalid iov[%d], iov_buf is NULL\n",
-				arg->ca_iov_idx);
+			D_ERROR("Invalid iov[%d], iov_buf is NULL\n", arg->ca_iov_idx);
 			return -DER_INVAL;
 		}
 
 		nob = min(size, buf_len - arg->ca_iov_off);
 		if (arg->ca_size_tot) {
 			if ((nob + arg->ca_size_copied) > arg->ca_size_tot) {
-				D_ERROR("Copy size %u is not aligned with IOVs %u/"DF_U64"\n",
-					arg->ca_size_tot, arg->ca_size_copied, nob);
+				D_ERROR("Copy size %u is not aligned with IOVs %u/"DF_U64"\n", arg->ca_size_tot, arg->ca_size_copied, nob);
 				return -DER_INVAL;
 			}
 			arg->ca_size_copied += nob;
 		}
 
 		if (addr != NULL) {
-			D_DEBUG(DB_TRACE, "bio copy %p size %zd\n",
-				addr, nob);
-			bio_memcpy(biod, media, addr, iov->iov_buf +
-					arg->ca_iov_off, nob);
+			D_DEBUG(DB_TRACE, "bio copy %p size %zd\n", addr, nob);
+			// 写操作，数据考到addr(biov入参)
+			// 读操作，数据考到iov->iov_buf + arg->ca_iov_off(data)
+			bio_memcpy(biod, media, addr, iov->iov_buf + arg->ca_iov_off, nob);
 			addr += nob;
 		} else {
 			/* fetch on hole */
@@ -455,6 +450,7 @@ copy_one(struct bio_desc *biod, struct bio_iov *biov, void *data)
 		}
 
 		arg->ca_iov_off += nob;
+		
 		if (biod->bd_type == BIO_IOD_TYPE_FETCH) {
 			/* the first population for fetch */
 			if (arg->ca_iov_off == nob)
@@ -495,6 +491,7 @@ iterate_biov(struct bio_desc *biod,
 	int i, j, rc = 0;
 
 	for (i = 0; i < biod->bd_sgl_cnt; i++) {
+		
 		struct bio_sglist *bsgl = &biod->bd_sgls[i];
 
 		if (data != NULL) {
@@ -509,7 +506,6 @@ iterate_biov(struct bio_desc *biod,
 					arg->ca_sgls[i].sg_nr_out = 0;
 			} else if (cb_fn == bulk_map_one) {
 				struct bio_bulk_args *arg = data;
-
 				arg->ba_sgl_idx = i;
 			}
 		}
@@ -518,12 +514,14 @@ iterate_biov(struct bio_desc *biod,
 			continue;
 
 		for (j = 0; j < bsgl->bs_nr_out; j++) {
+			
 			struct bio_iov *biov = &bsgl->bs_iovs[j];
 
 			rc = cb_fn(biod, biov, data);
 			if (rc)
 				break;
 		}
+		
 		if (rc)
 			break;
 	}
@@ -998,6 +996,7 @@ bio_memcpy(struct bio_desc *biod, uint16_t media, void *media_addr,
 	struct umem_instance *umem = biod->bd_ctxt->bic_umem;
 
 	D_ASSERT(biod->bd_type < BIO_IOD_TYPE_GETBUF);
+	
 	if (biod->bd_type == BIO_IOD_TYPE_UPDATE && media == DAOS_MEDIA_SCM) {
 		/*
 		 * We could do no_drain copy and rely on the tx commit to
@@ -1009,8 +1008,7 @@ bio_memcpy(struct bio_desc *biod, uint16_t media, void *media_addr,
 			 *  Ordinarily, this wouldn't be inside a transaction
 			 *  but in MVCC tests, it can happen.
 			 */
-			umem_tx_xadd_ptr(umem, media_addr, n,
-					 POBJ_XADD_NO_SNAPSHOT);
+			umem_tx_xadd_ptr(umem, media_addr, n, POBJ_XADD_NO_SNAPSHOT);
 		}
 		pmemobj_memcpy_persist(umem->umm_pool, media_addr, addr, n);
 	} else {
@@ -1444,6 +1442,8 @@ bio_iod_copy(struct bio_desc *biod, d_sg_list_t *sgls, unsigned int nr_sgl)
 	arg.ca_sgls = sgls;
 	arg.ca_sgl_cnt = nr_sgl;
 
+    // 读操作，数据从biod拷贝到sgls
+    // 写操作, 数据从sgls拷贝到biod
 	return iterate_biov(biod, copy_one, &arg);
 }
 

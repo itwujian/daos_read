@@ -542,7 +542,7 @@ set_params:
 	if (expected_type != VOS_TS_TYPE_AKEY)
 		ts_set->ts_etype = expected_type + 1;
 	
-	svose->se_entry = entry;
+	se->se_entry = entry;
 	se->se_create_idx = NULL;
 
 	return 0;

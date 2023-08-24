@@ -404,11 +404,11 @@ svt_rec_store(struct btr_instance *tins, struct btr_record *rec,
 		csum->cs_csum = NULL;
 		return 0;
 	}
+	
 	/** at this point, it's assumed that enough was allocated for the irec
 	 *  to hold a checksum of length csum->cs_len
 	 */
-	if (dtx_is_valid_handle(dth) && dth->dth_flags & DTE_LEADER &&
-	    irec->ir_ex_addr.ba_type == DAOS_MEDIA_SCM &&
+	if (dtx_is_valid_handle(dth) && dth->dth_flags & DTE_LEADER && irec->ir_ex_addr.ba_type == DAOS_MEDIA_SCM &&
 	    DAOS_FAIL_CHECK(DAOS_VC_DIFF_REC)) {
 		void	*addr;
 
@@ -784,8 +784,7 @@ evt_dop_log_status(struct umem_instance *umm, daos_epoch_t epoch,
 int
 evt_dop_log_add(struct umem_instance *umm, struct evt_desc *desc, void *args)
 {
-	return vos_dtx_register_record(umm, umem_ptr2off(umm, desc), DTX_RT_EVT,
-				       &desc->dc_dtx);
+	return vos_dtx_register_record(umm, umem_ptr2off(umm, desc), DTX_RT_EVT, &desc->dc_dtx);
 }
 
 static int

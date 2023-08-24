@@ -107,6 +107,8 @@ static struct evt_policy_ops *evt_policies[] = {
     NULL,
 };
 
+
+// 将evt_node中的mbr数据读取写入到evt_rect中
 static void
 evt_mbr_read(struct evt_rect *rout, const struct evt_node *node)
 {
@@ -115,6 +117,7 @@ evt_mbr_read(struct evt_rect *rout, const struct evt_node *node)
 	rout->rc_minor_epc = node->tn_mbr_minor_epc;
 }
 
+// 将evt_rect中的数据读取写入到evt_node中
 static void
 evt_mbr_write(struct evt_node *node, const struct evt_rect *rin)
 {
@@ -208,11 +211,23 @@ evt_rect_overlap(const struct evt_rect *rt1, const struct evt_rect *rt2,
  * This function returns false if \a rt1 is unchanged (it fully includes rt2),
  * otherwise it returns true.
  */
+
+// 这个函数不会修改rt2的值，只有可能会修改rt1的值，如果修改了rt1的值，就返回true;
+// 修改之后: 
+
+// rt1->rc_ex.ex_lo = min(rt1->rc_ex.ex_lo, rt2->rc_ex.ex_lo)
+// rt1->rc_ex.ex_hi = max(rt1->rc_ex.ex_hi, rt2->rc_ex.ex_hi)
+// rt1->rc_epc = min(rt1->rc_epc, rt2->rc_epc), rt1->rc_minor_epc = rt2->rc_minor_epc
+// rt1->rc_epc == rt2->rc_epc => rt1->rc_minor_epc = min(rt1->rc_minor_epc , rt2->rc_minor_epc)
+
+
 static bool
 evt_rect_merge(struct evt_rect *rt1, const struct evt_rect *rt2)
 {
 	bool	changed = false;
 
+
+// low大就取小。high小就取大
 	if (rt1->rc_ex.ex_lo > rt2->rc_ex.ex_lo) {
 		rt1->rc_ex.ex_lo = rt2->rc_ex.ex_lo;
 		changed = true;
@@ -222,13 +237,14 @@ evt_rect_merge(struct evt_rect *rt1, const struct evt_rect *rt2)
 		rt1->rc_ex.ex_hi = rt2->rc_ex.ex_hi;
 		changed = true;
 	}
+// low大就取小。high小就取大
 
+// rt1->rc_epc也是取小的，如果相等，rt1->rc_minor_epc取小的
 	if (rt1->rc_epc > rt2->rc_epc) {
 		rt1->rc_epc = rt2->rc_epc;
 		rt1->rc_minor_epc = rt2->rc_minor_epc;
 		changed = true;
-	} else if (rt1->rc_epc == rt2->rc_epc &&
-		   rt1->rc_minor_epc > rt2->rc_minor_epc) {
+	} else if (rt1->rc_epc == rt2->rc_epc && rt1->rc_minor_epc > rt2->rc_minor_epc) {
 		rt1->rc_minor_epc = rt2->rc_minor_epc;
 		changed = true;
 	}
@@ -1592,17 +1608,16 @@ evt_node_insert(struct evt_context *tcx, struct evt_node *nd, umem_off_t in_off,
 		uint8_t **csum_bufp)
 {
 	int		 rc;
-	bool		 changed = 0;
+	bool	 changed = 0;
 
-	V_TRACE(DB_TRACE, "Insert "DF_RECT" into "DF_MBR"\n",
-		DP_RECT(&ent->ei_rect), DP_MBR(nd));
+	V_TRACE(DB_TRACE, "Insert "DF_RECT" into "DF_MBR"\n", DP_RECT(&ent->ei_rect), DP_MBR(nd));
 
 	rc = tcx->tc_ops->po_insert(tcx, nd, in_off, ent, &changed, csum_bufp);
 	if (rc != 0)
 		return rc;
 
-	V_TRACE(DB_TRACE, "New MBR is "DF_MBR", nr=%d\n", DP_MBR(nd),
-		nd->tn_nr);
+	V_TRACE(DB_TRACE, "New MBR is "DF_MBR", nr=%d\n", DP_MBR(nd), nd->tn_nr);
+	
 	if (mbr_changed)
 		*mbr_changed = changed;
 
@@ -1853,14 +1868,14 @@ static int
 evt_insert_or_split(struct evt_context *tcx, const struct evt_entry_in *ent_new,
 		    uint8_t **csum_bufp)
 {
-	struct evt_node		*mbr	  = NULL;
-	struct evt_node		*nd_tmp   = NULL;
-	umem_off_t		 nm_save  = UMOFF_NULL;
-	struct evt_entry_in	 entry	  = *ent_new;
-	int			 rc	  = 0;
-	int			 level	  = tcx->tc_depth - 1;
-	bool			 mbr_changed = false;
-	bool			 mbr_update = false;
+	struct evt_node		  *mbr	  = NULL;
+	struct evt_node		  *nd_tmp   = NULL;
+	umem_off_t		       nm_save  = UMOFF_NULL;
+	struct evt_entry_in	   entry	  = *ent_new;
+	int			rc	  = 0;
+	int			level	  = tcx->tc_depth - 1;
+	bool		mbr_changed = false;
+	bool		mbr_update = false;
 
 	while (1) {
 		struct evt_trace	*trace;
@@ -1872,6 +1887,8 @@ evt_insert_or_split(struct evt_context *tcx, const struct evt_entry_in *ent_new,
 
 		trace	= &tcx->tc_trace[level];
 		nm_cur	= trace->tr_node;
+
+		// 获取当前访问的那个evt_node
 		nd_cur = evt_off2node(tcx, nm_cur);
 		if (!trace->tr_tx_added) {
 			rc = evt_node_tx_add(tcx, nd_cur);
@@ -1883,8 +1900,7 @@ evt_insert_or_split(struct evt_context *tcx, const struct evt_entry_in *ent_new,
 		if (mbr_update) {
 			D_ASSERT(nd_tmp != NULL);
 			mbr_update = false;
-			mbr_changed = evt_node_mbr_update(tcx, nd_cur, nd_tmp,
-							  trace->tr_at);
+			mbr_changed = evt_node_mbr_update(tcx, nd_cur, nd_tmp, trace->tr_at);
 		}
 
 		if (mbr) { /* This is set only if no more insert or split */
@@ -1892,8 +1908,7 @@ evt_insert_or_split(struct evt_context *tcx, const struct evt_entry_in *ent_new,
 			/* Update the child MBR stored in the current node
 			 * because MBR of child has been enlarged.
 			 */
-			mbr_changed = evt_node_mbr_update(tcx, nd_cur, mbr,
-							  trace->tr_at);
+			mbr_changed = evt_node_mbr_update(tcx, nd_cur, mbr, trace->tr_at);
 			if (!mbr_changed || level == 0)
 				D_GOTO(out, 0);
 
@@ -1904,10 +1919,11 @@ evt_insert_or_split(struct evt_context *tcx, const struct evt_entry_in *ent_new,
 		}
 
 		if (!evt_node_is_full(tcx, nd_cur)) {
+
+		    // 当前节点没有满，无需分裂
 			bool	changed;
 
-			rc = evt_node_insert(tcx, nd_cur, nm_save,
-					     &entry, &changed, csum_bufp);
+			rc = evt_node_insert(tcx, nd_cur, nm_save, &entry, &changed, csum_bufp);
 			if (rc != 0)
 				D_GOTO(failed, rc);
 
@@ -1944,8 +1960,7 @@ evt_insert_or_split(struct evt_context *tcx, const struct evt_entry_in *ent_new,
 		 * new created node.
 		 */
 		nd_tmp = evt_select_node(tcx, &entry.ei_rect, nd_cur, nd_new);
-		rc = evt_node_insert(tcx, nd_tmp, nm_save, &entry, NULL,
-				     csum_bufp);
+		rc = evt_node_insert(tcx, nd_tmp, nm_save, &entry, NULL, csum_bufp);
 		if (rc != 0)
 			D_GOTO(failed, rc);
 
@@ -1968,8 +1983,7 @@ evt_insert_or_split(struct evt_context *tcx, const struct evt_entry_in *ent_new,
 			continue;
 		}
 
-		V_TRACE(DB_TRACE, "Create a new root, depth=%d.\n",
-			tcx->tc_root->tr_depth + 1);
+		V_TRACE(DB_TRACE, "Create a new root, depth=%d.\n", tcx->tc_root->tr_depth + 1);
 
 		D_ASSERT(evt_node_is_root(tcx, nd_cur));
 		evt_node_unset(tcx, nd_cur, EVT_NODE_ROOT);
@@ -2030,15 +2044,17 @@ evt_insert_entry(struct evt_context *tcx, const struct evt_entry_in *ent,
 		struct evt_node		*nd_cur;
 		umem_off_t		 nm_cur;
 		umem_off_t		 nm_dst;
-		int			 tr_at;
+		int			     tr_at;
 
 		nd = evt_off2node(tcx, nd_off);
 
 		if (evt_node_is_leaf(tcx, nd)) {
+			// 叶子节点直接跳出执行：evt_insert_or_split
 			evt_tcx_set_trace(tcx, level, nd_off, 0, false);
 			break;
 		}
 
+        // 中间节点
 		tr_at = -1;
 		nm_dst = UMOFF_NULL;
 		nd_dst = NULL;
@@ -2145,7 +2161,7 @@ evt_large_hole_insert(daos_handle_t toh, const struct evt_entry_in *entry)
 		}
 	}
 done:
-	evt_ent_array_fini(ent_array);
+	evt_ent_array_fini(ent_array);000
 
 	return rc == 0 ? alt_rc : rc;
 }
@@ -2645,6 +2661,7 @@ evt_ent_array_fill(struct evt_context *tcx, enum evt_find_opc find_opc,
 
 // 获取dtx事务的状态
 			// 调用-> evt_dop_log_status
+			// 核心是调用vos_dtx_check_availability函数检查这个函数的返回值
 			rc = evt_desc_log_status(tcx, rtmp.rc_epc, desc, intent);
 			
 			/* Skip the unavailable record. */
@@ -2666,8 +2683,7 @@ evt_ent_array_fill(struct evt_context *tcx, enum evt_find_opc find_opc,
 					if (rc < 0)
 						D_GOTO(out, rc);
 
-					D_ASSERTF(rect->rc_minor_epc != EVT_MINOR_EPC_MAX, "Should never have overlap with removals: " DF_RECT" overlaps with " DF_RECT "\n",
-						  DP_RECT(&rtmp), DP_RECT(rect));
+					D_ASSERTF(rect->rc_minor_epc != EVT_MINOR_EPC_MAX, "Should never have overlap with removals: " DF_RECT" overlaps with " DF_RECT "\n", DP_RECT(&rtmp), DP_RECT(rect));
 
 					/* NB: This is temporary to allow full overwrite
 					 * in same epoch to avoid breaking rebuild.
@@ -2686,7 +2702,7 @@ evt_ent_array_fill(struct evt_context *tcx, enum evt_find_opc find_opc,
 						goto out;
 					}
 
-// 往下走，跳出break，说明：time_overlap == RT_OVERLAP_SAME && range_overlap == RT_OVERLAP_SAME
+                    // 往下走，跳出break，说明：time_overlap == RT_OVERLAP_SAME && range_overlap == RT_OVERLAP_SAME
 					break; /* we can update the record in place */
 					
 				case EVT_FIND_SAME:  // evt_delete_internal or evt_iter_probe
@@ -2717,6 +2733,9 @@ evt_ent_array_fill(struct evt_context *tcx, enum evt_find_opc find_opc,
 
 					break;
 			}
+
+
+
 
 // 申请1个evt_entry，并获取地址
 			rc = ent_array_alloc(tcx, ent_array, &ent, false);
@@ -3124,6 +3143,7 @@ typedef int (cmp_rect_cb)(struct evt_context *tcx,
 			  const struct evt_node *nd,
 			  const struct evt_rect *rt1,
 			  const struct evt_rect *rt2);
+
 static int
 evt_common_insert(struct evt_context *tcx, struct evt_node *nd,
 		  umem_off_t in_off, const struct evt_entry_in *ent,
@@ -3139,23 +3159,41 @@ evt_common_insert(struct evt_context *tcx, struct evt_node *nd,
 	D_ASSERT(!evt_node_is_full(tcx, nd));
 
 	leaf = evt_node_is_leaf(tcx, nd);
+
+
+// ==== 写入/更新evt_node的MBR
+
+//	1. 如果evt_node里面是空的，直接写到evt_node的mbr中
+//  2. 如果是非空的，将当前evt_node和要插入的evt_entry_in的ei_rect做比较，
+//     比较：(evt_node，evt_entry_in)的ei_rect, (lo取小，hi取大， epc,minor_epc取小)
+//           比较后结果的值写入evt_node的MBR
 	if (nd->tn_nr == 0) {
+		// 如果evt_node节点里面还没有entry
 		evt_mbr_write(nd, &ent->ei_rect);
 		*changed = true;
 	} else {
+	    // 将evt_node中涉及mbr的字段读取写入到rtmp
 		struct evt_rect	rtmp;
-
 		evt_mbr_read(&rtmp, nd);
+
+		// 比较当前evt_node(rtmp)和要插入的evt_entry_in(ent)的evt_rect，将修改后的值写入rtmp
+		// rtmp的evt_rect(lo取小，hi取大， epc,minor_epc取小)
 		*changed = evt_rect_merge(&rtmp, &ent->ei_rect);
 		if (*changed)
+			// 将rtmp的值写入evt_node的mbr中
 			evt_mbr_write(nd, &rtmp);
 	}
+//
+
+
 
 	/* NB: can use binary search to optimize */
 	for (i = 0; i < nd->tn_nr; i++) {
 		struct evt_rect	rtmp;
 		int		nr;
 
+        // 1. 如果当前的这个evt_node(nd)是叶子节点，那么就读取第i个的evnode_entry的MBR信息到rtmp
+        // 2. 如果当前的这个evt_node(nd)是中间节点，那么就读取第i个的child所指向的evtnode的MBR信息到rtmp
 		evt_node_rect_read_at(tcx, nd, i, &rtmp);
 
 		rc = cb(tcx, nd, &rtmp, &ent->ei_rect);
@@ -3164,8 +3202,7 @@ evt_common_insert(struct evt_context *tcx, struct evt_node *nd,
 
 		if (!leaf) {
 			nr = nd->tn_nr - i;
-			memmove(&nd->tn_child[i + 1], &nd->tn_child[i],
-				nr * sizeof(nd->tn_child[0]));
+			memmove(&nd->tn_child[i + 1], &nd->tn_child[i], nr * sizeof(nd->tn_child[0]));
 			break;
 		}
 
@@ -3199,10 +3236,13 @@ evt_common_insert(struct evt_context *tcx, struct evt_node *nd,
 	if (i == nd->tn_nr) { /* attach at the end */
 		/* Check whether the previous one is an aborted one. */
 		if (i != 0 && leaf) {
+			
 			ne = evt_node_entry_at(tcx, nd, i - 1);
+			
 			desc = evt_off2desc(tcx, ne->ne_child);
-			rc = evt_desc_log_status(tcx, ne->ne_rect.rd_epc,
-						 desc, DAOS_INTENT_CHECK);
+		
+			rc = evt_desc_log_status(tcx, ne->ne_rect.rd_epc, desc, DAOS_INTENT_CHECK);
+			
 			if (rc == ALB_UNAVAILABLE) {
 				umem_off_t	off = ne->ne_child;
 
@@ -3219,30 +3259,43 @@ evt_common_insert(struct evt_context *tcx, struct evt_node *nd,
 		}
 	}
 
+// 如果是叶子节点
 	if (leaf) {
+		
 		umem_off_t desc_off;
 		uint32_t   csum_buf_size = 0;
 
 		if (ci_is_valid(&ent->ei_csum))
 			csum_buf_size = ci_csums_len(ent->ei_csum);
+		
 		size_t     desc_size = sizeof(struct evt_desc) + csum_buf_size;
+
+		// 取出第i个evt_node_entry
 		ne = evt_node_entry_at(tcx, nd, i);
 
+        // 将evt_entry_in的数据写入这个叶子节点的第i个evt_node_entry的evt_rect_df
 		evt_rect_write(&ne->ne_rect, &ent->ei_rect);
 
+        // 分配evt_node_entry中存的evt_desc的地址
 		if (csum_buf_size > 0) {
-			D_DEBUG(DB_TRACE, "Allocating an extra %d bytes "
-						"for checksum", csum_buf_size);
+			D_DEBUG(DB_TRACE, "Allocating an extra %d bytes for checksum", csum_buf_size);
 			desc_off = umem_zalloc(evt_umm(tcx), desc_size);
 		} else {
-			desc_off = vos_slab_alloc(evt_umm(tcx), desc_size,
-							VOS_SLAB_EVT_DESC);
+			desc_off = vos_slab_alloc(evt_umm(tcx), desc_size, VOS_SLAB_EVT_DESC);
 		}
+		
 		if (UMOFF_IS_NULL(desc_off))
 			return -DER_NOSPACE;
 
 		ne->ne_child = desc_off;
+        // 分配evt_node_entry中存的evt_desc的地址
+
+        // 根据偏移获取数据结构evt_desc
 		desc = evt_off2ptr(tcx, desc_off);
+
+        // 调用evt_dop_log_add
+        // 1. 将desc->dc_dtx赋值DAE_LID(dae)或者DTX_LID_COMMITTED/DTX_LID_ABORTED
+        // 2. 这个desc作为record调用vos_dtx_append，主要作用就是将desc在PMDK上的地址存入dae->dae_records
 		rc = evt_desc_log_add(tcx, desc);
 		if (rc != 0)
 			/* It is unnecessary to free the PMEM that will be
@@ -3251,14 +3304,19 @@ evt_common_insert(struct evt_context *tcx, struct evt_node *nd,
 			 */
 			return rc;
 
+        // 填充desc的剩余信息
 		desc->dc_magic = EVT_DESC_MAGIC;
 		desc->dc_ex_addr = ent->ei_addr;
 		evt_desc_csum_fill(tcx, desc, ent, csum_bufp);
 		desc->dc_ver = ent->ei_ver;
-		D_DEBUG(DB_TRACE, "add node entry : %d, nr %d, "
-				"off "UMOFF_PF", desc_off:%lu, desc:%p, desc ba_off=%lu (1)\n",
+
+		
+		D_DEBUG(DB_TRACE, "add node entry : %d, nr %d, off "UMOFF_PF", desc_off:%lu, desc:%p, desc ba_off=%lu (1)\n",
 				i, nd->tn_nr, UMOFF_P(desc_off), desc_off, desc, desc->dc_ex_addr.ba_off);
-	} else {
+	} 
+
+// 中间节点(非叶子节点)
+	else {
 		nd->tn_child[i] = in_off;
 	}
 
@@ -3894,9 +3952,7 @@ evt_desc_csum_fill(struct evt_context *tcx, struct evt_desc *desc,
 	csum_buf_len = ci_csums_len(ent->ei_csum);
 
 	if (csum->cs_buf_len < csum_buf_len) {
-		D_ERROR("Issue copying checksum. Source (%d) is "
-			"larger than destination (%"PRIu64")",
-			csum->cs_buf_len, csum_buf_len);
+		D_ERROR("Issue copying checksum. Source (%d) is larger than destination (%"PRIu64")", csum->cs_buf_len, csum_buf_len);
 	} else if (csum_buf_len > 0) {
 		memcpy(desc->pt_csum, csum->cs_csum, csum_buf_len);
 		if (csum_bufp != NULL)
