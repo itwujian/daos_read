@@ -431,9 +431,12 @@ check_object:
 		goto out;
 
 	if (!create) {
-		rc = vos_ilog_fetch(vos_cont2umm(cont), vos_cont2hdl(cont),
-				            intent, &obj->obj_df->vo_ilog, epr->epr_hi,
-				            bound, NULL, NULL, &obj->obj_ilog_info);
+		rc = vos_ilog_fetch(vos_cont2umm(cont), vos_cont2hdl(cont), intent, 
+			                &obj->obj_df->vo_ilog,   // obj ilog root
+			                epr->epr_hi,
+				            bound, NULL, 
+				            NULL,                    // no-parent
+				            &obj->obj_ilog_info);    // Cache of incarnation log, 出参 // vos_ilog_info结构体
 		if (rc != 0) {
 			if (vos_has_uncertainty(ts_set, &obj->obj_ilog_info, epr->epr_hi, bound))
 				rc = -DER_TX_RESTART;
@@ -485,7 +488,10 @@ out:
 	if (obj->obj_df != NULL)
 		obj->obj_sync_epoch = obj->obj_df->vo_sync;
 
-	if (obj->obj_df != NULL && epr->epr_hi <= obj->obj_sync_epoch && vos_dth_get() != NULL && (intent == DAOS_INTENT_PUNCH || intent == DAOS_INTENT_UPDATE)) {
+	if (obj->obj_df != NULL && epr->epr_hi <= obj->obj_sync_epoch && 
+		vos_dth_get() != NULL && 
+		(intent == DAOS_INTENT_PUNCH || intent == DAOS_INTENT_UPDATE)) {
+		
 		/* If someone has synced the object against the
 		 * obj->obj_sync_epoch, then we do not allow to modify the
 		 * object with old epoch. Let's ask the caller to retry with

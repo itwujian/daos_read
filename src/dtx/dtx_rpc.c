@@ -950,6 +950,10 @@ dtx_abort(struct ds_cont_child *cont, struct dtx_entry *dte, daos_epoch_t epoch)
 	 *	 on server will find the local pinned DTX entry then notify related client
 	 *	 to resend sometime later.
 	 */
+
+    // 
+
+	
 	if (epoch != 0)
 		rc1 = vos_dtx_abort(cont->sc_hdl, &dte->dte_xid, epoch);
 	else

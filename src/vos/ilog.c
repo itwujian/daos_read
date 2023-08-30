@@ -384,6 +384,8 @@ ilog_create(struct umem_instance *umm, struct ilog_df *root)
 
 	tmp.lr_magic = ILOG_MAGIC + ILOG_VERSION_INC;
 
+    // lctx的作用是事务的快照保存
+    // 将tmp的内容拷贝至root
 	rc = ilog_ptr_set(&lctx, root, &tmp);
 
 	// 创建流程无需需改ilog的版本号

@@ -258,17 +258,17 @@ vos_parse_ilog(struct vos_ilog_info *info, const daos_epoch_range_t *epr,
 }
 
 static int
-vos_ilog_fetch_internal(struct umem_instance *umm,  // vpool上偏移的基地址
+vos_ilog_fetch_internal(struct umem_instance *umm,   // vpool上偏移的基地址
                                  daos_handle_t coh, 
-                                 uint32_t intent,            // DAOS_INTENT_PURGE for agg
-			                     struct ilog_df *ilog,       // ilog root for obj/dkey/akey
+                                 uint32_t intent,               // DAOS_INTENT_PURGE for agg
+			                     struct ilog_df *ilog,          // ilog root for obj/dkey/akey
 			                     const daos_epoch_range_t *epr,
 			                     daos_epoch_t bound,
 			                     // 带下来的punch信息(iter_check和agg使用)
 			                     const struct vos_punch_record *punched, 
 			                     const struct vos_ilog_info *parent,
 			                     // 需要带出去的ilog info信息
-			                     struct vos_ilog_info *info)
+			                     struct vos_ilog_info *info)   // 出参
 {
 	struct ilog_desc_cbs	 cbs;
 	struct vos_punch_record	 punch = {0};
