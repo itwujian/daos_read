@@ -943,7 +943,7 @@ dtx_abort(struct ds_cont_child *cont, struct dtx_entry *dte, daos_epoch_t epoch)
 
 	/*
 	 * NOTE: The DTX abort maybe triggered by dtx_leader_end() for timeout on some DTX
-	 *	 participant(s). Under such case, the client side RPC sponsor may also hit
+	 *	 participant(s). Under such case, the client side RPC sponsor(发起者) may also hit
 	 *	 the RPC timeout and resends related RPC to the leader. Here, to avoid DTX
 	 *	 abort and resend RPC forwarding being executed in parallel, we will abort
 	 *	 local DTX after remote done, before that the logic of handling resent RPC
@@ -951,8 +951,10 @@ dtx_abort(struct ds_cont_child *cont, struct dtx_entry *dte, daos_epoch_t epoch)
 	 *	 to resend sometime later.
 	 */
 
-    // 
-
+    // 当某个dtx事务的参与者执行超时，dtx_leader_end就会触发dtx_abort.
+    // 在这种场景下，客户端RPC的发起者也可能遇到RPC超时，并将相关RPC重发给leader。
+    // 这里为了避免dtx_abort和转发的resend rpc并行执行，在其他节点执行abort后，我们才会执行本地的dtx_abort
+    // 在此之前(处理resent rpc消息的)server端会找到本地pinned dtx entry,然后通知相关的client稍后重新发送。
 	
 	if (epoch != 0)
 		rc1 = vos_dtx_abort(cont->sc_hdl, &dte->dte_xid, epoch);

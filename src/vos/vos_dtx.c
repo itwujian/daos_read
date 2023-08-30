@@ -2472,8 +2472,7 @@ vos_dtx_stat(daos_handle_t coh, struct dtx_stat *stat, uint32_t flags)
 				   struct vos_dtx_act_ent, dae_link);
 		if (flags & DSF_SKIP_BAD) {
 			while (DAE_FLAGS(dae) & (DTE_CORRUPTED | DTE_ORPHAN)) {
-				if (dae->dae_link.next ==
-				    &cont->vc_dtx_act_list) {
+				if (dae->dae_link.next == &cont->vc_dtx_act_list) {
 					stat->dtx_oldest_active_time = 0;
 					goto cmt;
 				}

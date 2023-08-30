@@ -295,7 +295,11 @@ dtx_status_handle_one(struct ds_cont_child *cont, struct dtx_entry *dte,
 				 *
 				 *	Then we mark the TX as corrupted via special
 				 *	dtx_abort() with 0 @epoch.
-				 */
+				 */
+
+				// DTX中含有写业务，但是在这个dtx分布式任务在执行的时候丢失了
+				// 超过冗余的参与者信息，当前无法知道这个dtx事务是应该commit还是abort
+				// 这种情况下，就会设置为DTE_CORRUPTED，标记为dtx事务损换
 				rc = dtx_abort(cont, dte, 0);
 				if (rc < 0 && err != NULL)
 					*err = rc;
